@@ -43,7 +43,8 @@ class Interpreter(private val invoker: CompletionInvoker,
         is CallCompletion -> {
           isFinished = false
           if (shouldCompleteToken) {
-            val lookup = invoker.callCompletion(action.expectedText, action.prefix)
+            // TODO: @Gleb.Marin Why callCompletion returns function and not executes it?
+            val lookup = invoker.callCompletion(action.expectedText, action.prefix)()
             if (session == null) {
               val sessionUuid = lookup.features?.common?.context?.get(CCE_SESSION_UID_FEATURE_NAME)
                                 ?: UUID.randomUUID().toString()

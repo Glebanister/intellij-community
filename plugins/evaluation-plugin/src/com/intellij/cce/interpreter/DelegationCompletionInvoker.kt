@@ -16,7 +16,7 @@ class DelegationCompletionInvoker(private val invoker: CompletionInvoker, projec
     invoker.moveCaret(offset)
   }
 
-  override fun callCompletion(expectedText: String, prefix: String?): Lookup {
+  override fun callCompletion(expectedText: String, prefix: String?): () -> Lookup {
     return readActionWaitingForSize {
       invoker.callCompletion(expectedText, prefix)
     }

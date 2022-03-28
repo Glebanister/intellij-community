@@ -15,12 +15,21 @@
  */
 package com.intellij.codeInsight.completion;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class CompletionThreadingBase implements CompletionThreading {
   protected final static ThreadLocal<Boolean> ourIsInBatchUpdate = ThreadLocal.withInitial(() -> Boolean.FALSE);
+  // TODO: @Gleb.Marin Replace this workaround
+  protected static volatile boolean awaitForBatchFlushFinish = false;
+  protected final static Logger LOG = Logger.getInstance(CompletionThreadingBase.class);
 
   public static void withBatchUpdate(Runnable runnable, CompletionProcess process) {
     if (ourIsInBatchUpdate.get().booleanValue() || !(process instanceof CompletionProgressIndicator)) {
@@ -34,11 +43,28 @@ public abstract class CompletionThreadingBase implements CompletionThreading {
       ProgressManager.checkCanceled();
       CompletionProgressIndicator currentIndicator = (CompletionProgressIndicator)process;
       CompletionThreadingBase threading = Objects.requireNonNull(currentIndicator.getCompletionThreading());
-      threading.flushBatchResult(currentIndicator);
-    } finally {
+      Future<?> flushResult = threading.submitFlushBatchResult(currentIndicator);
+      if (awaitForBatchFlushFinish) {
+        awaitForBatchFlushFinish = false;
+        try {
+          flushResult.get(15, TimeUnit.SECONDS);
+        }
+        catch (ExecutionException | InterruptedException e) {
+          LOG.error(e);
+        }
+        catch (TimeoutException e) {
+          LOG.error("CompletionThreading flush stuck: %s", e.getMessage());
+        }
+      }
+    }
+    finally {
       ourIsInBatchUpdate.set(Boolean.FALSE);
     }
   }
 
-  protected abstract void flushBatchResult(CompletionProgressIndicator indicator);
+  public static void setAwaitForBatchFlushFinishOnce() {
+    awaitForBatchFlushFinish = true;
+  }
+
+  protected abstract Future<?> submitFlushBatchResult(CompletionProgressIndicator indicator);
 }

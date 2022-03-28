@@ -23,6 +23,15 @@ class JavaContextFeaturesProvider : ContextFeatureProvider {
     if (JavaCompletionFeatures.isAfterMethodCall(environment)) {
       features["is_after_method_call"] = MLFeatureValue.binary(true)
     }
+    if (JavaCompletionFeatures.positionIsIdentifier(environment)) {
+      features["is_identifier"] = MLFeatureValue.binary(true)
+    }
+    if (JavaCompletionFeatures.parentIsCodeReference(environment)) {
+      features["parent_is_code_ref"] = MLFeatureValue.binary(true)
+    }
+    if (JavaCompletionFeatures.parentIsModuleReference(environment)) {
+      features["parent_is_module_ref"] = MLFeatureValue.binary(true)
+    }
     val position = environment.parameters.position
     PsiTreeUtil.prevVisibleLeaf(position)?.let { prevLeaf ->
       JavaCompletionFeatures.asKeyword(prevLeaf.text)?.let { keyword ->

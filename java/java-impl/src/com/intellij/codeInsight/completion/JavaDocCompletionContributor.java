@@ -3,6 +3,7 @@ package com.intellij.codeInsight.completion;
 
 import com.intellij.application.options.CodeStyle;
 import com.intellij.codeInsight.TailType;
+import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
 import com.intellij.codeInsight.completion.scope.JavaCompletionProcessor;
 import com.intellij.codeInsight.editorActions.wordSelection.DocTagSelectioner;
 import com.intellij.codeInsight.javadoc.JavaDocUtil;
@@ -121,7 +122,9 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
             result.addElement(item);
           }
 
-          JavaCompletionContributor.addAllClasses(parameters, result, new JavaCompletionSession(result));
+          JavaCompletionContributor.addAllClasses(parameters, result, new JavaCompletionSession(result),
+                                                  "javadoc_fill",
+                                                  new CompletionKindsImmediateExecutor());
         }
 
         if (tag != null && "author".equals(tag.getName())) {

@@ -1,6 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
+import com.intellij.codeInsight.completion.kind.CompletionKind;
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.WeighingContext;
@@ -15,9 +17,13 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.annotation.processing.Completion;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * For completion FAQ, see {@link CompletionContributor}.
@@ -40,13 +46,18 @@ public abstract class CompletionService {
   @Deprecated(forRemoval = true)
   public abstract void setAdvertisementText(@Nullable @NlsContexts.PopupAdvertisement String text);
 
+  public abstract @NotNull CompletionKindsExecutor getCompletionKindsExecutor();
+
+  public abstract void setCompletionKindsExecutor(@NotNull CompletionKindsExecutor ckExecutor);
+
   /**
    * Run all contributors until any of them returns false or the list is exhausted. If {@code from} parameter is not null, contributors
    * will be run starting from the next one after that.
    */
   public void getVariantsFromContributors(final CompletionParameters parameters,
                                           @Nullable final CompletionContributor from,
-                                          final Consumer<? super CompletionResult> consumer) {
+                                          final Consumer<? super CompletionResult> consumer,
+                                          @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
     getVariantsFromContributors(parameters, from, createMatcher(suggestPrefix(parameters), false), consumer);
   }
 
@@ -56,29 +67,59 @@ public abstract class CompletionService {
     getVariantsFromContributors(parameters, from, matcher, consumer, null);
   }
 
+  protected void getVariantsFromContributor(CompletionParameters params, CompletionContributor contributor, CompletionResultSet result) {
+    contributor.fillCompletionVariants(params, result);
+  }
+
   protected void getVariantsFromContributors(CompletionParameters parameters,
                                              @Nullable CompletionContributor from,
                                              PrefixMatcher matcher, Consumer<? super CompletionResult> consumer,
                                              CompletionSorter customSorter) {
-    final List<CompletionContributor> contributors = CompletionContributor.forParameters(parameters);
+    CompletionKindsExecutor ckExecutor = getCompletionKindsExecutor();
+    List<CompletionContributor> contributors = ckExecutor.reorderContirbutors(CompletionContributor.forParameters(parameters));
 
     for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
       ProgressManager.checkCanceled();
       CompletionContributor contributor = contributors.get(i);
 
+      if (!(contributor instanceof CompletionContributorWithKinds)) {
+        continue;
+      }
+
       CompletionResultSet result = createResultSet(parameters, consumer, contributor, matcher);
       if (customSorter != null) {
         result = result.withRelevanceSorter(customSorter);
       }
-      getVariantsFromContributor(parameters, contributor, result);
+
+      ((CompletionContributorWithKinds)contributor).fillCompletionKinds(
+        parameters, result, ckExecutor
+      );
+    }
+
+    ckExecutor.executeAll(parameters);
+
+    // TODO: @Gleb.Marin Check if it is needed
+    //if (ckExecutor.sureFoundCorrect()) {
+    //  return;
+    //}
+
+    for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
+      ProgressManager.checkCanceled();
+      CompletionContributor contributor = contributors.get(i);
+
+      if (contributor instanceof CompletionContributorWithKinds) {
+        continue;
+      }
+
+      CompletionResultSet result = createResultSet(parameters, consumer, contributor, matcher);
+      if (customSorter != null) {
+        result = result.withRelevanceSorter(customSorter);
+      }
+      contributor.fillCompletionVariants(parameters, result);
       if (result.isStopped()) {
         return;
       }
     }
-  }
-
-  protected void getVariantsFromContributor(CompletionParameters params, CompletionContributor contributor, CompletionResultSet result) {
-    contributor.fillCompletionVariants(params, result);
   }
 
   protected abstract CompletionResultSet createResultSet(CompletionParameters parameters, Consumer<? super CompletionResult> consumer,

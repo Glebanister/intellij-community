@@ -68,10 +68,13 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.event.*;
+import java.time.Instant;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_SHOW_TIME;
 
 public class LookupImpl extends LightweightHint implements LookupEx, Disposable, LookupElementListPresenter {
   private static final Logger LOG = Logger.getInstance(LookupImpl.class);
@@ -431,6 +434,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
       synchronized (myUiLock) {
         model.removeAll();
         if (!items.isEmpty()) {
+          items.forEach(item -> item.putUserDataIfAbsent(LOOKUP_ELEMENT_SHOW_TIME, Instant.now()));
           model.add(items);
           addDummyItems(myDummyItemCount.get());
         }
@@ -667,12 +671,15 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     return myShown;
   }
 
-  public boolean showLookup() {
+  public boolean showLookup(Runnable indicateShown) {
+    if (myStampShown == 0) {
+      myStampShown = System.currentTimeMillis();
+    }
+    indicateShown.run();
     ApplicationManager.getApplication().assertIsDispatchThread();
     checkValid();
     LOG.assertTrue(!myShown);
     myShown = true;
-    myStampShown = System.currentTimeMillis();
 
     fireLookupShown();
 
@@ -686,6 +693,18 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     LookupUsageTracker.trackLookup(myCreatedTimestamp, this);
 
     return doShowLookup();
+  }
+
+  public boolean showLookup() {
+    return showLookup(() -> {});
+  }
+
+  public Long getShownTimestamp() {
+    return myStampShown;
+  }
+
+  public Long getCreatedTimestamp() {
+    return myCreatedTimestamp;
   }
 
   protected boolean doShowLookup() {
