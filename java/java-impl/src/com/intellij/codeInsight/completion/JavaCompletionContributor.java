@@ -83,11 +83,11 @@ import static com.intellij.patterns.PsiJavaPatterns.string;
 
 public final class JavaCompletionContributor extends CompletionContributor implements DumbAware {
   private static final ElementPattern<PsiElement> UNEXPECTED_REFERENCE_AFTER_DOT = or(
-      // dot at the statement beginning
-      psiElement().afterLeaf(".").insideStarting(psiExpressionStatement()),
-      // like `call(Cls::methodRef.<caret>`
-      psiElement().afterLeaf(psiElement(JavaTokenType.DOT).afterSibling(psiElement(PsiMethodCallExpression.class).withLastChild(
-        psiElement(PsiExpressionList.class).withLastChild(psiElement(PsiErrorElement.class))))));
+    // dot at the statement beginning
+    psiElement().afterLeaf(".").insideStarting(psiExpressionStatement()),
+    // like `call(Cls::methodRef.<caret>`
+    psiElement().afterLeaf(psiElement(JavaTokenType.DOT).afterSibling(psiElement(PsiMethodCallExpression.class).withLastChild(
+      psiElement(PsiExpressionList.class).withLastChild(psiElement(PsiErrorElement.class))))));
   private static final PsiNameValuePairPattern NAME_VALUE_PAIR =
     psiNameValuePair().withSuperParent(2, psiElement(PsiAnnotation.class));
   private static final ElementPattern<PsiElement> ANNOTATION_ATTRIBUTE_NAME =
@@ -98,24 +98,29 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       psiElement(PsiReferenceList.class).withParent(PsiTypeParameter.class));
 
   public static final ElementPattern<PsiElement> IN_SWITCH_LABEL =
-    psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class).withParent(psiElement(PsiSwitchLabelStatementBase.class).withSuperParent(2, PsiSwitchBlock.class)));
+    psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class).withParent(
+      psiElement(PsiSwitchLabelStatementBase.class).withSuperParent(2, PsiSwitchBlock.class)));
   private static final ElementPattern<PsiElement> IN_ENUM_SWITCH_LABEL =
-    psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class).withParent(psiElement(PsiSwitchLabelStatementBase.class).withSuperParent(2,
-      psiElement(PsiSwitchBlock.class).with(new PatternCondition<>("enumExpressionType") {
-        @Override
-        public boolean accepts(@NotNull PsiSwitchBlock psiSwitchBlock, ProcessingContext context) {
-          PsiExpression expression = psiSwitchBlock.getExpression();
-          if (expression == null) return false;
-          PsiClass aClass = PsiUtil.resolveClassInClassTypeOnly(expression.getType());
-          return aClass != null && aClass.isEnum();
-        }
-      }))));
+    psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class).withParent(
+      psiElement(PsiSwitchLabelStatementBase.class).withSuperParent(2,
+                                                                    psiElement(PsiSwitchBlock.class).with(
+                                                                      new PatternCondition<>("enumExpressionType") {
+                                                                        @Override
+                                                                        public boolean accepts(@NotNull PsiSwitchBlock psiSwitchBlock,
+                                                                                               ProcessingContext context) {
+                                                                          PsiExpression expression = psiSwitchBlock.getExpression();
+                                                                          if (expression == null) return false;
+                                                                          PsiClass aClass =
+                                                                            PsiUtil.resolveClassInClassTypeOnly(expression.getType());
+                                                                          return aClass != null && aClass.isEnum();
+                                                                        }
+                                                                      }))));
   private static final PsiJavaElementPattern.Capture<PsiElement> IN_CASE_LABEL_ELEMENT_LIST =
     psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class));
-
   private static final ElementPattern<PsiElement> AFTER_NUMBER_LITERAL =
     psiElement().afterLeaf(psiElement().withElementType(
-      elementType().oneOf(JavaTokenType.DOUBLE_LITERAL, JavaTokenType.LONG_LITERAL, JavaTokenType.FLOAT_LITERAL, JavaTokenType.INTEGER_LITERAL)));
+      elementType().oneOf(JavaTokenType.DOUBLE_LITERAL, JavaTokenType.LONG_LITERAL, JavaTokenType.FLOAT_LITERAL,
+                          JavaTokenType.INTEGER_LITERAL)));
   private static final ElementPattern<PsiElement> IMPORT_REFERENCE =
     psiElement().withParent(psiElement(PsiJavaCodeReferenceElement.class).withParent(PsiImportStatementBase.class));
   private static final ElementPattern<PsiElement> CATCH_OR_FINALLY = psiElement().afterLeaf(
@@ -202,7 +207,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       return null;
     }
 
-    if (JavaKeywordCompletion.START_FOR.withParents(PsiJavaCodeReferenceElement.class, PsiExpressionStatement.class, PsiForStatement.class).accepts(position)) {
+    if (JavaKeywordCompletion.START_FOR.withParents(PsiJavaCodeReferenceElement.class, PsiExpressionStatement.class, PsiForStatement.class)
+      .accepts(position)) {
       return new OrFilter(ElementClassFilter.CLASS, ElementClassFilter.VARIABLE);
     }
 
@@ -361,6 +367,19 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
   @Override
   public void fillCompletionVariants(@NotNull final CompletionParameters parameters, @NotNull final CompletionResultSet _result) {
+
+    class JavaCompletionContext {
+      final CompletionParameters parameters;
+
+      JavaCompletionContext(CompletionParameters parameters) {
+        this.parameters = parameters;
+      }
+    }
+
+    JavaCompletionContext kindCompletionContext = new JavaCompletionContext(parameters);
+
+    CompletionKindsExecutor<JavaCompletionContext> completionKindsExecutor = new CompletionKindsGivenOrderExecutor<>(kindCompletionContext);
+
     final PsiElement position = parameters.getPosition();
     if (!isInJavaContext(position)) {
       return;
@@ -589,7 +608,10 @@ public final class JavaCompletionContributor extends CompletionContributor imple
     return false;
   }
 
-  private static void suggestSmartCast(CompletionParameters parameters, JavaCompletionSession session, boolean quick, Consumer<? super LookupElement> result) {
+  private static void suggestSmartCast(CompletionParameters parameters,
+                                       JavaCompletionSession session,
+                                       boolean quick,
+                                       Consumer<? super LookupElement> result) {
     if (SmartCastProvider.shouldSuggestCast(parameters)) {
       session.flushBatchItems();
       SmartCastProvider.addCastVariants(parameters, session.getMatcher(), element -> {
@@ -625,7 +647,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
     if (parent instanceof PsiReferenceExpression && !(parent instanceof PsiMethodReferenceExpression)) {
       final List<ExpectedTypeInfo> expected = Arrays.asList(ExpectedTypesProvider.getExpectedTypes((PsiExpression)parent, true));
       StreamConversion.addCollectConversion((PsiReferenceExpression)parent, expected,
-                                             lookupElement -> items.add(JavaSmartCompletionContributor.decorate(lookupElement, expected)));
+                                            lookupElement -> items.add(JavaSmartCompletionContributor.decorate(lookupElement, expected)));
       if (!smart) {
         items.addAll(StreamConversion.addToStreamConversion((PsiReferenceExpression)parent, parameters));
       }
@@ -664,7 +686,9 @@ public final class JavaCompletionContributor extends CompletionContributor imple
            !SmartCastProvider.inCastContext(parameters);
   }
 
-  private static void addExpressionVariants(@NotNull CompletionParameters parameters, PsiElement position, Consumer<? super LookupElement> result) {
+  private static void addExpressionVariants(@NotNull CompletionParameters parameters,
+                                            PsiElement position,
+                                            Consumer<? super LookupElement> result) {
     if (shouldAddExpressionVariants(parameters)) {
       if (SameSignatureCallParametersProvider.IN_CALL_ARGUMENT.accepts(position)) {
         new SameSignatureCallParametersProvider().addSignatureItems(position, result);
@@ -692,7 +716,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
   public static void advertiseSecondCompletion(Project project, CompletionResultSet result) {
     if (FeatureUsageTracker.getInstance().isToBeAdvertisedInLookup(CodeCompletionFeatures.SECOND_BASIC_COMPLETION, project)) {
       result.addLookupAdvertisement(JavaBundle.message("press.0.to.see.non.imported.classes",
-                                                             KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CODE_COMPLETION)));
+                                                       KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CODE_COMPLETION)));
     }
   }
 
@@ -805,14 +829,14 @@ public final class JavaCompletionContributor extends CompletionContributor imple
     if (container == null) return Collections.emptyList();
     Map<String, Optional<PsiLocalVariable>> variableMap =
       EntryStream.ofTree(container, (depth, element) -> depth > 2 ? null : StreamEx.of(element.getChildren()))
-      .values()
-      .select(PsiCodeBlock.class)
-      .flatArray(PsiCodeBlock::getStatements)
-      .select(PsiDeclarationStatement.class)
-      .flatArray(PsiDeclarationStatement::getDeclaredElements)
-      .select(PsiLocalVariable.class)
-      .remove(var -> PsiTreeUtil.isAncestor(var, position, true))
-      .toMap(PsiLocalVariable::getName, Optional::of, (v1, v2) -> Optional.empty());
+        .values()
+        .select(PsiCodeBlock.class)
+        .flatArray(PsiCodeBlock::getStatements)
+        .select(PsiDeclarationStatement.class)
+        .flatArray(PsiDeclarationStatement::getDeclaredElements)
+        .select(PsiLocalVariable.class)
+        .remove(var -> PsiTreeUtil.isAncestor(var, position, true))
+        .toMap(PsiLocalVariable::getName, Optional::of, (v1, v2) -> Optional.empty());
     PsiResolveHelper helper = JavaPsiFacade.getInstance(parameters.getOriginalFile().getProject()).getResolveHelper();
     variableMap.values().removeAll(Collections.singleton(Optional.<PsiLocalVariable>empty()));
     variableMap.keySet().removeIf(name -> helper.resolveReferencedVariable(name, position) != null);
@@ -900,7 +924,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
     if (((PsiJavaCodeReferenceElement)parent).getQualifier() != null) return isSecondCompletion;
 
     if (parent instanceof PsiJavaCodeReferenceElementImpl &&
-        ((PsiJavaCodeReferenceElementImpl)parent).getKindEnum(parent.getContainingFile()) == PsiJavaCodeReferenceElementImpl.Kind.PACKAGE_NAME_KIND) {
+        ((PsiJavaCodeReferenceElementImpl)parent).getKindEnum(parent.getContainingFile()) ==
+        PsiJavaCodeReferenceElementImpl.Kind.PACKAGE_NAME_KIND) {
       return false;
     }
 
@@ -933,22 +958,27 @@ public final class JavaCompletionContributor extends CompletionContributor imple
                                                       PsiClass annoClass) {
     PsiNameValuePair[] existingPairs = anno.getParameterList().getAttributes();
 
-    methods: for (PsiMethod method : annoClass.getMethods()) {
+    methods:
+    for (PsiMethod method : annoClass.getMethods()) {
       if (!(method instanceof PsiAnnotationMethod)) continue;
 
       final String attrName = method.getName();
       for (PsiNameValuePair existingAttr : existingPairs) {
         if (PsiTreeUtil.isAncestor(existingAttr, position, false)) break;
         if (Objects.equals(existingAttr.getName(), attrName) ||
-            PsiAnnotation.DEFAULT_REFERENCED_METHOD_NAME.equals(attrName) && existingAttr.getName() == null) continue methods;
+            PsiAnnotation.DEFAULT_REFERENCED_METHOD_NAME.equals(attrName) && existingAttr.getName() == null) {
+          continue methods;
+        }
       }
 
       PsiAnnotationMemberValue defaultValue = ((PsiAnnotationMethod)method).getDefaultValue();
       String defText = defaultValue == null ? null : defaultValue.getText();
       if (PsiKeyword.TRUE.equals(defText) || PsiKeyword.FALSE.equals(defText)) {
         result.addElement(createAnnotationAttributeElement(method, PsiKeyword.TRUE.equals(defText) ? PsiKeyword.FALSE : PsiKeyword.TRUE));
-        result.addElement(PrioritizedLookupElement.withPriority(createAnnotationAttributeElement(method, defText).withTailText(" (default)", true), -1));
-      } else {
+        result.addElement(
+          PrioritizedLookupElement.withPriority(createAnnotationAttributeElement(method, defText).withTailText(" (default)", true), -1));
+      }
+      else {
         LookupElementBuilder element = createAnnotationAttributeElement(method, null);
         if (defText != null) {
           element = element.withTailText(" default " + defText, true);
@@ -960,7 +990,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
   @NotNull
   private static LookupElementBuilder createAnnotationAttributeElement(PsiMethod annoMethod, @Nullable String value) {
-    String space = ReferenceExpressionCompletionContributor.getSpace(CodeStyle.getLanguageSettings(annoMethod.getContainingFile()).SPACE_AROUND_ASSIGNMENT_OPERATORS);
+    String space = ReferenceExpressionCompletionContributor.getSpace(
+      CodeStyle.getLanguageSettings(annoMethod.getContainingFile()).SPACE_AROUND_ASSIGNMENT_OPERATORS);
     String lookupString = annoMethod.getName() + (value == null ? "" : space + "=" + space + value);
     return LookupElementBuilder.create(annoMethod, lookupString).withIcon(annoMethod.getIcon(0))
       .withStrikeoutness(PsiImplUtil.isDeprecated(annoMethod))
@@ -991,7 +1022,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
     if (parameters.getCompletionType() == CompletionType.BASIC && parameters.getInvocationCount() > 0) {
       PsiElement position = parameters.getPosition();
-      if (psiElement().withParent(psiReferenceExpression().withFirstChild(psiReferenceExpression().referencing(psiClass()))).accepts(position)) {
+      if (psiElement().withParent(psiReferenceExpression().withFirstChild(psiReferenceExpression().referencing(psiClass())))
+        .accepts(position)) {
         if (CompletionUtil.shouldShowFeature(parameters, JavaCompletionFeatures.GLOBAL_MEMBER_NAME)) {
           final String shortcut = KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CODE_COMPLETION);
           if (StringUtil.isNotEmpty(shortcut)) {
@@ -1357,7 +1389,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
   private static class EnumStaticFieldsFilter implements ElementFilter {
     private final PsiClass myEnumClass;
 
-    private EnumStaticFieldsFilter(PsiClass enumClass) { myEnumClass = enumClass;}
+    private EnumStaticFieldsFilter(PsiClass enumClass) { myEnumClass = enumClass; }
 
     @Override
     public boolean isAcceptable(Object element, @Nullable PsiElement context) {
