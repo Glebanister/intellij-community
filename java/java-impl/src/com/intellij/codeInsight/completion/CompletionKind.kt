@@ -1,6 +1,7 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion
 
+import java.lang.IllegalArgumentException
 import java.util.Comparator
 import java.util.function.Consumer
 import kotlin.streams.toList
@@ -37,11 +38,17 @@ abstract class CompletionKind(val name: String) {
     }
 
     @JvmStatic
-    fun <T> withStaticCompletionDecision(
+    fun withStaticCompletionDecision(
       name: String,
       isKindApplicable: Boolean,
       doFillVariants: Runnable,
-    ): CompletionKind = withDynamicCompletionDecision(name, { isKindApplicable }, doFillVariants);
+    ): CompletionKind = withDynamicCompletionDecision(name, { isKindApplicable }, doFillVariants)
+
+    @JvmStatic
+    fun withFillFunction(
+      name: String,
+      doFillVariants: Runnable,
+    ): CompletionKind = withStaticCompletionDecision(name, true, doFillVariants)
   }
 }
 
@@ -71,18 +78,29 @@ interface CompletionKindsRelevanceSorter {
   fun sort(kinds: List<CompletionKind>): CompletionKindsExecutionDecision
 }
 
-abstract class CompletionKindsExecutor(
-  private val myCompletionKinds: MutableList<CompletionKind> = ArrayList()
-) {
+class GivenOrderSorter : CompletionKindsRelevanceSorter {
+  override fun sort(kinds: List<CompletionKind>) = CompletionKindsExecutionDecision(
+    kinds,
+    emptyList(),
+  )
+}
 
-  fun addKind(kind: CompletionKind): CompletionKindsExecutor {
+interface CompletionKindsExecutor {
+  fun addKind(kind: CompletionKind);
+  fun executeAll(taskAfterPrimaryBatch: Runnable?);
+}
+
+abstract class CompletionKindsExecutorWithSorter(
+  private val myCompletionKinds: MutableList<CompletionKind> = ArrayList()
+) : CompletionKindsExecutor {
+
+  override fun addKind(kind: CompletionKind) {
     myCompletionKinds.add(kind)
-    return this
   }
 
   abstract val sorter: CompletionKindsRelevanceSorter
 
-  fun executeAll(taskAfterPrimaryBatch: Runnable? = null) {
+  override fun executeAll(taskAfterPrimaryBatch: Runnable?) {
     val executionOrder = sorter.sort(
       myCompletionKinds.stream()
         .filter(CompletionKind::isApplicable)
@@ -94,13 +112,17 @@ abstract class CompletionKindsExecutor(
   }
 }
 
-class GivenOrderSorter : CompletionKindsRelevanceSorter {
-  override fun sort(kinds: List<CompletionKind>) = CompletionKindsExecutionDecision(
-    kinds,
-    emptyList(),
-  )
-}
-
 class CompletionKindsGivenOrderExecutor(
   override val sorter: CompletionKindsRelevanceSorter = GivenOrderSorter()
-) : CompletionKindsExecutor()
+) : CompletionKindsExecutorWithSorter()
+
+class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
+  override fun addKind(kind: CompletionKind) {
+    if (kind.isApplicable) kind.fillKindVariantsOnce()
+  }
+
+  override fun executeAll(taskAfterPrimaryBatch: Runnable?) {
+    if (taskAfterPrimaryBatch != null)
+      throw IllegalArgumentException("All tasks already were executed")
+  }
+}

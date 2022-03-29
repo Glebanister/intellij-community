@@ -3,10 +3,18 @@ package com.intellij.codeInsight.completion
 
 interface DeferredBoolean {
   fun value(): Boolean?
+
+  fun eq(boolean: Boolean): Boolean = value()
+                                        ?.let { it == boolean }
+                                      ?: false
+
+  fun eqTrue(): Boolean = eq(true)
+  fun eqFalse(): Boolean = eq(false)
 }
 
 abstract class DeferredBooleanWithRegisteredActors(
-  private val contributionPerActor: MutableMap<Any, Boolean?> = HashMap()
+  private val contributionPerActor: MutableMap<Any, Boolean?> = HashMap(),
+  private var lastContributedActor: Pair<Any, Boolean>? = null
 ) : DeferredBoolean {
   constructor(initialValue: Boolean?) : this() {
     initialValue?.let {
@@ -23,6 +31,7 @@ abstract class DeferredBooleanWithRegisteredActors(
     if (actor !in contributionPerActor) {
       throw IllegalArgumentException("Not registered actor tried to make contribution")
     }
+    lastContributedActor = actor to value
     contributionPerActor[actor] = value
   }
 
@@ -31,6 +40,9 @@ abstract class DeferredBooleanWithRegisteredActors(
 
   protected fun someoneContributedWith(value: Boolean): Boolean =
     contributionPerActor.values.stream().anyMatch { it == value }
+
+  protected fun lastContribution(): Boolean? =
+    lastContributedActor?.second
 }
 
 class DeferredOr(initialValue: Boolean?) : DeferredBooleanWithRegisteredActors(initialValue) {
@@ -58,9 +70,7 @@ class DeferredAnd(initialValue: Boolean?) : DeferredBooleanWithRegisteredActors(
 }
 
 class DeferredAssign(initialValue: Boolean?) : DeferredBooleanWithRegisteredActors(initialValue) {
-  override fun value(): Boolean? {
-    return if (everyoneContributedWith(true)) true
-    else if (everyoneContributedWith(false)) false
-    else null;
-  }
+  override fun value() = lastContribution()
+
+  fun assign(actor: Any, boolean: Boolean) = act(actor, boolean)
 }

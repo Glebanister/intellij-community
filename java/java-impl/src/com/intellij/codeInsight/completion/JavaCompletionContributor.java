@@ -392,23 +392,27 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       return;
     }
 
+    CompletionKindsExecutor ckExecutor = new CompletionKindsImmediateExecutor();
+
     boolean mayCompleteReference = true;
 
-    var ckIdentifiers = CompletionKind.withStaticCompletionDecision(
-      "identifier",
-      position instanceof PsiIdentifier,
-      () -> {
-        addIdentifierVariants(parameters, position, result, session, matcher);
-      }
-    );
-    ckIdentifiers.fillKindVariantsOnce();
-
     if (position instanceof PsiIdentifier) {
-      Set<ExpectedTypeInfo> expectedInfos = ContainerUtil.newHashSet(JavaSmartCompletionContributor.getExpectedTypes(parameters));
+      CompletionKind ckIdentifier = CompletionKind.withFillFunction(
+        "identifier",
+        () -> {
+          addIdentifierVariants(parameters, position, result, session, matcher);
+        }
+      );
+      ckExecutor.addKind(ckIdentifier);
+
+      LazyNotNullValue<Set<ExpectedTypeInfo>> expectedInfos = new LazyNotNullValue<>(() -> {
+        return ContainerUtil.newHashSet(JavaSmartCompletionContributor.getExpectedTypes(parameters));
+      });
+
       boolean shouldAddExpressionVariants = shouldAddExpressionVariants(parameters);
 
       boolean hasTypeMatchingSuggestions =
-        shouldAddExpressionVariants && addExpectedTypeMembers(parameters, false, expectedInfos,
+        shouldAddExpressionVariants && addExpectedTypeMembers(parameters, false, expectedInfos.get(),
                                                               item -> session.registerBatchItems(Collections.singleton(item)));
 
       if (!smart) {
@@ -436,11 +440,11 @@ public final class JavaCompletionContributor extends CompletionContributor imple
           refSuggestions = completePermitsListReference(parameters, parentRef, matcher);
         }
         else {
-          refSuggestions = completeReference(parameters, parentRef, session, expectedInfos, matcher::prefixMatches);
+          refSuggestions = completeReference(parameters, parentRef, session, expectedInfos.get(), matcher::prefixMatches);
         }
-        List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos, refSuggestions);
+        List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos.get(), refSuggestions);
         hasTypeMatchingSuggestions |= ContainerUtil.exists(filtered, item ->
-          ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos));
+          ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos.get()));
         session.registerBatchItems(filtered);
         result.stopHere();
       }
@@ -448,22 +452,22 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       session.flushBatchItems();
 
       if (smart) {
-        hasTypeMatchingSuggestions |= smartCompleteExpression(parameters, result, expectedInfos);
+        hasTypeMatchingSuggestions |= smartCompleteExpression(parameters, result, expectedInfos.get());
         smartCompleteNonExpression(parameters, result);
       }
 
       if ((!hasTypeMatchingSuggestions || parameters.getInvocationCount() >= 2) &&
           parent instanceof PsiJavaCodeReferenceElement &&
-          !expectedInfos.isEmpty() &&
+          !expectedInfos.get().isEmpty() &&
           JavaSmartCompletionContributor.INSIDE_EXPRESSION.accepts(position)) {
         List<LookupElement> base = ContainerUtil.concat(
           refSuggestions,
-          completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos, s -> !matcher.prefixMatches(s)));
-        SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos, base);
+          completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos.get(), s -> !matcher.prefixMatches(s)));
+        SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos.get(), base);
       }
 
       if (smart && parameters.getInvocationCount() > 1 && shouldAddExpressionVariants) {
-        addExpectedTypeMembers(parameters, true, expectedInfos, result);
+        addExpectedTypeMembers(parameters, true, expectedInfos.get(), result);
       }
     }
 
