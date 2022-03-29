@@ -2,39 +2,59 @@
 package com.intellij.codeInsight.completion
 
 import java.util.Comparator
+import java.util.function.Consumer
 import kotlin.streams.toList
 
 
-abstract class CompletionKind<T>(val name: String) {
-  var myContext: T? = null
-  var myAlreadyFilled = false
+abstract class CompletionKind(val name: String) {
+  private var alreadyFilled = false
   protected abstract fun fillKindVariants()
   abstract val isApplicable: Boolean
 
   fun fillKindVariantsOnce() {
-    checkNotNull(myContext) { "CompletionKindContext is not set yet" }
-    if (myAlreadyFilled) {
+    //checkNotNull(context) { "CompletionKindContext is not set yet" }
+    if (alreadyFilled) {
       return
     }
     fillKindVariants()
-    myAlreadyFilled = true
+    alreadyFilled = true
   }
 
-  fun withContext(context: T) {
-    myContext = context
+  companion object {
+    @JvmStatic
+    fun withDynamicCompletionDecision(
+      name: String,
+      isKindApplicable: () -> Boolean,
+      doFillVariants: Runnable,
+    ): CompletionKind {
+
+      class CompletionKindWithDynamicCompletionDecision : CompletionKind(name) {
+        override fun fillKindVariants() = doFillVariants.run()
+        override val isApplicable = isKindApplicable()
+      }
+
+      return CompletionKindWithDynamicCompletionDecision()
+    }
+
+    @JvmStatic
+    fun <T> withStaticCompletionDecision(
+      name: String,
+      isKindApplicable: Boolean,
+      doFillVariants: Runnable,
+    ): CompletionKind = withDynamicCompletionDecision(name, { isKindApplicable }, doFillVariants);
   }
 }
 
-class CompletionKindsExecutionDecision<T>(val primaryBatch: List<CompletionKind<T>>,
-                                          val secondaryBatch: List<CompletionKind<T>>) {
+class CompletionKindsExecutionDecision(val primaryBatch: List<CompletionKind>,
+                                       val secondaryBatch: List<CompletionKind>) {
 
   companion object {
     private fun <T> fromWeights(
-      kindWeights: Collection<Map.Entry<CompletionKind<T>, Double>>,
+      kindWeights: Collection<Map.Entry<CompletionKind, Double>>,
       primaryBatchSize: Int
-    ): CompletionKindsExecutionDecision<T> {
+    ): CompletionKindsExecutionDecision {
 
-      val order: List<CompletionKind<T>> = kindWeights.stream()
+      val order: List<CompletionKind> = kindWeights.stream()
         .filter { (kind, _) -> kind.isApplicable }
         .sorted(Comparator.comparing { (_, weight) -> weight })
         .map { it.component1() }
@@ -47,27 +67,25 @@ class CompletionKindsExecutionDecision<T>(val primaryBatch: List<CompletionKind<
   }
 }
 
-interface CompletionKindsRelevanceSorter<T> {
-  fun sort(kinds: List<CompletionKind<T>>): CompletionKindsExecutionDecision<T>
+interface CompletionKindsRelevanceSorter {
+  fun sort(kinds: List<CompletionKind>): CompletionKindsExecutionDecision
 }
 
-abstract class CompletionKindsExecutor<T>(
-  private val myContext: T,
-  private val myCompletionKinds: MutableList<CompletionKind<T>> = ArrayList()
+abstract class CompletionKindsExecutor(
+  private val myCompletionKinds: MutableList<CompletionKind> = ArrayList()
 ) {
 
-  fun addKind(kind: CompletionKind<T>): CompletionKindsExecutor<T> {
-    kind.withContext(myContext)
+  fun addKind(kind: CompletionKind): CompletionKindsExecutor {
     myCompletionKinds.add(kind)
     return this
   }
 
-  abstract val sorter: CompletionKindsRelevanceSorter<T>
+  abstract val sorter: CompletionKindsRelevanceSorter
 
   fun executeAll(taskAfterPrimaryBatch: Runnable? = null) {
     val executionOrder = sorter.sort(
       myCompletionKinds.stream()
-        .filter(CompletionKind<T>::isApplicable)
+        .filter(CompletionKind::isApplicable)
         .toList()
     )
     executionOrder.primaryBatch.forEach { it.fillKindVariantsOnce() }
@@ -76,14 +94,13 @@ abstract class CompletionKindsExecutor<T>(
   }
 }
 
-class GivenOrderSorter<T> : CompletionKindsRelevanceSorter<T> {
-  override fun sort(kinds: List<CompletionKind<T>>) = CompletionKindsExecutionDecision(
+class GivenOrderSorter : CompletionKindsRelevanceSorter {
+  override fun sort(kinds: List<CompletionKind>) = CompletionKindsExecutionDecision(
     kinds,
     emptyList(),
   )
 }
 
-class CompletionKindsGivenOrderExecutor<T>(
-  myContext: T,
-  override val sorter: CompletionKindsRelevanceSorter<T> = GivenOrderSorter()
-) : CompletionKindsExecutor<T>(myContext)
+class CompletionKindsGivenOrderExecutor(
+  override val sorter: CompletionKindsRelevanceSorter = GivenOrderSorter()
+) : CompletionKindsExecutor()

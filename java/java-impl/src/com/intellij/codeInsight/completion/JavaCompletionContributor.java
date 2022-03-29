@@ -367,19 +367,6 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
   @Override
   public void fillCompletionVariants(@NotNull final CompletionParameters parameters, @NotNull final CompletionResultSet _result) {
-
-    class JavaCompletionContext {
-      final CompletionParameters parameters;
-
-      JavaCompletionContext(CompletionParameters parameters) {
-        this.parameters = parameters;
-      }
-    }
-
-    JavaCompletionContext kindCompletionContext = new JavaCompletionContext(parameters);
-
-    CompletionKindsExecutor<JavaCompletionContext> completionKindsExecutor = new CompletionKindsGivenOrderExecutor<>(kindCompletionContext);
-
     final PsiElement position = parameters.getPosition();
     if (!isInJavaContext(position)) {
       return;
@@ -407,9 +394,21 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
     boolean mayCompleteReference = true;
 
-    if (position instanceof PsiIdentifier) {
-      addIdentifierVariants(parameters, position, result, session, matcher);
+    class JavaKindCompletionContext {
+    }
 
+    var kindCompletionContext = new JavaKindCompletionContext();
+
+    var kindIdentifiers = CompletionKind.withStaticCompletionDecision(
+      "identifier",
+      position instanceof PsiIdentifier, () -> {
+        addIdentifierVariants(parameters, position, result, session, matcher);
+      }
+    ).withContext(kindCompletionContext);
+
+    kindIdentifiers.fillKindVariantsOnce();
+
+    if (position instanceof PsiIdentifier) {
       Set<ExpectedTypeInfo> expectedInfos = ContainerUtil.newHashSet(JavaSmartCompletionContributor.getExpectedTypes(parameters));
       boolean shouldAddExpressionVariants = shouldAddExpressionVariants(parameters);
 
