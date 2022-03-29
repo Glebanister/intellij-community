@@ -394,19 +394,14 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
     boolean mayCompleteReference = true;
 
-    class JavaKindCompletionContext {
-    }
-
-    var kindCompletionContext = new JavaKindCompletionContext();
-
-    var kindIdentifiers = CompletionKind.withStaticCompletionDecision(
+    var ckIdentifiers = CompletionKind.withStaticCompletionDecision(
       "identifier",
-      position instanceof PsiIdentifier, () -> {
+      position instanceof PsiIdentifier,
+      () -> {
         addIdentifierVariants(parameters, position, result, session, matcher);
       }
     );
-
-    kindIdentifiers.fillKindVariantsOnce();
+    ckIdentifiers.fillKindVariantsOnce();
 
     if (position instanceof PsiIdentifier) {
       Set<ExpectedTypeInfo> expectedInfos = ContainerUtil.newHashSet(JavaSmartCompletionContributor.getExpectedTypes(parameters));
