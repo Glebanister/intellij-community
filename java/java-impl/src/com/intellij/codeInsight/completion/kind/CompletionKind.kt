@@ -1,6 +1,8 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind
 
+import java.util.function.Supplier
+
 
 abstract class CompletionKind(val name: String) {
   private var alreadyFilled = false
@@ -17,11 +19,15 @@ abstract class CompletionKind(val name: String) {
   }
 
   companion object {
+    private class EmptyVariantFiller : Runnable {
+      override fun run() = throw UnsupportedOperationException()
+    }
+
     @JvmStatic
     fun withDynamicCompletionDecision(
       name: String,
       isKindApplicable: () -> Boolean,
-      doFillVariants: Runnable = Runnable {},
+      doFillVariants: Runnable,
     ): CompletionKindWithMutableFiller {
 
       class CompletionKindWithDynamicCompletionDecision : CompletionKindWithMutableFiller(name, isKindApplicable(), doFillVariants) {
@@ -36,17 +42,34 @@ abstract class CompletionKind(val name: String) {
     }
 
     @JvmStatic
+    fun withDynamicCompletionDecision(
+      name: String,
+      isKindApplicable: () -> Boolean
+    ) = withDynamicCompletionDecision(name, isKindApplicable, EmptyVariantFiller());
+
+    @JvmStatic
     fun withStaticCompletionDecision(
       name: String,
       isKindApplicable: Boolean,
-      doFillVariants: Runnable = Runnable {},
+      doFillVariants: Runnable
     ): CompletionKindWithMutableFiller = withDynamicCompletionDecision(name, { isKindApplicable }, doFillVariants)
+
+    @JvmStatic
+    fun withStaticCompletionDecision(
+      name: String,
+      isKindApplicable: Boolean
+    ) = withStaticCompletionDecision(name, isKindApplicable, EmptyVariantFiller());
 
     @JvmStatic
     fun withFillFunction(
       name: String,
-      doFillVariants: Runnable = Runnable {},
+      doFillVariants: Runnable
     ): CompletionKindWithMutableFiller = withStaticCompletionDecision(name, true, doFillVariants)
+
+    @JvmStatic
+    fun withoutEmptyFillFunction(
+      name: String
+    ) = withFillFunction(name, EmptyVariantFiller())
   }
 }
 

@@ -419,9 +419,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
       var ckTypeMemberWithoutInheritors = CompletionKind.withStaticCompletionDecision(
         "type_member_without_inheritors",
-        shouldAddExpressionVariants,
-        () -> {
-        }
+        shouldAddExpressionVariants
       );
       ckTypeMemberWithoutInheritors.setVariantFiller(() -> {
         boolean currentHasTypeMatchingSuggestions = addExpectedTypeMembers(parameters, false, expectedInfos.get(),
@@ -431,15 +429,27 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       hasTypeMatchingSuggestions.registerActor(ckTypeMemberWithoutInheritors);
       ckExecutor.addKind(ckTypeMemberWithoutInheritors);
 
-
       if (!smart) {
         PsiAnnotation anno = findAnnotationWhoseAttributeIsCompleted(position);
         if (anno != null) {
           PsiClass annoClass = anno.resolveAnnotationType();
           mayCompleteReference = mayCompleteValueExpression(position, annoClass);
           if (annoClass != null) {
-            completeAnnotationAttributeName(result, position, anno, annoClass);
-            JavaKeywordCompletion.addPrimitiveTypes(result, position, session);
+
+            ckExecutor.addKind(CompletionKind.withFillFunction(
+              "annotation_attribute_name",
+              () -> {
+                completeAnnotationAttributeName(result, position, anno, annoClass);
+              }
+            ));
+
+            ckExecutor.addKind(CompletionKind.withFillFunction(
+              "primitive_type",
+              () -> {
+                JavaKeywordCompletion.addPrimitiveTypes(result, position, session);
+              }
+            ));
+
           }
         }
       }
