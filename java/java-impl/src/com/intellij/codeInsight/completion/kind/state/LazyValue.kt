@@ -16,7 +16,7 @@ class LazyNullableValue<T>(private val supplier: Supplier<T?>) : Supplier<T?> {
   }
 }
 
-class LazyNotNullValue<T>(private val supplier: Supplier<T>) : Supplier<T> {
+open class LazyNotNullValue<T>(private val supplier: Supplier<T>) : Supplier<T> {
   private var value: T? = null
 
   override fun get(): T = value ?: let {
