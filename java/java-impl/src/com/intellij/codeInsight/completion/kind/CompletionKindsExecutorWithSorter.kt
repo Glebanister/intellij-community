@@ -2,8 +2,8 @@
 package com.intellij.codeInsight.completion.kind
 
 import com.intellij.codeInsight.completion.LazyNotNullValue
-import com.intellij.codeInsight.completion.kind.state.BooleanLike
-import com.intellij.codeInsight.completion.kind.state.DeferredOr
+import com.intellij.codeInsight.completion.kind.state.Flag
+import com.intellij.codeInsight.completion.kind.state.ActorsAwaitingOr
 import java.util.function.Supplier
 import kotlin.streams.toList
 
@@ -21,7 +21,7 @@ abstract class CompletionKindsExecutorWithSorter(
 
   override fun <T> wrapSupplier(supplier: Supplier<T>): Supplier<T> = LazyNotNullValue<T>(supplier)
 
-  override fun makeFlagOr(init: Boolean): BooleanLike = DeferredOr(init)
+  override fun makeFlagOr(init: Boolean): Flag = ActorsAwaitingOr(init)
 
   fun executeAll(taskAfterPrimary: Runnable) {
     val executionOrder = sorter.sort(

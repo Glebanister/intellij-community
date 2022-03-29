@@ -9,8 +9,8 @@ import com.intellij.codeInsight.TailTypes;
 import com.intellij.codeInsight.completion.kind.CompletionKind;
 import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
-import com.intellij.codeInsight.completion.kind.state.BooleanLike;
-import com.intellij.codeInsight.completion.kind.state.BooleanWrap;
+import com.intellij.codeInsight.completion.kind.state.Flag;
+import com.intellij.codeInsight.completion.kind.state.LatestValueTakingFlag;
 import com.intellij.codeInsight.completion.scope.CompletionElement;
 import com.intellij.codeInsight.completion.scope.JavaCompletionProcessor;
 import com.intellij.codeInsight.daemon.impl.analysis.GenericsHighlightUtil;
@@ -73,7 +73,6 @@ import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.*;
 
 import java.util.*;
-import java.util.function.Supplier;
 
 import static com.intellij.patterns.PsiJavaPatterns.elementType;
 import static com.intellij.patterns.PsiJavaPatterns.or;
@@ -416,7 +415,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
       boolean shouldAddExpressionVariants = shouldAddExpressionVariants(parameters);
 
-      BooleanLike hasTypeMatchingSuggestions = ckExecutor.makeFlagOr(shouldAddExpressionVariants);
+      Flag hasTypeMatchingSuggestions = ckExecutor.makeFlagOr(shouldAddExpressionVariants);
 
       var ckTypeMemberWithoutInheritors = CompletionKind.withStaticCompletionDecision(
         "type_member_without_inheritors",
@@ -424,12 +423,13 @@ public final class JavaCompletionContributor extends CompletionContributor imple
         () -> {
         }
       );
-
       ckTypeMemberWithoutInheritors.setVariantFiller(() -> {
         boolean currentHasTypeMatchingSuggestions = addExpectedTypeMembers(parameters, false, expectedInfos.get(),
                                                                            item -> session.registerBatchItems(Collections.singleton(item)));
-        hasTypeMatchingSuggestions.assignOr(ckTypeMemberWithoutInheritors, new BooleanWrap(currentHasTypeMatchingSuggestions));
+        hasTypeMatchingSuggestions.assignOr(ckTypeMemberWithoutInheritors, new LatestValueTakingFlag(currentHasTypeMatchingSuggestions));
       });
+      hasTypeMatchingSuggestions.registerActor(ckTypeMemberWithoutInheritors);
+      ckExecutor.addKind(ckTypeMemberWithoutInheritors);
 
 
       if (!smart) {
@@ -525,6 +525,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
     if (!smart && parent instanceof PsiJavaModuleReferenceElement) {
       addModuleReferences(parent, parameters.getOriginalFile(), result);
     }
+
+    ckExecutor.executeAll();
   }
 
   @VisibleForTesting
