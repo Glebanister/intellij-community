@@ -404,7 +404,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       position instanceof PsiIdentifier, () -> {
         addIdentifierVariants(parameters, position, result, session, matcher);
       }
-    ).withContext(kindCompletionContext);
+    );
 
     kindIdentifiers.fillKindVariantsOnce();
 
