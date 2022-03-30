@@ -4,16 +4,16 @@ package com.intellij.codeInsight.completion.kind.state
 class LatestValueTakingFlag(private var actual: Boolean) : Flag() {
   override fun value() = actual
 
-  override fun assignOr(actor: Any, other: Flag) {
-    actual = actual || other.value()!!
+  override fun assignOr(actor: Any, other: Boolean) {
+    actual = actual || other
   }
 
-  override fun assignAnd(actor: Any, other: Flag) {
-    actual = actual && other.value()!!
+  override fun assignAnd(actor: Any, other: Boolean) {
+    actual = actual && other
   }
 
-  override fun assign(actor: Any, other: Flag) {
-    actual = other.value()!!
+  override fun assign(actor: Any, other: Boolean) {
+    actual = other
   }
 
   override fun registerActor(actor: Any) {}

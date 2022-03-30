@@ -3,21 +3,21 @@ package com.intellij.codeInsight.completion.kind.state
 
 
 abstract class ActorsAwaitingFlag(
-  private val contributionPerActor: MutableMap<Any, Flag?> = HashMap(),
-  private var lastContributedActor: Pair<Any, Flag>? = null
+  private val contributionPerActor: MutableMap<Any, Boolean?> = HashMap(),
+  private var lastContributedActor: Pair<Any, Boolean>? = null
 ) : Flag() {
   constructor(initialValue: Boolean?) : this() {
     initialValue?.let {
       registerActor(this)
-      act(this, LatestValueTakingFlag(it));
+      act(this, it);
     }
   }
 
   override fun registerActor(actor: Any) {
-    contributionPerActor[actor] = LatestValueTakingFlag(false)
+    contributionPerActor[actor] = null
   }
 
-  protected fun act(actor: Any, value: Flag) {
+  protected fun act(actor: Any, value: Boolean) {
     if (actor !in contributionPerActor) {
       throw IllegalArgumentException("Not registered actor tried to make contribution")
     }
@@ -26,12 +26,12 @@ abstract class ActorsAwaitingFlag(
   }
 
   protected fun everyoneContributedWith(value: Boolean): Boolean =
-    contributionPerActor.values.stream().allMatch { it?.value() == value }
+    contributionPerActor.values.stream().allMatch { it == value }
 
   protected fun someoneContributedWith(value: Boolean): Boolean =
-    contributionPerActor.values.stream().anyMatch { it?.value() == value }
+    contributionPerActor.values.stream().anyMatch { it == value }
 
-  protected fun lastContribution(): Flag? =
+  protected fun lastContribution(): Boolean? =
     lastContributedActor?.second
 }
 
@@ -44,7 +44,7 @@ class ActorsAwaitingOr(initialValue: Boolean?) : ActorsAwaitingFlag(initialValue
     else null
   }
 
-  override fun assignOr(actor: Any, other: Flag) = act(actor, other)
+  override fun assignOr(actor: Any, other: Boolean) = act(actor, other)
 }
 
 class ActorsAwaitingAnd(initialValue: Boolean?) : ActorsAwaitingFlag(initialValue) {
@@ -56,5 +56,5 @@ class ActorsAwaitingAnd(initialValue: Boolean?) : ActorsAwaitingFlag(initialValu
     else null
   }
 
-  override fun assignAnd(actor: Any, other: Flag) = act(actor, other)
+  override fun assignAnd(actor: Any, other: Boolean) = act(actor, other)
 }

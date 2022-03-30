@@ -1,16 +1,14 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind
 
-import com.intellij.codeInsight.completion.kind.state.Flag
-import com.intellij.codeInsight.completion.kind.state.FlagWithSupplier
-import com.intellij.codeInsight.completion.kind.state.LatestValueTakingFlag
+import com.intellij.codeInsight.completion.kind.state.LazyValue
 
 
 abstract class CompletionKind(val name: String) {
   private var alreadyFilled = false
 
   protected abstract fun fillKindVariants()
-  abstract val isApplicable: Flag
+  abstract val isApplicable: LazyValue<Boolean>
 
   fun fillKindVariantsOnce() {
     if (alreadyFilled) {
@@ -28,7 +26,7 @@ abstract class CompletionKind(val name: String) {
     @JvmStatic
     fun withCompletionDecision(
       name: String,
-      isApplicable: Flag,
+      isApplicable: LazyValue<Boolean>,
       doFillVariants: Runnable,
     ): CompletionKindWithMutableFiller {
 
@@ -45,7 +43,7 @@ abstract class CompletionKind(val name: String) {
     @JvmStatic
     fun withCompletionDecision(
       name: String,
-      isKindApplicable: Flag
+      isKindApplicable: LazyValue<Boolean>
     ) = withCompletionDecision(name, isKindApplicable, EmptyVariantFiller());
 
     @JvmStatic
@@ -53,14 +51,14 @@ abstract class CompletionKind(val name: String) {
       name: String,
       isKindApplicable: () -> Boolean,
       doFillVariants: Runnable,
-    ) = withCompletionDecision(name, FlagWithSupplier(isKindApplicable).withLazySupplier(), doFillVariants);
+    ) = withCompletionDecision(name, LazyValue(isKindApplicable), doFillVariants);
 
     @JvmStatic
     fun withFillFunction(
       name: String,
       doFillVariants: Runnable
     ): CompletionKindWithMutableFiller = withCompletionDecision(name,
-                                                                LatestValueTakingFlag(true),
+                                                                { true },
                                                                 doFillVariants)
 
     @JvmStatic
@@ -72,7 +70,7 @@ abstract class CompletionKind(val name: String) {
 
 open class CompletionKindWithMutableFiller(
   name: String,
-  override val isApplicable: Flag,
+  override val isApplicable: LazyValue<Boolean>,
   var variantFiller: Runnable
 ) : CompletionKind(name) {
   override fun fillKindVariants() = variantFiller.run()

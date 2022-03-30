@@ -19,6 +19,8 @@ abstract class CompletionKindsExecutorWithSorter(
 
   override fun <T> wrapNotNullSupplier(supplier: () -> T) = LazyValue(supplier)
 
+  override fun makeFlagAnd(init: Boolean): Flag = ActorsAwaitingAnd(init)
+
   override fun <T> wrapNullableSupplier(supplier: () -> T?) = LazyNullableValue(supplier)
 
   override fun makeFlagOr(init: Boolean): Flag = ActorsAwaitingOr(init)
@@ -28,6 +30,6 @@ abstract class CompletionKindsExecutorWithSorter(
 
     executionOrder.primaryBatch.forEach { it.fillKindVariantsOnce() }
     taskAfterPrimary.run()
-    executionOrder.secondaryBatch.filter { it.isApplicable.isTrue() }.forEach { it.fillKindVariantsOnce() }
+    executionOrder.secondaryBatch.filter { it.isApplicable.invoke() }.forEach { it.fillKindVariantsOnce() }
   }
 }

@@ -9,7 +9,7 @@ import java.util.function.Supplier
 
 class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
   override fun addKind(kind: CompletionKind) {
-    if (kind.isApplicable.isTrue()) kind.fillKindVariantsOnce()
+    if (kind.isApplicable.invoke()) kind.fillKindVariantsOnce()
   }
 
   override fun executeAll() {}
@@ -21,4 +21,6 @@ class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
   override fun makeFlagOr(init: Boolean): Flag = LatestValueTakingFlag(init)
 
   override fun makeFlagOnceReassignable(init: Boolean): Flag = LatestValueTakingFlag(init)
+
+  override fun makeFlagAnd(init: Boolean): Flag = LatestValueTakingFlag(init)
 }
