@@ -450,10 +450,13 @@ public final class JavaCompletionContributor extends CompletionContributor imple
         }
       }
 
-      LazyNullableValue<PsiReference> ref = ckExecutor.wrapNullableSupplier(() -> position.getContainingFile().findReferenceAt(parameters.getOffset()));
+      LazyNullableValue<PsiReference> ref =
+        ckExecutor.wrapNullableSupplier(() -> position.getContainingFile().findReferenceAt(parameters.getOffset()));
       ckExecutor.addKind(CompletionKind.withCompletionDecision(
         "label_reference",
-        () -> { return ref.invoke() instanceof PsiLabelReference; },
+        () -> {
+          return ref.invoke() instanceof PsiLabelReference;
+        },
         () -> {
           session.registerBatchItems(processLabelReference((PsiLabelReference)ref.invoke()));
           result.stopHere();
@@ -469,65 +472,97 @@ public final class JavaCompletionContributor extends CompletionContributor imple
           else {
             return completeReference(parameters, parentRef, session, expectedInfos.invoke(), matcher::prefixMatches);
           }
-        } else {
+        }
+        else {
           return Collections.emptyList();
         }
       });
 
       if (parent instanceof PsiJavaCodeReferenceElement && mayCompleteReference.isTrue()) {
-        List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos.invoke(), refSuggestions.invoke());
-        hasTypeMatchingSuggestions.assignOr(new Object(), ContainerUtil.exists(filtered, item ->
-          ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos.invoke())));
-        session.registerBatchItems(filtered);
-        result.stopHere();
+        CompletionKindWithMutableFiller ckExpression = CompletionKind.withEmptyFillFunction("expression");
+        hasTypeMatchingSuggestions.registerActor(ckExpression);
+        ckExpression.setVariantFiller(() -> {
+          List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos.invoke(), refSuggestions.invoke());
+          hasTypeMatchingSuggestions.assignOr(ckExpression, ContainerUtil.exists(filtered, item ->
+            ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos.invoke())));
+          session.registerBatchItems(filtered);
+          result.stopHere();
+        });
+        ckExecutor.addKind(ckExpression);
       }
 
-      session.flushBatchItems();
+      ckExecutor.addKind(CompletionKind.withFillFunction("_flusher", () -> session.flushBatchItems()));
 
       if (smart) {
-        hasTypeMatchingSuggestions.assignOr(new Object(), smartCompleteExpression(parameters, result, expectedInfos.invoke()));
-        smartCompleteNonExpression(parameters, result);
+        CompletionKindWithMutableFiller ckSmartCompleteExpression = CompletionKind.withEmptyFillFunction("smart_completed_expression");
+        hasTypeMatchingSuggestions.registerActor(ckSmartCompleteExpression);
+        ckSmartCompleteExpression.setVariantFiller(() -> {
+          hasTypeMatchingSuggestions.assignOr(ckSmartCompleteExpression,
+                                              smartCompleteExpression(parameters, result, expectedInfos.invoke()));
+        });
+        ckExecutor.addKind(ckSmartCompleteExpression);
+
+        ckExecutor.addKind(
+          CompletionKind.withFillFunction("smart_completed_non_expression", () -> smartCompleteNonExpression(parameters, result)));
       }
 
       if ((hasTypeMatchingSuggestions.isFalse() || parameters.getInvocationCount() >= 2) &&
           parent instanceof PsiJavaCodeReferenceElement &&
           !expectedInfos.invoke().isEmpty() &&
           JavaSmartCompletionContributor.INSIDE_EXPRESSION.accepts(position)) {
-        List<LookupElement> base = ContainerUtil.concat(
-          refSuggestions.invoke(),
-          completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos.invoke(),
-                            s -> !matcher.prefixMatches(s)));
-        SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos.invoke(), base);
+
+        ckExecutor.addKind(CompletionKind.withFillFunction("reference", () -> {
+          List<LookupElement> base = ContainerUtil.concat(
+            refSuggestions.invoke(),
+            completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos.invoke(),
+                              s -> !matcher.prefixMatches(s)));
+          SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos.invoke(), base);
+        }));
       }
 
       if (smart && parameters.getInvocationCount() > 1 && shouldAddExpressionVariants) {
-        addExpectedTypeMembers(parameters, true, expectedInfos.invoke(), result);
+        ckExecutor.addKind(CompletionKind.withFillFunction(
+          "expected_type_member",
+          () -> addExpectedTypeMembers(parameters, true, expectedInfos.invoke(), result)));
       }
     }
 
     if (!smart && psiElement().inside(PsiLiteralExpression.class).accepts(position)) {
-      Set<String> usedWords = new HashSet<>();
-      result.runRemainingContributors(parameters, cr -> {
-        usedWords.add(cr.getLookupElement().getLookupString());
-        result.passResult(cr);
+
+      LazyValue<Set<String>> usedWords = ckExecutor.wrapNotNullSupplier(() -> {
+        Set<String> used = new HashSet<>();
+        result.runRemainingContributors(parameters, cr -> {
+          used.add(cr.getLookupElement().getLookupString());
+          result.passResult(cr);
+        });
+        return used;
       });
 
-      PsiReference reference = position.getContainingFile().findReferenceAt(parameters.getOffset());
-      if (reference == null || reference.isSoft()) {
-        WordCompletionContributor.addWordCompletionVariants(result, parameters, usedWords);
-      }
+      LazyNullableValue<PsiReference> reference =
+        ckExecutor.wrapNullableSupplier(() -> position.getContainingFile().findReferenceAt(parameters.getOffset()));
+
+      ckExecutor.addKind(CompletionKind.withCompletionDecision(
+        "word",
+        () -> {
+          return reference.invoke() == null || reference.invoke().isSoft();
+        },
+        () -> WordCompletionContributor.addWordCompletionVariants(result, parameters, usedWords.invoke())
+      ));
     }
 
     if (!smart && position instanceof PsiIdentifier) {
-      JavaGenerateMemberCompletionContributor.fillCompletionVariants(parameters, result);
+      ckExecutor.addKind(CompletionKind.withFillFunction("member", () ->
+        JavaGenerateMemberCompletionContributor.fillCompletionVariants(parameters, result)));
     }
 
     if (!smart && mayCompleteReference.isTrue()) {
-      addAllClasses(parameters, result, session);
+      ckExecutor.addKind(CompletionKind.withFillFunction("class", () ->
+        addAllClasses(parameters, result, session)));
     }
 
     if (position instanceof PsiIdentifier) {
-      FunctionalExpressionCompletionProvider.addFunctionalVariants(parameters, true, result.getPrefixMatcher(), result);
+      ckExecutor.addKind(CompletionKind.withFillFunction("functional_expression", () ->
+        FunctionalExpressionCompletionProvider.addFunctionalVariants(parameters, true, result.getPrefixMatcher(), result)));
     }
 
     if (position instanceof PsiIdentifier &&
@@ -536,11 +571,13 @@ public final class JavaCompletionContributor extends CompletionContributor imple
         !((PsiReferenceExpression)parent).isQualified() &&
         parameters.isExtendedCompletion() &&
         StringUtil.isNotEmpty(matcher.getPrefix())) {
-      new JavaStaticMemberProcessor(parameters).processStaticMethodsGlobally(matcher, result);
+      ckExecutor.addKind(CompletionKind.withFillFunction("static_member", () ->
+        new JavaStaticMemberProcessor(parameters).processStaticMethodsGlobally(matcher, result)));
     }
 
     if (!smart && parent instanceof PsiJavaModuleReferenceElement) {
-      addModuleReferences(parent, parameters.getOriginalFile(), result);
+      ckExecutor.addKind(CompletionKind.withFillFunction("module_reference", () ->
+        addModuleReferences(parent, parameters.getOriginalFile(), result)));
     }
   }
 
