@@ -6,11 +6,6 @@ import com.intellij.codeInsight.ExpectedTypeInfo;
 import com.intellij.codeInsight.ExpectedTypesProvider;
 import com.intellij.codeInsight.TailType;
 import com.intellij.codeInsight.TailTypes;
-import com.intellij.codeInsight.completion.kind.CompletionKind;
-import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
-import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
-import com.intellij.codeInsight.completion.kind.state.Flag;
-import com.intellij.codeInsight.completion.kind.state.LatestValueTakingFlag;
 import com.intellij.codeInsight.completion.scope.CompletionElement;
 import com.intellij.codeInsight.completion.scope.JavaCompletionProcessor;
 import com.intellij.codeInsight.daemon.impl.analysis.GenericsHighlightUtil;
@@ -122,6 +117,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
                                                                       }))));
   private static final PsiJavaElementPattern.Capture<PsiElement> IN_CASE_LABEL_ELEMENT_LIST =
     psiElement().withSuperParent(2, psiElement(PsiCaseLabelElementList.class));
+
   private static final ElementPattern<PsiElement> AFTER_NUMBER_LITERAL =
     psiElement().afterLeaf(psiElement().withElementType(
       elementType().oneOf(JavaTokenType.DOUBLE_LITERAL, JavaTokenType.LONG_LITERAL, JavaTokenType.FLOAT_LITERAL,
@@ -397,37 +393,17 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       return;
     }
 
-    CompletionKindsExecutor ckExecutor = new CompletionKindsImmediateExecutor();
-
     boolean mayCompleteReference = true;
 
     if (position instanceof PsiIdentifier) {
-      ckExecutor.addKind(CompletionKind.withFillFunction(
-        "identifier",
-        () -> {
-          addIdentifierVariants(parameters, position, result, session, matcher);
-        }
-      ));
+      addIdentifierVariants(parameters, position, result, session, matcher);
 
-      var expectedInfos = ckExecutor.wrapSupplier(new LazyNotNullValue<>(() -> {
-        return ContainerUtil.newHashSet(JavaSmartCompletionContributor.getExpectedTypes(parameters));
-      }));
-
+      Set<ExpectedTypeInfo> expectedInfos = ContainerUtil.newHashSet(JavaSmartCompletionContributor.getExpectedTypes(parameters));
       boolean shouldAddExpressionVariants = shouldAddExpressionVariants(parameters);
 
-      Flag hasTypeMatchingSuggestions = ckExecutor.makeFlagOr(shouldAddExpressionVariants);
-
-      var ckTypeMemberWithoutInheritors = CompletionKind.withStaticCompletionDecision(
-        "type_member_without_inheritors",
-        shouldAddExpressionVariants
-      );
-      ckTypeMemberWithoutInheritors.setVariantFiller(() -> {
-        boolean currentHasTypeMatchingSuggestions = addExpectedTypeMembers(parameters, false, expectedInfos.get(),
-                                                                           item -> session.registerBatchItems(Collections.singleton(item)));
-        hasTypeMatchingSuggestions.assignOr(ckTypeMemberWithoutInheritors, new LatestValueTakingFlag(currentHasTypeMatchingSuggestions));
-      });
-      hasTypeMatchingSuggestions.registerActor(ckTypeMemberWithoutInheritors);
-      ckExecutor.addKind(ckTypeMemberWithoutInheritors);
+      boolean hasTypeMatchingSuggestions =
+        shouldAddExpressionVariants && addExpectedTypeMembers(parameters, false, expectedInfos,
+                                                              item -> session.registerBatchItems(Collections.singleton(item)));
 
       if (!smart) {
         PsiAnnotation anno = findAnnotationWhoseAttributeIsCompleted(position);
@@ -435,21 +411,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
           PsiClass annoClass = anno.resolveAnnotationType();
           mayCompleteReference = mayCompleteValueExpression(position, annoClass);
           if (annoClass != null) {
-
-            ckExecutor.addKind(CompletionKind.withFillFunction(
-              "annotation_attribute_name",
-              () -> {
-                completeAnnotationAttributeName(result, position, anno, annoClass);
-              }
-            ));
-
-            ckExecutor.addKind(CompletionKind.withFillFunction(
-              "primitive_type",
-              () -> {
-                JavaKeywordCompletion.addPrimitiveTypes(result, position, session);
-              }
-            ));
-
+            completeAnnotationAttributeName(result, position, anno, annoClass);
+            JavaKeywordCompletion.addPrimitiveTypes(result, position, session);
           }
         }
       }
@@ -467,11 +430,11 @@ public final class JavaCompletionContributor extends CompletionContributor imple
           refSuggestions = completePermitsListReference(parameters, parentRef, matcher);
         }
         else {
-          refSuggestions = completeReference(parameters, parentRef, session, expectedInfos.get(), matcher::prefixMatches);
+          refSuggestions = completeReference(parameters, parentRef, session, expectedInfos, matcher::prefixMatches);
         }
-        List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos.get(), refSuggestions);
-        hasTypeMatchingSuggestions.assignOr(new Object(), ContainerUtil.exists(filtered, item ->
-          ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos.get())));
+        List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos, refSuggestions);
+        hasTypeMatchingSuggestions |= ContainerUtil.exists(filtered, item ->
+          ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos));
         session.registerBatchItems(filtered);
         result.stopHere();
       }
@@ -479,22 +442,22 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       session.flushBatchItems();
 
       if (smart) {
-        hasTypeMatchingSuggestions.assignOr(new Object(), smartCompleteExpression(parameters, result, expectedInfos.get()));
+        hasTypeMatchingSuggestions |= smartCompleteExpression(parameters, result, expectedInfos);
         smartCompleteNonExpression(parameters, result);
       }
 
-      if ((hasTypeMatchingSuggestions.isFalse() || parameters.getInvocationCount() >= 2) &&
+      if ((!hasTypeMatchingSuggestions || parameters.getInvocationCount() >= 2) &&
           parent instanceof PsiJavaCodeReferenceElement &&
-          !expectedInfos.get().isEmpty() &&
+          !expectedInfos.isEmpty() &&
           JavaSmartCompletionContributor.INSIDE_EXPRESSION.accepts(position)) {
         List<LookupElement> base = ContainerUtil.concat(
           refSuggestions,
-          completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos.get(), s -> !matcher.prefixMatches(s)));
-        SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos.get(), base);
+          completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos, s -> !matcher.prefixMatches(s)));
+        SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos, base);
       }
 
       if (smart && parameters.getInvocationCount() > 1 && shouldAddExpressionVariants) {
-        addExpectedTypeMembers(parameters, true, expectedInfos.get(), result);
+        addExpectedTypeMembers(parameters, true, expectedInfos, result);
       }
     }
 
@@ -535,8 +498,6 @@ public final class JavaCompletionContributor extends CompletionContributor imple
     if (!smart && parent instanceof PsiJavaModuleReferenceElement) {
       addModuleReferences(parent, parameters.getOriginalFile(), result);
     }
-
-    ckExecutor.executeAll();
   }
 
   @VisibleForTesting

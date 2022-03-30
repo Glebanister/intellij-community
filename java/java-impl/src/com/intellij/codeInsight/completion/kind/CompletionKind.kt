@@ -1,14 +1,16 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind
 
-import java.util.function.Supplier
+import com.intellij.codeInsight.completion.kind.state.Flag
+import com.intellij.codeInsight.completion.kind.state.FlagWithSupplier
+import com.intellij.codeInsight.completion.kind.state.LatestValueTakingFlag
 
 
 abstract class CompletionKind(val name: String) {
   private var alreadyFilled = false
 
   protected abstract fun fillKindVariants()
-  abstract val isApplicable: Boolean
+  abstract val isApplicable: Flag
 
   fun fillKindVariantsOnce() {
     if (alreadyFilled) {
@@ -24,16 +26,15 @@ abstract class CompletionKind(val name: String) {
     }
 
     @JvmStatic
-    fun withDynamicCompletionDecision(
+    fun withCompletionDecision(
       name: String,
-      isKindApplicable: () -> Boolean,
+      isApplicable: Flag,
       doFillVariants: Runnable,
     ): CompletionKindWithMutableFiller {
 
-      class CompletionKindWithDynamicCompletionDecision : CompletionKindWithMutableFiller(name, isKindApplicable(), doFillVariants) {
+      class CompletionKindWithDynamicCompletionDecision : CompletionKindWithMutableFiller(name, isApplicable, doFillVariants) {
         override fun fillKindVariants() = variantFiller.run()
-        override val isApplicable = isKindApplicable()
-        public fun setFiller(newVariantFiller: Runnable) {
+        fun setFiller(newVariantFiller: Runnable) {
           variantFiller = newVariantFiller
         }
       }
@@ -42,32 +43,28 @@ abstract class CompletionKind(val name: String) {
     }
 
     @JvmStatic
-    fun withDynamicCompletionDecision(
+    fun withCompletionDecision(
       name: String,
-      isKindApplicable: () -> Boolean
-    ) = withDynamicCompletionDecision(name, isKindApplicable, EmptyVariantFiller());
+      isKindApplicable: Flag
+    ) = withCompletionDecision(name, isKindApplicable, EmptyVariantFiller());
 
     @JvmStatic
-    fun withStaticCompletionDecision(
+    fun withCompletionDecision(
       name: String,
-      isKindApplicable: Boolean,
-      doFillVariants: Runnable
-    ): CompletionKindWithMutableFiller = withDynamicCompletionDecision(name, { isKindApplicable }, doFillVariants)
-
-    @JvmStatic
-    fun withStaticCompletionDecision(
-      name: String,
-      isKindApplicable: Boolean
-    ) = withStaticCompletionDecision(name, isKindApplicable, EmptyVariantFiller());
+      isKindApplicable: () -> Boolean,
+      doFillVariants: Runnable,
+    ) = withCompletionDecision(name, FlagWithSupplier(isKindApplicable).withLazySupplier(), doFillVariants);
 
     @JvmStatic
     fun withFillFunction(
       name: String,
       doFillVariants: Runnable
-    ): CompletionKindWithMutableFiller = withStaticCompletionDecision(name, true, doFillVariants)
+    ): CompletionKindWithMutableFiller = withCompletionDecision(name,
+                                                                LatestValueTakingFlag(true),
+                                                                doFillVariants)
 
     @JvmStatic
-    fun withoutEmptyFillFunction(
+    fun withEmptyFillFunction(
       name: String
     ) = withFillFunction(name, EmptyVariantFiller())
   }
@@ -75,7 +72,7 @@ abstract class CompletionKind(val name: String) {
 
 open class CompletionKindWithMutableFiller(
   name: String,
-  override val isApplicable: Boolean,
+  override val isApplicable: Flag,
   var variantFiller: Runnable
 ) : CompletionKind(name) {
   override fun fillKindVariants() = variantFiller.run()

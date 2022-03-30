@@ -2,14 +2,19 @@
 package com.intellij.codeInsight.completion.kind
 
 import com.intellij.codeInsight.completion.kind.state.Flag
-import java.util.function.Supplier
+import com.intellij.codeInsight.completion.kind.state.LazyNullableValue
+import com.intellij.codeInsight.completion.kind.state.LazyValue
 
 interface CompletionKindsExecutor {
   fun addKind(kind: CompletionKind)
 
   fun executeAll()
 
-  fun <T> wrapSupplier(supplier: Supplier<T>): Supplier<T>
+  fun <T> wrapNotNullSupplier(supplier: () -> T): LazyValue<T>;
+
+  fun <T> wrapNullableSupplier(supplier: () -> T?): LazyNullableValue<T>;
 
   fun makeFlagOr(init: Boolean): Flag
+
+  fun makeFlagOnceReassignable(init: Boolean): Flag
 }

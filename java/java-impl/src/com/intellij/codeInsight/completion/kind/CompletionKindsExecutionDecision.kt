@@ -14,7 +14,6 @@ class CompletionKindsExecutionDecision(val primaryBatch: List<CompletionKind>,
     ): CompletionKindsExecutionDecision {
 
       val order: List<CompletionKind> = kindWeights.stream()
-        .filter { (kind, _) -> kind.isApplicable }
         .sorted(Comparator.comparing { (_, weight) -> weight })
         .map { it.component1() }
         .toList();

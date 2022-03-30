@@ -25,11 +25,11 @@ abstract class ActorsAwaitingFlag(
     contributionPerActor[actor] = value
   }
 
-  protected fun everyoneContributedWith(value: Flag): Boolean =
-    contributionPerActor.values.stream().allMatch { it == value }
+  protected fun everyoneContributedWith(value: Boolean): Boolean =
+    contributionPerActor.values.stream().allMatch { it?.value() == value }
 
-  protected fun someoneContributedWith(value: Flag): Boolean =
-    contributionPerActor.values.stream().anyMatch { it == value }
+  protected fun someoneContributedWith(value: Boolean): Boolean =
+    contributionPerActor.values.stream().anyMatch { it?.value() == value }
 
   protected fun lastContribution(): Flag? =
     lastContributedActor?.second
@@ -37,10 +37,10 @@ abstract class ActorsAwaitingFlag(
 
 class ActorsAwaitingOr(initialValue: Boolean?) : ActorsAwaitingFlag(initialValue) {
   override fun value(): Boolean? {
-    if (someoneContributedWith(LatestValueTakingFlag(true))) {
+    if (someoneContributedWith(true)) {
       return true;
     }
-    return if (everyoneContributedWith(LatestValueTakingFlag(false))) false
+    return if (everyoneContributedWith(false)) false
     else null
   }
 
@@ -49,10 +49,10 @@ class ActorsAwaitingOr(initialValue: Boolean?) : ActorsAwaitingFlag(initialValue
 
 class ActorsAwaitingAnd(initialValue: Boolean?) : ActorsAwaitingFlag(initialValue) {
   override fun value(): Boolean? {
-    if (someoneContributedWith(LatestValueTakingFlag(false))) {
+    if (someoneContributedWith(false)) {
       return false;
     }
-    return if (everyoneContributedWith(LatestValueTakingFlag(true))) true
+    return if (everyoneContributedWith(true)) true
     else null
   }
 

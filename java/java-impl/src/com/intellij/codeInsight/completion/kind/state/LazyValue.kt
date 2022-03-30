@@ -1,26 +1,22 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-package com.intellij.codeInsight.completion
+package com.intellij.codeInsight.completion.kind.state
 
-import java.util.function.Supplier
-
-class LazyNullableValue<T>(private val supplier: Supplier<T?>) : Supplier<T?> {
+open class LazyValue<T>(private val supplier: () -> T) : () -> T {
   private var value: T? = null
-  private var alreadyGot = false
 
-  override fun get(): T? {
-    if (!alreadyGot) {
-      value = supplier.get()
-      alreadyGot = true
-    }
-    return value
+  override fun invoke() = value ?: let {
+    value = supplier()
+    value!!
   }
 }
 
-open class LazyNotNullValue<T>(private val supplier: Supplier<T>) : Supplier<T> {
+open class LazyNullableValue<T>(private val supplier: () -> T?) : () -> T? {
   private var value: T? = null
+  private var calculated: Boolean = false
 
-  override fun get(): T = value ?: let {
-    value = supplier.get()
-    value!!
+  override fun invoke(): T? = if (calculated) value else {
+    value = supplier()
+    calculated = true
+    value
   }
 }
