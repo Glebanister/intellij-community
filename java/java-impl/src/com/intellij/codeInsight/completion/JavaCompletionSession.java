@@ -38,11 +38,11 @@ public class JavaCompletionSession {
     myResult = result;
   }
 
-  void registerBatchItems(Collection<? extends LookupElement> elements) {
+  public void registerBatchItems(Collection<? extends LookupElement> elements) {
     myBatchItems.addAll(elements);
   }
 
-  void flushBatchItems() {
+  protected void flushBatchItems() {
     myResult.addAllElements(myBatchItems);
     myBatchItems.clear();
   }
@@ -63,6 +63,10 @@ public class JavaCompletionSession {
 
   @NotNull PrefixMatcher getMatcher() {
     return myResult.getPrefixMatcher();
+  }
+
+  public CompletionResultSet getResult() {
+    return myResult;
   }
 
   @Nullable private static PsiClass extractClass(LookupElement lookupElement) {

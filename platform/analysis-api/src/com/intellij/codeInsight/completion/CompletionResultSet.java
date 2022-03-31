@@ -38,8 +38,12 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     myContributor = contributor;
   }
 
-  protected Consumer<? super CompletionResult> getConsumer() {
+  public Consumer<? super CompletionResult> getConsumer() {
     return myConsumer;
+  }
+
+  public CompletionContributor getContributor() {
+    return myContributor;
   }
 
   @Override

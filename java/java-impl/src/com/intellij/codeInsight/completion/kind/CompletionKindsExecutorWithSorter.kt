@@ -1,9 +1,12 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind
 
-import com.intellij.codeInsight.completion.kind.state.*
+import com.intellij.codeInsight.completion.CompletionKind
 import com.intellij.codeInsight.completion.kind.state.Flag
+import com.intellij.codeInsight.completion.kind.state.ActorsAwaitingAnd
 import com.intellij.codeInsight.completion.kind.state.ActorsAwaitingOr
+import com.intellij.codeInsight.completion.kind.state.LazyNullableValue
+import com.intellij.codeInsight.completion.kind.state.LazyValue
 
 abstract class CompletionKindsExecutorWithSorter(
   private val myCompletionKinds: MutableList<CompletionKind> = ArrayList()
@@ -30,6 +33,6 @@ abstract class CompletionKindsExecutorWithSorter(
 
     executionOrder.primaryBatch.forEach { it.fillKindVariantsOnce() }
     taskAfterPrimary.run()
-    executionOrder.secondaryBatch.filter { it.isApplicable.invoke() }.forEach { it.fillKindVariantsOnce() }
+    executionOrder.secondaryBatch.filter { it.isApplicable() }.forEach { it.fillKindVariantsOnce() }
   }
 }

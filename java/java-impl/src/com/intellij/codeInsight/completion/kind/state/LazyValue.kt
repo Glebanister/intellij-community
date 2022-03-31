@@ -19,4 +19,6 @@ open class LazyNullableValue<T>(private val supplier: () -> T?) : () -> T? {
     calculated = true
     value
   }
+
+  fun invokeNotNull(): T = invoke()!!
 }
