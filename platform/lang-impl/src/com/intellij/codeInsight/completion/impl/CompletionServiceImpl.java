@@ -2,6 +2,7 @@
 package com.intellij.codeInsight.completion.impl;
 
 import com.intellij.codeInsight.completion.*;
+import com.intellij.codeInsight.completion.kind.CompletionKind;
 import com.intellij.codeInsight.lookup.Classifier;
 import com.intellij.codeInsight.lookup.ClassifierFactory;
 import com.intellij.codeInsight.lookup.LookupElement;
@@ -95,7 +96,7 @@ public final class CompletionServiceImpl extends BaseCompletionService {
                                                 @NotNull Consumer<? super CompletionResult> consumer,
                                                 @NotNull CompletionContributor contributor,
                                                 @NotNull PrefixMatcher matcher) {
-    return new CompletionResultSetImpl(consumer, matcher, contributor, parameters, null, null);
+    return new CompletionResultSetImpl(consumer, matcher, contributor, parameters, null, null, null);
   }
 
   @Override
@@ -128,10 +129,14 @@ public final class CompletionServiceImpl extends BaseCompletionService {
   }
 
   private static class CompletionResultSetImpl extends BaseCompletionResultSet {
-    CompletionResultSetImpl(Consumer<? super CompletionResult> consumer, PrefixMatcher prefixMatcher,
-                            CompletionContributor contributor, CompletionParameters parameters,
-                            @Nullable CompletionSorter sorter, @Nullable CompletionResultSetImpl original) {
-      super(consumer, prefixMatcher, contributor, parameters, sorter, original);
+    CompletionResultSetImpl(Consumer<? super CompletionResult> consumer,
+                            PrefixMatcher prefixMatcher,
+                            CompletionContributor contributor,
+                            CompletionParameters parameters,
+                            @Nullable CompletionSorter sorter,
+                            @Nullable CompletionResultSetImpl original,
+                            @Nullable CompletionKind initialCompletionKind) {
+      super(consumer, prefixMatcher, contributor, parameters, sorter, original, initialCompletionKind);
     }
 
     @Override
@@ -146,13 +151,14 @@ public final class CompletionServiceImpl extends BaseCompletionService {
         return this;
       }
 
-      return new CompletionResultSetImpl(getConsumer(), matcher, myContributor, myParameters, mySorter, this);
+      return new CompletionResultSetImpl(getConsumer(), matcher, myContributor, myParameters, mySorter, this, myCurrentCompletionKind);
     }
 
     @NotNull
     @Override
     public CompletionResultSet withRelevanceSorter(@NotNull CompletionSorter sorter) {
-      return new CompletionResultSetImpl(getConsumer(), getPrefixMatcher(), myContributor, myParameters, sorter, this);
+      return new CompletionResultSetImpl(getConsumer(), getPrefixMatcher(), myContributor, myParameters, sorter, this,
+                                         myCurrentCompletionKind);
     }
 
     @Override

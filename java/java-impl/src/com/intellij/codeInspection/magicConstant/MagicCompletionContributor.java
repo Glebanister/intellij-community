@@ -37,7 +37,8 @@ public final class MagicCompletionContributor extends CompletionContributor impl
       PlatformPatterns.psiElement(PsiReferenceExpression.class).inside(PlatformPatterns.psiElement(PsiReturnStatement.class)));
   private static final ElementPattern<PsiElement> IN_ANNOTATION_INITIALIZER =
     PlatformPatterns
-      .psiElement().afterLeaf("=").withParent(PsiReferenceExpression.class).withSuperParent(2, PsiNameValuePair.class).withSuperParent(3, PsiAnnotationParameterList.class).withSuperParent(4, PsiAnnotation.class);
+      .psiElement().afterLeaf("=").withParent(PsiReferenceExpression.class).withSuperParent(2, PsiNameValuePair.class)
+      .withSuperParent(3, PsiAnnotationParameterList.class).withSuperParent(4, PsiAnnotation.class);
   private static final int PRIORITY = 100;
 
   @Override
@@ -215,7 +216,7 @@ public final class MagicCompletionContributor extends CompletionContributor impl
       PsiExpression zero = factory.createExpressionFromText("0", pos);
       result.addElement(PrioritizedLookupElement.withPriority(LookupElementBuilder.create(zero, "0"), PRIORITY - 1));
       PsiExpression minusOne = factory.createExpressionFromText("-1", pos);
-      result.addElement(PrioritizedLookupElement.withPriority(LookupElementBuilder.create(minusOne,"-1"), PRIORITY-1));
+      result.addElement(PrioritizedLookupElement.withPriority(LookupElementBuilder.create(minusOne, "-1"), PRIORITY - 1));
       allowed.add(zero);
       allowed.add(minusOne);
     }
@@ -249,7 +250,7 @@ public final class MagicCompletionContributor extends CompletionContributor impl
         return;
       }
       result.passResult(completionResult);
-    });
+    }, null);
   }
 
   private static LookupElement decorate(CompletionParameters parameters, List<? extends ExpectedTypeInfo> types, LookupElement element) {

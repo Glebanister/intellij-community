@@ -20,6 +20,7 @@ import com.intellij.codeInsight.TailType;
 import com.intellij.codeInsight.completion.JavaCompletionUtil.JavaLookupElementHighlighter;
 import com.intellij.codeInsight.completion.impl.BetterPrefixMatcher;
 import com.intellij.codeInsight.completion.impl.CamelHumpMatcher;
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.TailTypeDecorator;
@@ -57,7 +58,7 @@ public class JavaNoVariantsDelegator extends CompletionContributor implements Du
         }
       }
     };
-    result.runRemainingContributors(parameters, tracker);
+    result.runRemainingContributors(parameters, tracker, null);
     final boolean empty = tracker.containsOnlyPackages || suggestAllAnnotations(parameters);
 
     if (parameters.getCompletionType() == CompletionType.SMART && !tracker.hasStartMatches) {
@@ -70,13 +71,16 @@ public class JavaNoVariantsDelegator extends CompletionContributor implements Du
 
     if (empty) {
       delegate(parameters, JavaCompletionSorting.addJavaSorting(parameters, result), tracker.session);
-    } else {
+    }
+    else {
       if (parameters.getCompletionType() == CompletionType.BASIC &&
           parameters.getInvocationCount() <= 1 &&
           JavaCompletionContributor.mayStartClassName(result) &&
           JavaCompletionContributor.isClassNamePossible(parameters) &&
           !JavaCompletionContributor.IN_PERMITS_LIST.accepts(parameters.getPosition())) {
-        suggestNonImportedClasses(parameters, JavaCompletionSorting.addJavaSorting(parameters, result.withPrefixMatcher(tracker.betterMatcher)), tracker.session);
+        suggestNonImportedClasses(parameters,
+                                  JavaCompletionSorting.addJavaSorting(parameters, result.withPrefixMatcher(tracker.betterMatcher)),
+                                  tracker.session);
       }
     }
   }
@@ -116,7 +120,8 @@ public class JavaNoVariantsDelegator extends CompletionContributor implements Du
     }
 
     if (parameters.getCompletionType() == CompletionType.SMART && parameters.getInvocationCount() == 2) {
-      result.runRemainingContributors(parameters.withInvocationCount(3), true);
+      // REPLACE KINDS EXECUTOR HERE!!!!
+      result.runRemainingContributors(parameters.withInvocationCount(3), true, null);
     }
   }
 
@@ -204,30 +209,36 @@ public class JavaNoVariantsDelegator extends CompletionContributor implements Du
     return allClasses;
   }
 
-  static void suggestNonImportedClasses(CompletionParameters parameters, CompletionResultSet result, @Nullable JavaCompletionSession session) {
+  static void suggestNonImportedClasses(CompletionParameters parameters,
+                                        CompletionResultSet result,
+                                        @Nullable JavaCompletionSession session) {
     List<LookupElement> sameNamedBatch = new ArrayList<>();
     PsiElement position = parameters.getPosition();
     JavaLookupElementHighlighter highlighter = JavaCompletionUtil.getHighlighterForPlace(position);
-    JavaClassNameCompletionContributor.addAllClasses(parameters, parameters.getInvocationCount() <= 2, result.getPrefixMatcher(), element -> {
-      if (session != null && session.alreadyProcessed(element)) {
-        return;
-      }
-      JavaPsiClassReferenceElement classElement = element.as(JavaPsiClassReferenceElement.CLASS_CONDITION_KEY);
-      if (classElement != null && parameters.getInvocationCount() < 2) {
-        if (JavaClassNameCompletionContributor.AFTER_NEW.accepts(position) &&
-            JavaPsiClassReferenceElement.isInaccessibleConstructorSuggestion(position, classElement.getObject())) {
-          return;
-        }
-        classElement.setAutoCompletionPolicy(AutoCompletionPolicy.NEVER_AUTOCOMPLETE);
-      }
+    JavaClassNameCompletionContributor.addAllClasses(parameters, parameters.getInvocationCount() <= 2, result.getPrefixMatcher(),
+                                                     element -> {
+                                                       if (session != null && session.alreadyProcessed(element)) {
+                                                         return;
+                                                       }
+                                                       JavaPsiClassReferenceElement classElement =
+                                                         element.as(JavaPsiClassReferenceElement.CLASS_CONDITION_KEY);
+                                                       if (classElement != null && parameters.getInvocationCount() < 2) {
+                                                         if (JavaClassNameCompletionContributor.AFTER_NEW.accepts(position) &&
+                                                             JavaPsiClassReferenceElement.isInaccessibleConstructorSuggestion(position,
+                                                                                                                              classElement.getObject())) {
+                                                           return;
+                                                         }
+                                                         classElement.setAutoCompletionPolicy(AutoCompletionPolicy.NEVER_AUTOCOMPLETE);
+                                                       }
 
-      element = highlighter.highlightIfNeeded(null, element, element.getObject());
-      if (!sameNamedBatch.isEmpty() && !element.getLookupString().equals(sameNamedBatch.get(0).getLookupString())) {
-        result.addAllElements(sameNamedBatch);
-        sameNamedBatch.clear();
-      }
-      sameNamedBatch.add(element);
-    });
+                                                       element = highlighter.highlightIfNeeded(null, element, element.getObject());
+                                                       if (!sameNamedBatch.isEmpty() &&
+                                                           !element.getLookupString().equals(sameNamedBatch.get(0).getLookupString())) {
+                                                         result.addAllElements(sameNamedBatch);
+                                                         sameNamedBatch.clear();
+                                                       }
+                                                       sameNamedBatch.add(element);
+                                                     });
     result.addAllElements(sameNamedBatch);
   }
 

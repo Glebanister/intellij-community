@@ -133,7 +133,7 @@ public final class XmlCompletionContributor extends CompletionContributor {
                  }
                  usedWords.add(r.getLookupElement().getLookupString());
                  result.passResult(r.withLookupElement(LookupElementDecorator.withInsertHandler(r.getLookupElement(), QUOTE_EATER)));
-               });
+               }, null);
                if (addWordVariants.get().booleanValue()) {
                  addWordVariants.set(attributeValue.getReferences().length == 0);
                }
@@ -217,7 +217,7 @@ public final class XmlCompletionContributor extends CompletionContributor {
 
     if (reference != null && !namespace.isEmpty() && !namespacePrefix.isEmpty()) {
       // fallback to simple completion
-      result.runRemainingContributors(parameters, true);
+      result.runRemainingContributors(parameters, true, null);
     }
     else {
 

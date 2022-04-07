@@ -7,6 +7,7 @@ import com.intellij.codeInsight.CodeInsightSettings;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl;
 import com.intellij.codeInsight.completion.impl.CompletionSorterImpl;
+import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler;
 import com.intellij.codeInsight.hint.EditorHintListener;
 import com.intellij.codeInsight.hint.HintManager;
@@ -139,7 +140,9 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     myHostOffsets = hostOffsets;
     myLookup = lookup;
     myStartCaret = myEditor.getCaretModel().getOffset();
-    myThreading = ApplicationManager.getApplication().isWriteAccessAllowed() || myHandler.isTestingCompletionQualityMode() ? new SyncCompletion() : new AsyncCompletion();
+    myThreading = ApplicationManager.getApplication().isWriteAccessAllowed() || myHandler.isTestingCompletionQualityMode()
+                  ? new SyncCompletion()
+                  : new AsyncCompletion();
 
     myAdvertiserChanges.offer(() -> myLookup.getAdvertiser().clearAdvertisements());
 
@@ -160,7 +163,8 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     };
     LookupManager.getInstance(getProject()).addPropertyChangeListener(myLookupManagerListener);
 
-    myQueue = new MergingUpdateQueue("completion lookup progress", ourShowPopupAfterFirstItemGroupingTime, true, myEditor.getContentComponent());
+    myQueue =
+      new MergingUpdateQueue("completion lookup progress", ourShowPopupAfterFirstItemGroupingTime, true, myEditor.getContentComponent());
 
     ApplicationManager.getApplication().assertIsDispatchThread();
 
@@ -212,11 +216,13 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
         if (reference != null) {
           final int replacementOffset = findReplacementOffset(selectionEndOffset, reference);
           if (replacementOffset > document.getTextLength()) {
-            LOG.error("Invalid replacementOffset: " + replacementOffset + " returned by reference " + reference + " of " + reference.getClass() +
-                      "; doc=" + document +
-                      "; doc actual=" + (document == initContext.getFile().getViewProvider().getDocument()) +
-                      "; doc committed=" + PsiDocumentManager.getInstance(getProject()).isCommitted(document));
-          } else {
+            LOG.error(
+              "Invalid replacementOffset: " + replacementOffset + " returned by reference " + reference + " of " + reference.getClass() +
+              "; doc=" + document +
+              "; doc actual=" + (document == initContext.getFile().getViewProvider().getDocument()) +
+              "; doc committed=" + PsiDocumentManager.getInstance(getProject()).isCommitted(document));
+          }
+          else {
             initContext.setReplacementOffset(replacementOffset);
           }
         }
@@ -259,7 +265,8 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
 
   private void advertiseTabReplacement(CompletionParameters parameters) {
     if (CompletionUtil.shouldShowFeature(parameters, CodeCompletionFeatures.EDITING_COMPLETION_REPLACE) &&
-      myOffsetMap.getOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET) != myOffsetMap.getOffset(CompletionInitializationContext.SELECTION_END_OFFSET)) {
+        myOffsetMap.getOffset(CompletionInitializationContext.IDENTIFIER_END_OFFSET) !=
+        myOffsetMap.getOffset(CompletionInitializationContext.SELECTION_END_OFFSET)) {
       String shortcut = KeymapUtil.getFirstKeyboardShortcutText(IdeActions.ACTION_CHOOSE_LOOKUP_ITEM_REPLACE);
       if (StringUtil.isNotEmpty(shortcut)) {
         addAdvertisement(CodeInsightBundle.message("completion.ad.use.0.to.overwrite", shortcut), null);
@@ -444,7 +451,8 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     myArranger.associateSorter(lookupElement, (CompletionSorterImpl)item.getSorter());
     if (item.isStartMatch() || allowMiddleMatches) {
       addItemToLookup(item);
-    } else {
+    }
+    else {
       synchronized (myDelayedMiddleMatches) {
         myDelayedMiddleMatches.add(item);
       }
@@ -609,7 +617,8 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
           LOG.assertTrue(current == null, current + "!=" + this);
 
           handleEmptyLookup(!((CompletionPhase.BgCalculation)phase).modifiersChanged);
-        } else {
+        }
+        else {
           CompletionServiceImpl.setCompletionPhase(new CompletionPhase.EmptyAutoPopup(myEditor, myRestartingPrefixConditions));
         }
       }
@@ -847,7 +856,7 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
 
   void runContributors(CompletionInitializationContext initContext) {
     CompletionParameters parameters = Objects.requireNonNull(myParameters);
-    myThreading.startThread(ProgressWrapper.wrap(this), ()-> AsyncCompletion.tryReadOrCancel(this, () -> scheduleAdvertising(parameters)));
+    myThreading.startThread(ProgressWrapper.wrap(this), () -> AsyncCompletion.tryReadOrCancel(this, () -> scheduleAdvertising(parameters)));
     WeighingDelegate weigher = myThreading.delegateWeighing(this);
 
     try {
@@ -867,7 +876,7 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       duringCompletion(initContext, parameters);
       ProgressManager.checkCanceled();
 
-      CompletionService.getCompletionService().performCompletion(parameters, weigher);
+      CompletionService.getCompletionService().performCompletion(parameters, weigher, CompletionKindsImmediateExecutor::new);
     });
     ProgressManager.checkCanceled();
 

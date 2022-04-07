@@ -6,7 +6,6 @@ import com.intellij.codeInsight.ExpectedTypeInfo;
 import com.intellij.codeInsight.ExpectedTypesProvider;
 import com.intellij.codeInsight.TailType;
 import com.intellij.codeInsight.TailTypes;
-import com.intellij.codeInsight.completion.kind.CompletionKindInsertingSession;
 import com.intellij.codeInsight.completion.kind.CompletionKindWithMutableFiller;
 import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
@@ -89,7 +88,7 @@ import static com.intellij.patterns.PsiJavaPatterns.psiParameter;
 import static com.intellij.patterns.PsiJavaPatterns.psiReferenceExpression;
 import static com.intellij.patterns.PsiJavaPatterns.string;
 
-public final class JavaCompletionContributor extends CompletionContributor implements DumbAware {
+public final class JavaCompletionContributor extends CompletionContributorWithKinds implements DumbAware {
   private static final ElementPattern<PsiElement> UNEXPECTED_REFERENCE_AFTER_DOT = or(
     // dot at the statement beginning
     psiElement().afterLeaf(".").insideStarting(psiExpressionStatement()),
@@ -375,7 +374,15 @@ public final class JavaCompletionContributor extends CompletionContributor imple
   }
 
   @Override
-  public void fillCompletionVariants(@NotNull final CompletionParameters parameters, @NotNull final CompletionResultSet _result) {
+  public void fillCompletionVariants(@NotNull final CompletionParameters parameters,
+                                     @NotNull final CompletionResultSet _result) {
+    fillCompletionKinds(parameters, _result, new CompletionKindsImmediateExecutor());
+  }
+
+  @Override
+  public void fillCompletionKinds(@NotNull final CompletionParameters parameters,
+                                  @NotNull final CompletionResultSet _result,
+                                  @NotNull CompletionKindsExecutor ckExecutor) {
     final PsiElement position = parameters.getPosition();
     if (!isInJavaContext(position)) {
       return;
@@ -390,8 +397,9 @@ public final class JavaCompletionContributor extends CompletionContributor imple
 
     boolean smart = parameters.getCompletionType() == CompletionType.SMART;
 
-    var session = new CompletionKindInsertingSession(JavaCompletionSorting.addJavaSorting(parameters, _result));
-    final CompletionResultSet result = session.getResult();
+    final CompletionResultSet result = JavaCompletionSorting.addJavaSorting(parameters, _result);
+    var session = new JavaCompletionSession(result);
+
 
     PrefixMatcher matcher = result.getPrefixMatcher();
     PsiElement parent = position.getParent();
@@ -401,8 +409,6 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       return;
     }
 
-    CompletionKindsExecutor ckExecutor = new CompletionKindsImmediateExecutor(session);
-
     Flag mayCompleteReference = ckExecutor.makeFlagOnceReassignable(true);
     var mayCompleteReferenceReassigner = new Object();
     mayCompleteReference.registerActor(mayCompleteReferenceReassigner);
@@ -411,7 +417,8 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       ckExecutor.addKind(
         withFillFunction("identifier", () ->
           addIdentifierVariants(parameters, position, result, session, matcher)
-        )
+        ),
+        session
       );
 
       LazyValue<Set<ExpectedTypeInfo>> expectedInfos =
@@ -427,11 +434,11 @@ public final class JavaCompletionContributor extends CompletionContributor imple
         ckExpectedTypeMembers.setVariantFiller(() -> {
           hasTypeMatchingSuggestions.assignOr(
             ckExpectedTypeMembers,
-            addExpectedTypeMembers(parameters, false, expectedInfos.invoke(),
+            addExpectedTypeMembers(parameters, false, expectedInfos.get(),
                                    item -> session.registerBatchItems(
                                      Collections.singleton(item))));
         });
-        ckExecutor.addKind(ckExpectedTypeMembers);
+        ckExecutor.addKind(ckExpectedTypeMembers, session);
       }
 
       if (!smart) {
@@ -442,10 +449,10 @@ public final class JavaCompletionContributor extends CompletionContributor imple
           if (annoClass != null) {
             ckExecutor.addKind(withFillFunction("annotation_attribute_name", () -> {
               completeAnnotationAttributeName(result, position, anno, annoClass);
-            }));
+            }), session);
             ckExecutor.addKind(withFillFunction("primitive_type", () -> {
               JavaKeywordCompletion.addPrimitiveTypes(result, position, session);
-            }));
+            }), session);
           }
         }
       }
@@ -455,13 +462,13 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       ckExecutor.addKind(withCompletionDecision(
         "label_reference",
         () -> {
-          return ref.invoke() instanceof PsiLabelReference;
+          return ref.get() instanceof PsiLabelReference;
         },
         () -> {
-          session.registerBatchItems(processLabelReference((PsiLabelReference)ref.invoke()));
+          session.registerBatchItems(processLabelReference((PsiLabelReference)ref.get()));
           result.stopHere();
         }
-      ));
+      ), session);
 
       LazyValue<List<LookupElement>> refSuggestions = ckExecutor.wrapNotNullSupplier(() -> {
         if (parent instanceof PsiJavaCodeReferenceElement && mayCompleteReference.isTrue()) {
@@ -470,7 +477,7 @@ public final class JavaCompletionContributor extends CompletionContributor imple
             return completePermitsListReference(parameters, parentRef, matcher);
           }
           else {
-            return completeReference(parameters, parentRef, session, expectedInfos.invoke(), matcher::prefixMatches);
+            return completeReference(parameters, parentRef, session, expectedInfos.get(), matcher::prefixMatches);
           }
         }
         else {
@@ -482,48 +489,51 @@ public final class JavaCompletionContributor extends CompletionContributor imple
         CompletionKindWithMutableFiller ckExpression = withEmptyFillFunction("expression");
         hasTypeMatchingSuggestions.registerActor(ckExpression);
         ckExpression.setVariantFiller(() -> {
-          List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos.invoke(), refSuggestions.invoke());
+          List<LookupElement> filtered = filterReferenceSuggestions(parameters, expectedInfos.get(), refSuggestions.get());
           hasTypeMatchingSuggestions.assignOr(ckExpression, ContainerUtil.exists(filtered, item ->
-            ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos.invoke())));
+            ReferenceExpressionCompletionContributor.matchesExpectedType(item, expectedInfos.get())));
           session.registerBatchItems(filtered);
           result.stopHere();
         });
-        ckExecutor.addKind(ckExpression);
+        ckExecutor.addKind(ckExpression, session);
       }
 
-      ckExecutor.addKind(withFillFunction("_flusher", () -> session.flushBatchItems()));
+      ckExecutor.addKind(withFillFunction("_flusher", () -> session.flushBatchItems()), session);
 
       if (smart) {
         CompletionKindWithMutableFiller ckSmartCompleteExpression = withEmptyFillFunction("smart_completed_expression");
         hasTypeMatchingSuggestions.registerActor(ckSmartCompleteExpression);
         ckSmartCompleteExpression.setVariantFiller(() -> {
           hasTypeMatchingSuggestions.assignOr(ckSmartCompleteExpression,
-                                              smartCompleteExpression(parameters, result, expectedInfos.invoke()));
+                                              smartCompleteExpression(parameters, result, expectedInfos.get()));
         });
-        ckExecutor.addKind(ckSmartCompleteExpression);
+        ckExecutor.addKind(ckSmartCompleteExpression, session);
 
         ckExecutor.addKind(
-          withFillFunction("smart_completed_non_expression", () -> smartCompleteNonExpression(parameters, result)));
+          withFillFunction("smart_completed_non_expression", () -> smartCompleteNonExpression(parameters, result)),
+          session
+        );
       }
 
       if ((hasTypeMatchingSuggestions.isFalse() || parameters.getInvocationCount() >= 2) &&
           parent instanceof PsiJavaCodeReferenceElement &&
-          !expectedInfos.invoke().isEmpty() &&
+          !expectedInfos.get().isEmpty() &&
           JavaSmartCompletionContributor.INSIDE_EXPRESSION.accepts(position)) {
 
         ckExecutor.addKind(withFillFunction("reference", () -> {
           List<LookupElement> base = ContainerUtil.concat(
-            refSuggestions.invoke(),
-            completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos.invoke(),
+            refSuggestions.get(),
+            completeReference(parameters, (PsiJavaCodeReferenceElement)parent, session, expectedInfos.get(),
                               s -> !matcher.prefixMatches(s)));
-          SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos.invoke(), base);
-        }));
+          SlowerTypeConversions.addChainedSuggestions(parameters, result, expectedInfos.get(), base);
+        }), session);
       }
 
       if (smart && parameters.getInvocationCount() > 1 && shouldAddExpressionVariants) {
         ckExecutor.addKind(withFillFunction(
           "expected_type_member",
-          () -> addExpectedTypeMembers(parameters, true, expectedInfos.invoke(), result)));
+          () -> addExpectedTypeMembers(parameters, true, expectedInfos.get(), result)), session
+        );
       }
     }
 
@@ -532,9 +542,10 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       LazyValue<Set<String>> usedWords = ckExecutor.wrapNotNullSupplier(() -> {
         Set<String> used = new HashSet<>();
         result.runRemainingContributors(parameters, cr -> {
-          used.add(cr.getLookupElement().getLookupString());
-          result.passResult(cr);
-        });
+                                          used.add(cr.getLookupElement().getLookupString());
+                                          result.passResult(cr);
+                                        },
+                                        () -> ckExecutor);
         return used;
       });
 
@@ -544,25 +555,26 @@ public final class JavaCompletionContributor extends CompletionContributor imple
       ckExecutor.addKind(withCompletionDecision(
         "word",
         () -> {
-          return reference.invoke() == null || reference.invoke().isSoft();
+          return reference.get() == null || reference.get().isSoft();
         },
-        () -> WordCompletionContributor.addWordCompletionVariants(result, parameters, usedWords.invoke())
-      ));
+        () -> WordCompletionContributor.addWordCompletionVariants(result, parameters, usedWords.get())
+      ), session);
     }
 
     if (!smart && position instanceof PsiIdentifier) {
       ckExecutor.addKind(withFillFunction("member", () ->
-        JavaGenerateMemberCompletionContributor.fillCompletionVariants(parameters, result)));
+        JavaGenerateMemberCompletionContributor.fillCompletionVariants(parameters, result)), session);
     }
 
     if (!smart && mayCompleteReference.isTrue()) {
       ckExecutor.addKind(withFillFunction("class", () ->
-        addAllClasses(parameters, result, session)));
+        addAllClasses(parameters, result, session)), session);
     }
 
     if (position instanceof PsiIdentifier) {
       ckExecutor.addKind(withFillFunction("functional_expression", () ->
-        FunctionalExpressionCompletionProvider.addFunctionalVariants(parameters, true, result.getPrefixMatcher(), result)));
+                           FunctionalExpressionCompletionProvider.addFunctionalVariants(parameters, true, result.getPrefixMatcher(), result)),
+                         session);
     }
 
     if (position instanceof PsiIdentifier &&
@@ -572,12 +584,12 @@ public final class JavaCompletionContributor extends CompletionContributor imple
         parameters.isExtendedCompletion() &&
         StringUtil.isNotEmpty(matcher.getPrefix())) {
       ckExecutor.addKind(withFillFunction("static_member", () ->
-        new JavaStaticMemberProcessor(parameters).processStaticMethodsGlobally(matcher, result)));
+        new JavaStaticMemberProcessor(parameters).processStaticMethodsGlobally(matcher, result)), session);
     }
 
     if (!smart && parent instanceof PsiJavaModuleReferenceElement) {
       ckExecutor.addKind(withFillFunction("module_reference", () ->
-        addModuleReferences(parent, parameters.getOriginalFile(), result)));
+        addModuleReferences(parent, parameters.getOriginalFile(), result)), session);
     }
   }
 

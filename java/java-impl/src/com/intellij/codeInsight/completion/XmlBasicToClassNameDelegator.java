@@ -33,7 +33,7 @@ public class XmlBasicToClassNameDelegator extends CompletionContributor {
       return;
     }
 
-    final boolean empty = result.runRemainingContributors(parameters, true).isEmpty();
+    final boolean empty = result.runRemainingContributors(parameters, true, null).isEmpty();
 
     if (!empty && parameters.getInvocationCount() == 0) {
       result.restartCompletionWhenNothingMatches();

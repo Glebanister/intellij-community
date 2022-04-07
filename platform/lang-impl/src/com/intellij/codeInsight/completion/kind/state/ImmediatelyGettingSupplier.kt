@@ -3,12 +3,12 @@ package com.intellij.codeInsight.completion.kind.state
 
 class ImmediatelyGettingSupplier<T>(supplier: () -> T) : LazyValue<T>(supplier) {
   init {
-    invoke()
+    get()
   }
 }
 
 class ImmediatelyGettingNullableSupplier<T>(supplier: () -> T?) : LazyNullableValue<T>(supplier) {
   init {
-    invoke()
+    get()
   }
 }

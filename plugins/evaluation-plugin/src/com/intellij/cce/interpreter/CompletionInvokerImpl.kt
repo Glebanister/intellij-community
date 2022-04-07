@@ -5,9 +5,11 @@ import com.intellij.cce.actions.UserEmulator
 import com.intellij.cce.actions.selectedWithoutPrefix
 import com.intellij.cce.core.*
 import com.intellij.cce.evaluation.CodeCompletionHandlerFactory
+import com.intellij.codeInsight.completion.BaseCompletionService.LOOKUP_ELEMENT_CONTRIBUTOR
 import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionProgressIndicator
 import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.Lookup
@@ -65,7 +67,7 @@ class CompletionInvokerImpl(private val project: Project,
 
   override fun callCompletion(expectedText: String, prefix: String?): com.intellij.cce.core.Lookup {
     LOG.info("Call completion. Type: $completionType. ${positionToString(editor!!.caretModel.offset)}")
-//        assert(!dumbService.isDumb) { "Calling completion during indexing." }
+    //        assert(!dumbService.isDumb) { "Calling completion during indexing." }
 
     val start = System.currentTimeMillis()
     val isNew = LookupManager.getActiveLookup(editor) == null
@@ -107,7 +109,8 @@ class CompletionInvokerImpl(private val project: Project,
       val lookup = LookupManager.getActiveLookup(editor) as? LookupImpl
       if (lookup != null) {
         lookup.replacePrefix(lookup.additionalPrefix, lookup.additionalPrefix + text)
-      } else {
+      }
+      else {
         runnable.run()
       }
     }
@@ -267,7 +270,12 @@ class CompletionInvokerImpl(private val project: Project,
 
     val insertedText = if (lookupString.contains('>')) lookupString.replace(Regex("<.+>"), "")
     else lookupString
+
+    val completionContributorKind = getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)?.name;
+    val completionContributor = getUserData(LOOKUP_ELEMENT_CONTRIBUTOR)?.javaClass?.simpleName
     return Suggestion(insertedText, presentationText, sourceFromPresentation(presentation))
+      .withCompletionContributorKind(completionContributorKind)
+      .withCompletionContributor(completionContributor)
   }
 
   private fun sourceFromPresentation(presentation: LookupElementPresentation): SuggestionSource {

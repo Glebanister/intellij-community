@@ -91,7 +91,7 @@ public class LiveTemplateCompletionContributor extends CompletionContributor imp
             if (completionResult.isStartMatch()) {
               ensureTemplatesShown(templatesShown, templates, availableTemplates, finalResult, isAutopopup);
             }
-          });
+          }, null);
 
           ensureTemplatesShown(templatesShown, templates, availableTemplates, result, isAutopopup);
           showCustomLiveTemplates(parameters, result);
@@ -121,7 +121,10 @@ public class LiveTemplateCompletionContributor extends CompletionContributor imp
     });
   }
 
-  public static boolean customTemplateAvailableAndHasCompletionItem(@Nullable Character shortcutChar, @NotNull Editor editor, @NotNull PsiFile file, int offset) {
+  public static boolean customTemplateAvailableAndHasCompletionItem(@Nullable Character shortcutChar,
+                                                                    @NotNull Editor editor,
+                                                                    @NotNull PsiFile file,
+                                                                    int offset) {
     CustomTemplateCallback callback = new CustomTemplateCallback(editor, file);
     TemplateActionContext templateActionContext = TemplateActionContext.expanding(file, editor);
     for (CustomLiveTemplate customLiveTemplate : TemplateManagerImpl.listApplicableCustomTemplates(templateActionContext)) {
@@ -152,7 +155,9 @@ public class LiveTemplateCompletionContributor extends CompletionContributor imp
       result.restartCompletionOnPrefixChange(StandardPatterns.string().with(new PatternCondition<>("type after non-identifier") {
         @Override
         public boolean accepts(@NotNull String s, ProcessingContext context) {
-          return s.length() > 1 && !Character.isJavaIdentifierPart(s.charAt(s.length() - 2)) && templateKeys.stream().anyMatch(template -> s.endsWith(template));
+          return s.length() > 1 &&
+                 !Character.isJavaIdentifierPart(s.charAt(s.length() - 2)) &&
+                 templateKeys.stream().anyMatch(template -> s.endsWith(template));
         }
       }));
       for (final Map.Entry<TemplateImpl, String> entry : templates.entrySet()) {
@@ -188,5 +193,4 @@ public class LiveTemplateCompletionContributor extends CompletionContributor imp
     }
     return null;
   }
-
 }

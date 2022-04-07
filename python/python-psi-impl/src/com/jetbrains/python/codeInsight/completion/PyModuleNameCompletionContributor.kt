@@ -45,10 +45,13 @@ class PyModuleNameCompletionContributor : CompletionContributor(), DumbAware {
     if (!shouldDoCompletion(parameters)) return
 
     val otherVariants = mutableSetOf<String>()
-    result.runRemainingContributors(parameters) {
-      otherVariants.add(it.lookupElement.lookupString)
-      result.passResult(it)
-    }
+    result.runRemainingContributors(
+      parameters,
+      {
+        otherVariants.add(it.lookupElement.lookupString)
+        result.passResult(it)
+      },
+      null);
     doFillCompletionVariants(parameters, result, otherVariants)
   }
 

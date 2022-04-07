@@ -282,7 +282,7 @@ public class HtmlCompletionContributor extends CompletionContributor implements 
           patchedResultSet.withPrefixMatcher(r.getPrefixMatcher())
             .withRelevanceSorter(withoutLiveTemplatesWeigher(r.getSorter(), parameters, r.getPrefixMatcher()))
             .addElement(r.getLookupElement());
-        });
+        }, null);
       }
       if (result.getPrefixMatcher().getPrefix().length() < 2) {
         result.restartCompletionOnAnyPrefixChange();
