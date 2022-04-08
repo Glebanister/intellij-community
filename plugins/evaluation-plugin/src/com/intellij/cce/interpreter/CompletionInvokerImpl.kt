@@ -9,6 +9,7 @@ import com.intellij.codeInsight.completion.BaseCompletionService.LOOKUP_ELEMENT_
 import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionProgressIndicator
 import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.codeInsight.completion.kind.CompletionKind
 import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
@@ -74,7 +75,12 @@ class CompletionInvokerImpl(private val project: Project,
     val activeLookup = LookupManager.getActiveLookup(editor) ?: invokeCompletion(expectedText, prefix)
     val latency = System.currentTimeMillis() - start
     if (activeLookup == null) {
-      return com.intellij.cce.core.Lookup.fromExpectedText(expectedText, prefix ?: "", emptyList(), latency, isNew = isNew)
+      return com.intellij.cce.core.Lookup.fromExpectedText(expectedText,
+                                                           prefix ?: "",
+                                                           emptyList(),
+                                                           latency,
+                                                           isNew = isNew,
+                                                           kindsExecutionInfo = emptyList())
     }
 
     val lookup = activeLookup as LookupImpl
@@ -85,7 +91,19 @@ class CompletionInvokerImpl(private val project: Project,
     )
     val suggestions = lookup.items.map { it.asSuggestion() }
 
-    return com.intellij.cce.core.Lookup.fromExpectedText(expectedText, lookup.prefix(), suggestions, latency, resultFeatures, isNew)
+
+    val kindsExecutionInfo: List<CompletionKindExecutionInfo> = lookup.items
+      .mapNotNull { it.extractCompletionKindExecutionInfo() }
+      .distinctBy { it.kindName }
+      .toList()
+
+    return com.intellij.cce.core.Lookup.fromExpectedText(expectedText,
+                                                         lookup.prefix(),
+                                                         suggestions,
+                                                         latency,
+                                                         resultFeatures,
+                                                         isNew,
+                                                         kindsExecutionInfo);
   }
 
   override fun finishCompletion(expectedText: String, prefix: String): Boolean {
@@ -276,6 +294,15 @@ class CompletionInvokerImpl(private val project: Project,
     return Suggestion(insertedText, presentationText, sourceFromPresentation(presentation))
       .withCompletionContributorKind(completionContributorKind)
       .withCompletionContributor(completionContributor)
+  }
+
+  private fun LookupElement.extractCompletionKindExecutionInfo(): CompletionKindExecutionInfo? {
+    val kind = getUserData(LOOKUP_ELEMENT_COMPLETION_KIND) ?: return null
+    return CompletionKindExecutionInfo(
+      kind.name,
+      kind.executionInfo.finishedWithException,
+      kind.executionInfo.executionTime
+    )
   }
 
   private fun sourceFromPresentation(presentation: LookupElementPresentation): SuggestionSource {

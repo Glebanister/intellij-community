@@ -7,7 +7,11 @@ data class Session(val offset: Int,
                    val content: String?,
                    private var _properties: TokenProperties,
                    val id: String = UUID.randomUUID().toString()) {
-  constructor(other: Session) : this(other.offset, other.expectedText, other.content, other._properties, other.id)
+  constructor(other: Session) : this(other.offset,
+                                     other.expectedText,
+                                     other.content,
+                                     other._properties,
+                                     other.id)
 
   private val _lookups = mutableListOf<Lookup>()
 
