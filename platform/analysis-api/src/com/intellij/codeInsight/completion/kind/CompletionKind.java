@@ -39,8 +39,4 @@ public abstract class CompletionKind {
     }
     element.putUserData(LOOKUP_ELEMENT_COMPLETION_KIND, this);
   }
-
-  public void putKindInfoIfAbsent(LookupElement element) {
-    element.putUserDataIfAbsent(LOOKUP_ELEMENT_COMPLETION_KIND, this);
-  }
 }

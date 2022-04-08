@@ -131,9 +131,15 @@ public class BaseCompletionService extends CompletionService {
       CompletionResult matched = CompletionResult.wrap(element, getPrefixMatcher(), mySorter);
       if (matched != null) {
         String kindName = null;
-        if (myCurrentCompletionKind != null) {
-          myCurrentCompletionKind.putKindInfoIfAbsent(element);
+        CompletionKind currentCompletionKind = getCurrentCompletionKind();
+        if (currentCompletionKind != null) {
+          kindName = currentCompletionKind.getName();
+          currentCompletionKind.putKindInfoRequireEmpty(element);
         }
+        System.out.printf("Put lookup element %s\n\t contributor: %s\n\t kind: %s\n",
+                          element.getLookupString(),
+                          myContributor.getClass().getSimpleName(),
+                          kindName);
         element.putUserData(LOOKUP_ELEMENT_CONTRIBUTOR, myContributor);
         passResult(matched);
       }
@@ -145,6 +151,7 @@ public class BaseCompletionService extends CompletionService {
       if (completionKind != null) {
         kindName = completionKind.getName();
       }
+      System.out.printf("Set current completion kind: '%s'\n", kindName);
       if (myOriginal != null) {
         myOriginal.setNullableCurrentCompletionKind(completionKind);
       }
