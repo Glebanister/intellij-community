@@ -79,6 +79,7 @@ class CompletionInvokerImpl(private val project: Project,
                                                            prefix ?: "",
                                                            emptyList(),
                                                            latency,
+                                                           latency,
                                                            isNew = isNew,
                                                            kindsExecutionInfo = emptyList())
     }
@@ -101,6 +102,7 @@ class CompletionInvokerImpl(private val project: Project,
                                                          lookup.prefix(),
                                                          suggestions,
                                                          latency,
+                                                         lookup.timeToShow,
                                                          resultFeatures,
                                                          isNew,
                                                          kindsExecutionInfo);
