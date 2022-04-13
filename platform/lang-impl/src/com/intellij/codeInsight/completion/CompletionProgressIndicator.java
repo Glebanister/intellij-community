@@ -7,6 +7,7 @@ import com.intellij.codeInsight.CodeInsightSettings;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl;
 import com.intellij.codeInsight.completion.impl.CompletionSorterImpl;
+import com.intellij.codeInsight.completion.kind.AfterFirstKindShowingExecutor;
 import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler;
 import com.intellij.codeInsight.hint.EditorHintListener;
@@ -22,6 +23,7 @@ import com.intellij.ide.lightEdit.LightEditUtil;
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.injected.editor.EditorWindow;
 import com.intellij.lang.LangBundle;
+import com.intellij.lang.pratt.PathPattern;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.application.ApplicationManager;
@@ -100,6 +102,7 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   };
   private final Semaphore myFreezeSemaphore = new Semaphore(1);
   private final Semaphore myFinishSemaphore = new Semaphore(1);
+  private final Semaphore myReadyToShowSemaphore = new Semaphore(1);
   @NotNull private final OffsetMap myOffsetMap;
   private final Set<Pair<Integer, ElementPattern<String>>> myRestartingPrefixConditions =
     ContainerUtil.newConcurrentSet();
@@ -475,7 +478,9 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     myCount++; // invoked from a single thread
 
     if (myCount == 1) {
-      AppExecutorUtil.getAppScheduledExecutorService().schedule(myFreezeSemaphore::up, ourInsertSingleItemTimeSpan, TimeUnit.MILLISECONDS);
+      AppExecutorUtil.getAppScheduledExecutorService().schedule(() -> {
+        myFreezeSemaphore.up();
+      }, ourInsertSingleItemTimeSpan, TimeUnit.MILLISECONDS);
     }
     myQueue.queue(myUpdate);
   }
@@ -565,6 +570,10 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       CompletionServiceImpl.setCompletionPhase(CompletionPhase.NoCompletion);
     }
     StatisticsUpdate.cancelLastCompletionStatisticsUpdate();
+  }
+
+  boolean blockingWaitForReadyToShow(int timeoutMs) {
+    return myReadyToShowSemaphore.waitFor(timeoutMs);
   }
 
   boolean blockingWaitForFinish(int timeoutMs) {
@@ -876,12 +885,19 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       duringCompletion(initContext, parameters);
       ProgressManager.checkCanceled();
 
-      CompletionService.getCompletionService().performCompletion(parameters, weigher, CompletionKindsImmediateExecutor::new);
+      CompletionService completionService = CompletionService.getCompletionService();
+      completionService.setCompletionKindsExecutor(
+        new AfterFirstKindShowingExecutor(this::indicateReadyToShow));
+      completionService.performCompletion(parameters, weigher);
     });
     ProgressManager.checkCanceled();
 
     weigher.waitFor();
     ProgressManager.checkCanceled();
+  }
+
+  private void indicateReadyToShow() {
+    myReadyToShowSemaphore.up();
   }
 
   @NotNull

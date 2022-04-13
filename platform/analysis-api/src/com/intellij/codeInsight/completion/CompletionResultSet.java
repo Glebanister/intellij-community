@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.function.Supplier;
 
 /**
@@ -179,44 +178,29 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
 
   public LinkedHashSet<CompletionResult> runRemainingContributors(CompletionParameters parameters,
                                                                   final boolean passResult) {
-    return runRemainingContributors(parameters, passResult, null);
-  }
-
-  public LinkedHashSet<CompletionResult> runRemainingContributors(CompletionParameters parameters,
-                                                                  final boolean passResult,
-                                                                  @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
     final LinkedHashSet<CompletionResult> elements = new LinkedHashSet<>();
     runRemainingContributors(parameters, result -> {
       if (passResult) {
         passResult(result);
       }
       elements.add(result);
-    }, kindsExecutorSupplier);
+    });
     return elements;
   }
 
   public void runRemainingContributors(CompletionParameters parameters,
                                        Consumer<? super CompletionResult> consumer) {
-    runRemainingContributors(parameters, consumer, true, null);
-  }
-
-
-  public void runRemainingContributors(CompletionParameters parameters,
-                                       Consumer<? super CompletionResult> consumer,
-                                       @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
-    runRemainingContributors(parameters, consumer, true, kindsExecutorSupplier);
+    runRemainingContributors(parameters, consumer, true);
   }
 
   public void runRemainingContributors(CompletionParameters parameters,
                                        Consumer<? super CompletionResult> consumer,
-                                       final boolean stop,
-                                       @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
-    runRemainingContributors(parameters, consumer, stop, null, kindsExecutorSupplier);
+                                       final boolean stop) {
+    runRemainingContributors(parameters, consumer, stop, null);
   }
 
   public void runRemainingContributors(CompletionParameters parameters, Consumer<? super CompletionResult> consumer, final boolean stop,
-                                       CompletionSorter customSorter,
-                                       @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
+                                       CompletionSorter customSorter) {
     if (stop) {
       stopHere();
     }
@@ -235,7 +219,7 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
       public void consume(CompletionResult result) {
         consumer.consume(result);
       }
-    }, customSorter, kindsExecutorSupplier);
+    }, customSorter);
   }
 
   /**

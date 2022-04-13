@@ -1,6 +1,7 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
+import com.intellij.codeInsight.completion.kind.CompletionKind;
 import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElement;
@@ -16,10 +17,13 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.annotation.processing.Completion;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * For completion FAQ, see {@link CompletionContributor}.
@@ -46,6 +50,10 @@ public abstract class CompletionService {
   @Deprecated(forRemoval = true)
   public abstract void setAdvertisementText(@Nullable @NlsContexts.PopupAdvertisement String text);
 
+  public abstract @NotNull CompletionKindsExecutor getCompletionKindsExecutor();
+
+  public abstract void setCompletionKindsExecutor(@NotNull CompletionKindsExecutor ckExecutor);
+
   /**
    * Run all contributors until any of them returns false or the list is exhausted. If {@code from} parameter is not null, contributors
    * will be run starting from the next one after that.
@@ -54,54 +62,62 @@ public abstract class CompletionService {
                                           @Nullable final CompletionContributor from,
                                           final Consumer<? super CompletionResult> consumer,
                                           @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
-    getVariantsFromContributors(parameters, from, createMatcher(suggestPrefix(parameters), false), consumer, kindsExecutorSupplier);
+    getVariantsFromContributors(parameters, from, createMatcher(suggestPrefix(parameters), false), consumer);
+  }
+
+  protected void getVariantsFromContributors(CompletionParameters parameters,
+                                             @Nullable CompletionContributor from,
+                                             PrefixMatcher matcher, Consumer<? super CompletionResult> consumer) {
+    getVariantsFromContributors(parameters, from, matcher, consumer, null);
   }
 
   protected void getVariantsFromContributors(CompletionParameters parameters,
                                              @Nullable CompletionContributor from,
                                              PrefixMatcher matcher, Consumer<? super CompletionResult> consumer,
-                                             @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
-    getVariantsFromContributors(parameters, from, matcher, consumer, null, kindsExecutorSupplier);
-  }
+                                             CompletionSorter customSorter) {
+    final List<CompletionContributor> contributorsUnordered = CompletionContributor.forParameters(parameters);
 
-  protected void getVariantsFromContributors(CompletionParameters parameters,
-                                             @Nullable CompletionContributor from,
-                                             PrefixMatcher matcher, Consumer<? super CompletionResult> consumer,
-                                             CompletionSorter customSorter,
-                                             @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
-    final List<CompletionContributor> contributors = CompletionContributor.forParameters(parameters);
+    final List<CompletionContributorWithKinds> withKindsContributors =
+      contributorsUnordered.stream()
+        .filter(c -> c instanceof CompletionContributorWithKinds)
+        .map(c -> (CompletionContributorWithKinds)c)
+        .collect(Collectors.toList());
 
-    boolean tryExecuteKinds = kindsExecutorSupplier != null;
+    final List<CompletionContributor> otherContributors =
+      contributorsUnordered.stream()
+        .filter(c -> !(c instanceof CompletionContributorWithKinds))
+        .collect(Collectors.toList());
 
-    if (tryExecuteKinds) {
-      CompletionKindsExecutor ckExecutor = kindsExecutorSupplier.get();
+    CompletionKindsExecutor ckExecutor = getCompletionKindsExecutor();
 
-      for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
-        ProgressManager.checkCanceled();
-        CompletionContributor contributor = contributors.get(i);
-
-        if (!(contributor instanceof CompletionContributorWithKinds)) {
-          continue;
-        }
-
-        CompletionResultSet result = createResultSet(parameters, consumer, contributor, matcher);
-        if (customSorter != null) {
-          result = result.withRelevanceSorter(customSorter);
-        }
-
-        ((CompletionContributorWithKinds)contributor).fillCompletionKinds(
-          parameters, result, ckExecutor
-        );
-      }
-
-      ckExecutor.executeAll();
-    }
+    List<CompletionContributor> contributors = new ArrayList<>(withKindsContributors);
+    contributors.addAll(otherContributors);
 
     for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
       ProgressManager.checkCanceled();
       CompletionContributor contributor = contributors.get(i);
 
-      if (tryExecuteKinds && contributor instanceof CompletionContributorWithKinds) {
+      if (!(contributor instanceof CompletionContributorWithKinds)) {
+        continue;
+      }
+
+      CompletionResultSet result = createResultSet(parameters, consumer, contributor, matcher);
+      if (customSorter != null) {
+        result = result.withRelevanceSorter(customSorter);
+      }
+
+      ((CompletionContributorWithKinds)contributor).fillCompletionKinds(
+        parameters, result, ckExecutor
+      );
+    }
+
+    ckExecutor.executeAll();
+
+    for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
+      ProgressManager.checkCanceled();
+      CompletionContributor contributor = contributors.get(i);
+
+      if (contributor instanceof CompletionContributorWithKinds) {
         continue;
       }
 
@@ -136,8 +152,7 @@ public abstract class CompletionService {
    *                   about item batches generated by each completion contributor.
    */
   public void performCompletion(CompletionParameters parameters,
-                                Consumer<? super CompletionResult> consumer,
-                                Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
+                                Consumer<? super CompletionResult> consumer) {
     final Set<LookupElement> lookupSet = ContainerUtil.newConcurrentSet();
 
     AtomicBoolean typoTolerant = new AtomicBoolean();
@@ -168,10 +183,10 @@ public abstract class CompletionService {
       }
     };
     String prefix = suggestPrefix(parameters);
-    getVariantsFromContributors(parameters, null, createMatcher(prefix, false), batchConsumer, kindsExecutorSupplier);
+    getVariantsFromContributors(parameters, null, createMatcher(prefix, false), batchConsumer);
     if (lookupSet.isEmpty() && prefix.length() > 2) {
       typoTolerant.set(true);
-      getVariantsFromContributors(parameters, null, createMatcher(prefix, true), batchConsumer, kindsExecutorSupplier);
+      getVariantsFromContributors(parameters, null, createMatcher(prefix, true), batchConsumer);
     }
   }
 

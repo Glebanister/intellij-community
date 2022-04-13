@@ -48,16 +48,10 @@ import static com.intellij.patterns.PsiJavaPatterns.psiElement;
 /**
  * @author peter
  */
-public class JavaNoVariantsDelegator extends CompletionContributorWithKinds implements DumbAware {
+public class JavaNoVariantsDelegator extends CompletionContributor implements DumbAware {
   @Override
-  public void fillCompletionVariants(@NotNull final CompletionParameters parameters, @NotNull final CompletionResultSet result) {
-    fillCompletionKinds(parameters, result, new CompletionKindsImmediateExecutor());
-  }
-
-  @Override
-  public void fillCompletionKinds(@NotNull CompletionParameters parameters,
-                                  @NotNull CompletionResultSet result,
-                                  CompletionKindsExecutor ckExecutor) {
+  public void fillCompletionVariants(@NotNull CompletionParameters parameters,
+                                  @NotNull CompletionResultSet result) {
     ResultTracker tracker = new ResultTracker(result) {
       @Override
       public void consume(CompletionResult plainResult) {
@@ -69,8 +63,10 @@ public class JavaNoVariantsDelegator extends CompletionContributorWithKinds impl
         }
       }
     };
-    result.runRemainingContributors(parameters, tracker, null);
+    result.runRemainingContributors(parameters, tracker);
     final boolean empty = tracker.containsOnlyPackages || suggestAllAnnotations(parameters);
+
+    CompletionKindsExecutor ckExecutor = new CompletionKindsImmediateExecutor();
 
     if (parameters.getCompletionType() == CompletionType.SMART && !tracker.hasStartMatches) {
       addNullKeyword(parameters, result, ckExecutor, tracker.session);
@@ -81,7 +77,7 @@ public class JavaNoVariantsDelegator extends CompletionContributorWithKinds impl
     }
 
     if (empty) {
-      delegate(parameters, JavaCompletionSorting.addJavaSorting(parameters, result), tracker.session, "fill_kinds", ckExecutor);
+      delegate(parameters, JavaCompletionSorting.addJavaSorting(parameters, result), tracker.session, "jnvd_fill_kinds", ckExecutor);
     }
     else {
       if (parameters.getCompletionType() == CompletionType.BASIC &&
@@ -92,7 +88,7 @@ public class JavaNoVariantsDelegator extends CompletionContributorWithKinds impl
         suggestNonImportedClasses(parameters,
                                   JavaCompletionSorting.addJavaSorting(parameters, result.withPrefixMatcher(tracker.betterMatcher)),
                                   tracker.session,
-                                  "fill_kinds",
+                                  "jnvd_fill_kinds",
                                   ckExecutor);
       }
     }
@@ -148,7 +144,7 @@ public class JavaNoVariantsDelegator extends CompletionContributorWithKinds impl
     }
 
     if (parameters.getCompletionType() == CompletionType.SMART && parameters.getInvocationCount() == 2) {
-      result.runRemainingContributors(parameters.withInvocationCount(3), true, () -> ckExecutor);
+      result.runRemainingContributors(parameters.withInvocationCount(3), true);
     }
   }
 

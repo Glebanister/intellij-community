@@ -558,8 +558,7 @@ public final class JavaCompletionContributor extends CompletionContributorWithKi
         result.runRemainingContributors(parameters, cr -> {
                                           used.add(cr.getLookupElement().getLookupString());
                                           result.passResult(cr);
-                                        },
-                                        () -> ckExecutor);
+                                        });
         return used;
       });
 

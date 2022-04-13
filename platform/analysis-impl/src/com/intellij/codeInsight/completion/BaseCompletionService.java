@@ -24,6 +24,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.function.Supplier;
 
 import static com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND;
@@ -36,6 +37,8 @@ public class BaseCompletionService extends CompletionService {
 
   @Nullable protected CompletionProcess myApiCompletionProcess;
 
+  private CompletionKindsExecutor myCompletionKindsExecutor;
+
   @ApiStatus.Internal
   public static final Key<CompletionContributor> LOOKUP_ELEMENT_CONTRIBUTOR = Key.create("lookup element contributor");
 
@@ -43,15 +46,24 @@ public class BaseCompletionService extends CompletionService {
 
   @Override
   public void performCompletion(CompletionParameters parameters,
-                                Consumer<? super CompletionResult> consumer,
-                                Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
+                                Consumer<? super CompletionResult> consumer) {
     myApiCompletionProcess = parameters.getProcess();
     try {
-      super.performCompletion(parameters, consumer, kindsExecutorSupplier);
+      super.performCompletion(parameters, consumer);
     }
     finally {
       myApiCompletionProcess = null;
     }
+  }
+
+  @Override
+  public @NotNull CompletionKindsExecutor getCompletionKindsExecutor() {
+    return Objects.requireNonNull(myCompletionKindsExecutor);
+  }
+
+  @Override
+  public void setCompletionKindsExecutor(@NotNull CompletionKindsExecutor ckExecutor) {
+    myCompletionKindsExecutor = ckExecutor;
   }
 
   @Override
