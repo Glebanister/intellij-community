@@ -5,16 +5,16 @@ import com.intellij.cce.actions.UserEmulator
 import com.intellij.cce.actions.selectedWithoutPrefix
 import com.intellij.cce.core.*
 import com.intellij.cce.evaluation.CodeCompletionHandlerFactory
-import com.intellij.codeInsight.completion.BaseCompletionService.LOOKUP_ELEMENT_CONTRIBUTOR
+import com.intellij.codeInsight.completion.BaseCompletionService.*
 import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionProgressIndicator
 import com.intellij.codeInsight.completion.CompletionType
-import com.intellij.codeInsight.completion.kind.CompletionKind
 import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.Lookup
 import com.intellij.codeInsight.lookup.impl.LookupImpl
+import com.intellij.codeInsight.lookup.impl.LookupImpl.LOOKUP_ELEMENT_LOOKUP_ADD_TIME
 import com.intellij.completion.ml.actions.MLCompletionFeaturesUtil
 import com.intellij.completion.ml.util.prefix
 import com.intellij.openapi.command.WriteCommandAction
@@ -75,13 +75,18 @@ class CompletionInvokerImpl(private val project: Project,
     val activeLookup = LookupManager.getActiveLookup(editor) ?: invokeCompletion(expectedText, prefix)
     val latency = System.currentTimeMillis() - start
     if (activeLookup == null) {
-      return com.intellij.cce.core.Lookup.fromExpectedText(expectedText,
-                                                           prefix ?: "",
-                                                           emptyList(),
-                                                           latency,
-                                                           latency,
-                                                           isNew = isNew,
-                                                           kindsExecutionInfo = emptyList())
+      return com.intellij.cce.core.Lookup.fromExpectedText(
+        expectedText,
+        prefix ?: "",
+        emptyList(),
+        latency,
+        latency,
+        features = null,
+        isNew = isNew,
+        kindsExecutionInfo = emptyList(),
+        correctElementInfo = null,
+        firstElementAddTime = null,
+      )
     }
 
     val lookup = activeLookup as LookupImpl
@@ -94,18 +99,44 @@ class CompletionInvokerImpl(private val project: Project,
 
 
     val kindsExecutionInfo: List<CompletionKindExecutionInfo> = lookup.items
-      .mapNotNull { it.extractCompletionKindExecutionInfo() }
+      .mapNotNull { it.extractCompletionKindExecutionInfo(start) }
       .distinctBy { it.kindName }
       .toList()
 
-    return com.intellij.cce.core.Lookup.fromExpectedText(expectedText,
-                                                         lookup.prefix(),
-                                                         suggestions,
-                                                         latency,
-                                                         lookup.timeToShow,
-                                                         resultFeatures,
-                                                         isNew,
-                                                         kindsExecutionInfo);
+    val lookupShownLatency = lookup.shownTimestamp - start
+
+    val expectedItemIndex = lookup.items.indexOfFirst { it.lookupString == expectedText }
+    val correctElementInfo = if (expectedItemIndex != -1) {
+      val correctElement = lookup.items[expectedItemIndex]
+      val addTime: Long = correctElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
+
+      CorrectElementInfo(
+        addTime,
+        addTime < lookupShownLatency,
+        correctElement.getUserData(LOOKUP_ELEMENT_LOOKUP_ADD_TIME)!!.toEpochMilli() - start,
+        correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)
+          ?.executionInfo?.executionStartTime?.toEpochMilli()
+          ?.minus(start)
+      )
+    }
+    else null
+
+    val firstToResultAddedElement = lookup.items.first { it.getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)!! == 0 }!!
+
+    val firstElemeAddTime = firstToResultAddedElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
+
+    return com.intellij.cce.core.Lookup.fromExpectedText(
+      expectedText,
+      lookup.prefix(),
+      suggestions,
+      latency,
+      lookupShownLatency,
+      resultFeatures,
+      isNew,
+      kindsExecutionInfo,
+      correctElementInfo,
+      firstElemeAddTime
+    )
   }
 
   override fun finishCompletion(expectedText: String, prefix: String): Boolean {
@@ -293,17 +324,25 @@ class CompletionInvokerImpl(private val project: Project,
 
     val completionContributorKind = getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)?.name;
     val completionContributor = getUserData(LOOKUP_ELEMENT_CONTRIBUTOR)?.javaClass?.simpleName
-    return Suggestion(insertedText, presentationText, sourceFromPresentation(presentation))
-      .withCompletionContributorKind(completionContributorKind)
-      .withCompletionContributor(completionContributor)
+    return Suggestion(
+      insertedText,
+      presentationText,
+      sourceFromPresentation(presentation),
+      SuggestionKind.ANY,
+      completionContributorKind,
+      completionContributor,
+      getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!,
+      getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)!!,
+    )
   }
 
-  private fun LookupElement.extractCompletionKindExecutionInfo(): CompletionKindExecutionInfo? {
+  private fun LookupElement.extractCompletionKindExecutionInfo(start: Long): CompletionKindExecutionInfo? {
     val kind = getUserData(LOOKUP_ELEMENT_COMPLETION_KIND) ?: return null
     return CompletionKindExecutionInfo(
       kind.name,
       kind.executionInfo.finishedWithException,
-      kind.executionInfo.executionTime
+      kind.executionInfo.executionDuration.toMillis(),
+      kind.executionInfo.executionStartTime.toEpochMilli() - start,
     )
   }
 

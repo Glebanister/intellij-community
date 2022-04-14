@@ -48,7 +48,9 @@ class ReorderElementsStep(config: Config, project: Project, isHeadless: Boolean)
                 Features(features[i].common, sortedElements2features.map { it.second }),
                 lookup.selectedPosition,
                 lookup.isNew,
-                lookup.kindsExecutionInfo
+                lookup.kindsExecutionInfo,
+                lookup.correctElementInfo,
+                lookup.firstElementAddTime
               )
             )
           }

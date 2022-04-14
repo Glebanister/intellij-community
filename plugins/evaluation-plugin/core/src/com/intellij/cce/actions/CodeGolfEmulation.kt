@@ -28,7 +28,9 @@ class CodeGolfEmulation(private val settings: Settings = Settings(), private val
     return Lookup(lookup.prefix, suggestions, lookup.latency, lookup.shownLatency,
                   selectedPosition = new.second,
                   isNew = lookup.isNew,
-                  kindsExecutionInfo = lookup.kindsExecutionInfo)
+                  kindsExecutionInfo = lookup.kindsExecutionInfo,
+                  correctElementInfo = lookup.correctElementInfo,
+                  firstElementAddTime = lookup.firstElementAddTime)
   }
 
   private fun checkForPerfectLine(expectedLine: String, suggestions: List<Suggestion>, prefix: String): Pair<String, Int>? {

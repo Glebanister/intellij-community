@@ -23,8 +23,10 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND;
@@ -41,6 +43,8 @@ public class BaseCompletionService extends CompletionService {
 
   @ApiStatus.Internal
   public static final Key<CompletionContributor> LOOKUP_ELEMENT_CONTRIBUTOR = Key.create("lookup element contributor");
+  public static final Key<Instant> LOOKUP_ELEMENT_RESULT_ADD_TIME = Key.create("lookup element add time");
+  public static final Key<Integer> LOOKUP_ELEMENT_RESULT_SET_ORDER = Key.create("lookup element result set order");
 
   public static final Key<Boolean> FORBID_WORD_COMPLETION = new Key<>("ForbidWordCompletion");
 
@@ -115,6 +119,7 @@ public class BaseCompletionService extends CompletionService {
     protected final BaseCompletionService.BaseCompletionResultSet myOriginal;
     @Nullable
     protected CompletionKind myCurrentCompletionKind;
+    private final AtomicInteger myItemCounter = new AtomicInteger(0);
 
     protected BaseCompletionResultSet(Consumer<? super CompletionResult> consumer, PrefixMatcher prefixMatcher,
                                       CompletionContributor contributor,
@@ -142,11 +147,14 @@ public class BaseCompletionService extends CompletionService {
 
       CompletionResult matched = CompletionResult.wrap(element, getPrefixMatcher(), mySorter);
       if (matched != null) {
+        Integer elementOrder = myItemCounter.getAndIncrement();
         CompletionKind currentCompletionKind = getCurrentCompletionKind();
         if (currentCompletionKind != null) {
           currentCompletionKind.putKindInfoRequireEmpty(element);
         }
         element.putUserData(LOOKUP_ELEMENT_CONTRIBUTOR, myContributor);
+        element.putUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME, Instant.now());
+        element.putUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER, elementOrder);
         passResult(matched);
       }
     }

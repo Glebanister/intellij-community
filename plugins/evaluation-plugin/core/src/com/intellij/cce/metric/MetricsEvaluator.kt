@@ -33,6 +33,14 @@ class MetricsEvaluator private constructor(private val evaluationType: String) {
     registerMetric(MaxLatencyMetric())
     registerMetric(MeanRankMetric())
     registerMetric(SessionsCountMetric())
+
+    registerMetric(MaxLookupShownLatencyMetric())
+    registerMetric(MeanLookupShownLatencyMetric())
+    registerMetric(MeanCorrectElementAddTimeLatencyMetric())
+    registerMetric(MeanCorrectElementFirstAppearanceLatencyMetric())
+    registerMetric(MeanCorrectElementKindStartMetric())
+    registerMetric(MeanFirstElementAppearanceLatencyMetric())
+    registerMetric(MeanIsCorrectElementAddedBeforeLookupShown())
   }
 
   fun registerMetric(metric: Metric) {

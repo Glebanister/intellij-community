@@ -886,8 +886,7 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       ProgressManager.checkCanceled();
 
       CompletionService completionService = CompletionService.getCompletionService();
-      completionService.setCompletionKindsExecutor(
-        new AfterFirstKindShowingExecutor(this::indicateReadyToShow));
+      completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
       completionService.performCompletion(parameters, weigher);
     });
     ProgressManager.checkCanceled();

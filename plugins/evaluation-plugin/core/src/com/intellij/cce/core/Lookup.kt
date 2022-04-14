@@ -1,5 +1,14 @@
 package com.intellij.cce.core
 
+import java.time.Duration
+
+data class CorrectElementInfo(
+  val addTime: Long,
+  val addedBeforeLookupShown: Boolean,
+  val firstAppearanceTime: Long,
+  val kindStartTime: Long?
+)
+
 data class Lookup(
   val prefix: String,
   val suggestions: List<Suggestion>,
@@ -8,7 +17,9 @@ data class Lookup(
   var features: Features? = null,
   val selectedPosition: Int,
   val isNew: Boolean,
-  val kindsExecutionInfo: List<CompletionKindExecutionInfo>
+  val kindsExecutionInfo: List<CompletionKindExecutionInfo>,
+  val correctElementInfo: CorrectElementInfo?,
+  val firstElementAddTime: Long?,
 ) {
   fun clearFeatures() {
     features = null
@@ -21,14 +32,21 @@ data class Lookup(
       suggestions: List<Suggestion>,
       latency: Long,
       shownLatency: Long,
-      features: Features? = null,
-      isNew: Boolean = false,
-      kindsExecutionInfo: List<CompletionKindExecutionInfo> = emptyList()
+      features: Features?,
+      isNew: Boolean,
+      kindsExecutionInfo: List<CompletionKindExecutionInfo>,
+      correctElementInfo: CorrectElementInfo?,
+      firstElementAddTime: Long?,
     ): Lookup {
       val selectedPosition = suggestions.indexOfFirst { it.text == expectedText }
         .let { if (it < 0) -1 else it }
 
-      return Lookup(text, suggestions, latency, shownLatency, features, selectedPosition, isNew, kindsExecutionInfo)
+      return Lookup(
+        text, suggestions, latency, shownLatency, features, selectedPosition, isNew,
+        kindsExecutionInfo,
+        correctElementInfo,
+        firstElementAddTime
+      )
     }
   }
 }

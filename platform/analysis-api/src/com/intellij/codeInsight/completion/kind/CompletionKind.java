@@ -31,7 +31,8 @@ public abstract class CompletionKind {
   public @NotNull ExecutionInfo getExecutionInfo() {
     if (myExecutionInfo == null) {
       throw new IllegalStateException(String.format("%s was not yet executed", name));
-    } else {
+    }
+    else {
       return myExecutionInfo;
     }
   }
@@ -52,7 +53,8 @@ public abstract class CompletionKind {
     }
     finally {
       myExecutionInfo = new ExecutionInfo(finishedWithException,
-                                          Duration.between(timeStart, Instant.now()));
+                                          Duration.between(timeStart, Instant.now()),
+                                          timeStart);
       session.getResult().resetCurrentCompletionKind();
     }
   }
@@ -67,11 +69,13 @@ public abstract class CompletionKind {
 
   public static class ExecutionInfo {
     public final boolean finishedWithException;
-    public final @NotNull Duration executionTime;
+    public final @NotNull Duration executionDuration;
+    public final @NotNull Instant executionStartTime;
 
-    public ExecutionInfo(boolean exception, Duration time) {
+    public ExecutionInfo(boolean exception, @NotNull Duration time, @NotNull Instant startTime) {
       finishedWithException = exception;
-      executionTime = time;
+      executionDuration = time;
+      executionStartTime = startTime;
     }
   }
 }

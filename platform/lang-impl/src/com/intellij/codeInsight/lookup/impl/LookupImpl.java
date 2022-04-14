@@ -69,6 +69,7 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.event.*;
+import java.time.Instant;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -121,6 +122,8 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
   private final ClientId myClientId = ClientId.getCurrent();
   private final AtomicInteger myDummyItemCount = new AtomicInteger();
   private final EmptyLookupItem myDummyItem = new EmptyLookupItem(CommonBundle.message("tree.node.loading"), true);
+
+  public static final Key<Instant> LOOKUP_ELEMENT_LOOKUP_ADD_TIME = Key.create("lookup element lookup add time");
 
   public LookupImpl(Project project, Editor editor, @NotNull LookupArranger arranger) {
     super(new JPanel(new BorderLayout()));
@@ -444,6 +447,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     synchronized (myUiLock) {
       listModel.removeAll();
       if (!items.isEmpty()) {
+        items.forEach(item -> item.putUserDataIfAbsent(LOOKUP_ELEMENT_LOOKUP_ADD_TIME, Instant.now()));
         listModel.add(items);
         addDummyItems(myDummyItemCount.get());
       }
@@ -702,8 +706,8 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     return doShowLookup();
   }
 
-  public Long getTimeToShow() {
-    return myStampShown - myCreatedTimestamp;
+  public Long getShownTimestamp() {
+    return myStampShown;
   }
 
   protected boolean doShowLookup() {
