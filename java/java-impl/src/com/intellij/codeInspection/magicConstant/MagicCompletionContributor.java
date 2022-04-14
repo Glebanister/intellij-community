@@ -250,7 +250,7 @@ public final class MagicCompletionContributor extends CompletionContributor impl
         return;
       }
       result.passResult(completionResult);
-    }, null);
+    });
   }
 
   private static LookupElement decorate(CompletionParameters parameters, List<? extends ExpectedTypeInfo> types, LookupElement element) {

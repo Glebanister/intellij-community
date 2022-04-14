@@ -9,7 +9,7 @@ import org.jetbrains.annotations.NotNull;
 final class XmlNoVariantsDelegator extends CompletionContributor {
   @Override
   public void fillCompletionVariants(@NotNull final CompletionParameters parameters, @NotNull final CompletionResultSet result) {
-    boolean empty = result.runRemainingContributors(parameters, true, null).isEmpty();
+    boolean empty = result.runRemainingContributors(parameters, true).isEmpty();
     if (!empty && parameters.getInvocationCount() == 0) {
       result.restartCompletionWhenNothingMatches();
     }

@@ -32,7 +32,7 @@ public class RefactoringCompletionContributor extends CompletionContributor {
         }
       }
       resultSet.passResult(result);
-    }, null);
+    });
   }
 
   private static class AppendModuleName extends LookupElementRenderer<LookupElementDecorator<LookupElement>> {

@@ -12,9 +12,9 @@ data class CompletionKindContext(
   val ck: CompletionKind,
   val session: CompletionSession,
 
-)
+  )
 
-class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : CompletionKindsExecutor {
+class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : AlwaysOnceCompletionKindsExecutor() {
   val myOtherKinds = ArrayList<Pair<CompletionKind, CompletionSession>>()
   private fun executeKind(completionKind: CompletionKind, session: CompletionSession) {
     println("Check condition of ${completionKind.name}")
@@ -34,10 +34,11 @@ class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : CompletionKi
     if (myOtherKinds.any { (exKind, _) -> exKind.name == kind.name }) {
       throw IllegalArgumentException("${kind.name} duplicated")
     }
-    myOtherKinds.add(Pair(kind, session))
+    myOtherKinds.add(kind to session)
   }
 
-  override fun executeAll() {
+  override fun executeAllOnce() {
+    println("Executing from context: ${Thread.currentThread().stackTrace.joinToString("\n")}")
     println("All kinds:")
     for ((kind, _) in myOtherKinds) {
       println("- ${kind.name}")
@@ -45,12 +46,17 @@ class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : CompletionKi
 
     val firstPortionLength = 3.coerceAtMost(myOtherKinds.size)
 
+    var toFlush: CompletionSession? = null
     for ((kind, session) in myOtherKinds.subList(0, firstPortionLength)) {
       executeKind(kind, session)
+      toFlush = session
     }
-    //myDoShowLookup.run()
+
+    toFlush?.flushBatchItems()
+
     for ((kind, session) in myOtherKinds.subList(firstPortionLength, myOtherKinds.size)) {
       executeKind(kind, session)
+      session.flushBatchItems()
     }
   }
 

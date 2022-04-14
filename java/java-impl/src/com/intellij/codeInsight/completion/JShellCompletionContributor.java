@@ -29,6 +29,6 @@ public class JShellCompletionContributor extends CompletionContributor implement
       if (!(r.getLookupElement().getPsiElement() instanceof PsiJShellSyntheticElement)) {
         resultSet.passResult(r);
       }
-    }, null);
+    });
   }
 }

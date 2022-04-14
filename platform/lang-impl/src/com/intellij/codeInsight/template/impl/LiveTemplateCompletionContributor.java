@@ -91,7 +91,7 @@ public class LiveTemplateCompletionContributor extends CompletionContributor imp
             if (completionResult.isStartMatch()) {
               ensureTemplatesShown(templatesShown, templates, availableTemplates, finalResult, isAutopopup);
             }
-          }, null);
+          });
 
           ensureTemplatesShown(templatesShown, templates, availableTemplates, result, isAutopopup);
           showCustomLiveTemplates(parameters, result);

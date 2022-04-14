@@ -58,7 +58,7 @@ public class StructuralSearchTemplatesCompletionContributor extends CompletionCo
     result.runRemainingContributors(parameters, cr -> {
       if (cr.getLookupElement().getObject() instanceof String) return;
       result.passResult(cr);
-    }, null);
+    });
     CompletionResultSet insensitive = result.withPrefixMatcher(new CamelHumpMatcher(prefix));
     ConfigurationManager configurationManager = ConfigurationManager.getInstance(parameters.getPosition().getProject());
     for (Configuration configuration: configurationManager.getAllConfigurations()) {

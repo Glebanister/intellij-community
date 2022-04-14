@@ -3,6 +3,7 @@ package com.intellij.codeInsight.completion;
 
 import com.intellij.codeInsight.completion.kind.CompletionKind;
 import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
+import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.NlsContexts;
@@ -117,9 +118,19 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     endBatch();
   }
 
-  public void addAllElementsWithKinds(@NotNull final Iterable<Pair<? extends Collection<? extends LookupElement>, CompletionKind>> elementsWithKinds) {
+  public void addAllElementsWithKinds(
+    @NotNull final Iterable<Pair<? extends Collection<? extends LookupElement>, @NotNull CompletionKind>> elementsWithKinds,
+    @NotNull final Iterable<? extends LookupElement> elementsWithoutKind
+  ) {
     startBatch();
     int seldomCounter = 0;
+    for (LookupElement element : elementsWithoutKind) {
+      addElement(element);
+      seldomCounter++;
+      if (seldomCounter % 1000 == 0) {
+        ProgressManager.checkCanceled();
+      }
+    }
     for (Pair<? extends Iterable<? extends LookupElement>, ? extends CompletionKind> elementWithKind : elementsWithKinds) {
       setCurrentCompletionKind(elementWithKind.second);
       try {
