@@ -6,7 +6,6 @@ import com.intellij.codeInsight.completion.CompletionContributorWithKinds
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.codeInsight.completion.kind.state.*
 import java.util.function.Supplier
-import java.util.stream.Collectors
 import kotlin.system.measureTimeMillis
 
 data class CompletionKindContext(
@@ -15,7 +14,7 @@ data class CompletionKindContext(
 
   )
 
-class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : AlwaysOnceCompletionKindsExecutor() {
+class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : LazyKindsExecutor() {
   val myOtherKinds = ArrayList<Pair<CompletionKind, CompletionSession>>()
   private fun executeKind(completionKind: CompletionKind, session: CompletionSession) {
     println("Check condition of ${completionKind.name}")
