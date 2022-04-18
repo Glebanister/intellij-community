@@ -6,9 +6,12 @@ import com.intellij.codeInsight.completion.kind.state.*
 import java.util.function.Supplier
 
 class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
+  //private val allExecutedNames: MutableSet<String> = mutableSetOf()
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
+    //if (kind.name in allExecutedNames) return
     if (kind.isApplicable) kind.fillKindVariantsOnce(session)
+    //allExecutedNames.add(kind.name)
   }
 
   override fun executeAll() {}

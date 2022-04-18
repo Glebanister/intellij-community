@@ -1,11 +1,12 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind
 
+import com.intellij.codeInsight.completion.CompletionContributor
+import com.intellij.codeInsight.completion.CompletionContributorWithKinds
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.codeInsight.completion.kind.state.*
-import com.intellij.codeInsight.lookup.LookupElementBuilder
 import java.util.function.Supplier
-import javax.annotation.processing.Completion
+import java.util.stream.Collectors
 import kotlin.system.measureTimeMillis
 
 data class CompletionKindContext(
@@ -82,5 +83,16 @@ class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : AlwaysOnceCo
 
   override fun makeFlagAnd(init: Boolean): Flag {
     return LatestValueTakingFlag(init);
+  }
+
+  override fun reorderContirbutors(contributorsUnordered: MutableList<CompletionContributor>): List<CompletionContributor> {
+    val withKindsContributors: List<CompletionContributor> = contributorsUnordered
+      .filterIsInstance<CompletionContributorWithKinds>()
+      .map { c: CompletionContributor? -> c as CompletionContributorWithKinds }
+
+    val otherContributors: List<CompletionContributor> = contributorsUnordered
+      .filter { c: CompletionContributor? -> c !is CompletionContributorWithKinds }
+
+    return withKindsContributors + otherContributors
   }
 }

@@ -45,6 +45,7 @@ class ReorderElementsStep(config: Config, project: Project, isHeadless: Boolean)
                 sortedElements2features.map { it.first },
                 lookup.latency,
                 lookup.shownLatency,
+                lookup.restartLatency,
                 Features(features[i].common, sortedElements2features.map { it.second }),
                 lookup.selectedPosition,
                 lookup.isNew,

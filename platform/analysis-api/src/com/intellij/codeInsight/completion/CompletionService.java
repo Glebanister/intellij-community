@@ -75,23 +75,9 @@ public abstract class CompletionService {
                                              @Nullable CompletionContributor from,
                                              PrefixMatcher matcher, Consumer<? super CompletionResult> consumer,
                                              CompletionSorter customSorter) {
-    final List<CompletionContributor> contributorsUnordered = CompletionContributor.forParameters(parameters);
-
-    final List<CompletionContributorWithKinds> withKindsContributors =
-      contributorsUnordered.stream()
-        .filter(c -> c instanceof CompletionContributorWithKinds)
-        .map(c -> (CompletionContributorWithKinds)c)
-        .collect(Collectors.toList());
-
-    final List<CompletionContributor> otherContributors =
-      contributorsUnordered.stream()
-        .filter(c -> !(c instanceof CompletionContributorWithKinds))
-        .collect(Collectors.toList());
-
     CompletionKindsExecutor ckExecutor = getCompletionKindsExecutor();
 
-    List<CompletionContributor> contributors = new ArrayList<>(withKindsContributors);
-    contributors.addAll(otherContributors);
+    List<CompletionContributor> contributors = ckExecutor.reorderContirbutors(CompletionContributor.forParameters(parameters));
 
     for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
       ProgressManager.checkCanceled();

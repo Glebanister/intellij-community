@@ -1,6 +1,7 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind;
 
+import com.intellij.codeInsight.completion.CompletionContributor;
 import com.intellij.codeInsight.completion.CompletionSession;
 import com.intellij.codeInsight.completion.kind.state.Flag;
 import com.intellij.codeInsight.completion.kind.state.LazyNullableValue;
@@ -8,6 +9,7 @@ import com.intellij.codeInsight.completion.kind.state.LazyValue;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.function.Supplier;
 
 public interface CompletionKindsExecutor {
@@ -26,4 +28,8 @@ public interface CompletionKindsExecutor {
   Flag makeFlagOnceReassignable(boolean init);
 
   Flag makeFlagAnd(boolean init);
+
+  default @NotNull List<CompletionContributor> reorderContirbutors(@NotNull List<CompletionContributor> contributors) {
+    return contributors;
+  }
 }

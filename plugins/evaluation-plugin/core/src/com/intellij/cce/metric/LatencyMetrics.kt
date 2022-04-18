@@ -27,26 +27,26 @@ abstract class LatencyMetric(private val extractLong: (Lookup) -> Long?, overrid
 }
 
 
-class MaxLatencyMetric : LatencyMetric(Lookup::latency, "Max Latency") {
+class MaxLatencyMetric : LatencyMetric(Lookup::latency, "InvokeMax") {
   override fun compute(sample: Sample): Double = sample.max()
 
   override val valueType = MetricValueType.INT
 }
 
-class MeanLatencyMetric : LatencyMetric(Lookup::latency, "Mean Latency") {
+class MeanLatencyMetric : LatencyMetric(Lookup::latency, "InvokeMean") {
   override fun compute(sample: Sample): Double = sample.mean()
 
   override val valueType = MetricValueType.DOUBLE
 }
 
 
-class MaxLookupShownLatencyMetric : LatencyMetric(Lookup::shownLatency, "Max Lookup Shown Latency") {
+class MaxLookupShownLatencyMetric : LatencyMetric(Lookup::shownLatency, "LookupShownMax") {
   override fun compute(sample: Sample): Double = sample.max()
 
   override val valueType = MetricValueType.INT
 }
 
-class MeanLookupShownLatencyMetric : LatencyMetric(Lookup::shownLatency, "Mean Lookup Shown Latency") {
+class MeanLookupShownLatencyMetric : LatencyMetric(Lookup::shownLatency, "LookupShownMean") {
   override fun compute(sample: Sample): Double = sample.mean()
 
   override val valueType = MetricValueType.DOUBLE
@@ -54,7 +54,7 @@ class MeanLookupShownLatencyMetric : LatencyMetric(Lookup::shownLatency, "Mean L
 
 class MeanCorrectElementAddTimeLatencyMetric : LatencyMetric(
   { it.correctElementInfo?.addTime },
-  "Mean Correct Element Add Time Latency"
+  "CorrectAddedLatencyMean"
 ) {
   override fun compute(sample: Sample): Double = sample.mean()
 
@@ -63,7 +63,7 @@ class MeanCorrectElementAddTimeLatencyMetric : LatencyMetric(
 
 class MeanCorrectElementFirstAppearanceLatencyMetric : LatencyMetric(
   { it.correctElementInfo?.firstAppearanceTime },
-  "Mean Correct Element First Appearance Latency"
+  "CorrectAppearanceLatencyMean"
 ) {
   override fun compute(sample: Sample): Double = sample.mean()
 
@@ -72,7 +72,7 @@ class MeanCorrectElementFirstAppearanceLatencyMetric : LatencyMetric(
 
 class MeanCorrectElementKindStartMetric : LatencyMetric(
   { it.correctElementInfo?.kindStartTime },
-  "Mean Correct Kind Start Latency"
+  "CorrectKindStartLatencyMean"
 ) {
   override fun compute(sample: Sample): Double = sample.mean()
 
@@ -81,7 +81,7 @@ class MeanCorrectElementKindStartMetric : LatencyMetric(
 
 class MeanFirstElementAppearanceLatencyMetric : LatencyMetric(
   { it.firstElementAddTime },
-  "Mean First Element Appearance Latency"
+  "FirstElemAppearLatencyMean"
 ) {
   override fun compute(sample: Sample): Double = sample.mean()
 
@@ -89,8 +89,26 @@ class MeanFirstElementAppearanceLatencyMetric : LatencyMetric(
 }
 
 class MeanIsCorrectElementAddedBeforeLookupShown : LatencyMetric(
-  { it.correctElementInfo?.addedBeforeLookupShown?.let { flag -> if (flag) 1 else 0 } },
-  "Mean Is Correct Element Added Before Lookup Shown"
+  { it.correctElementInfo?.addedToResultBeforeLookupShown?.let { flag -> if (flag) 1 else 0 } },
+  "CorrectAddedBeforeLookup (To Result)"
+) {
+  override fun compute(sample: Sample): Double = sample.mean()
+
+  override val valueType = MetricValueType.DOUBLE
+}
+
+class MeanIsCorrectElementAddedToLookupBeforeLookupShown : LatencyMetric(
+  { it.correctElementInfo?.addedToLookupBeforeLookupShown?.let { flag -> if (flag) 1 else 0 } },
+  "CorrectAddedBeforeLookup (To Lookup)"
+) {
+  override fun compute(sample: Sample): Double = sample.mean()
+
+  override val valueType = MetricValueType.DOUBLE
+}
+
+class MeanRestartLatency : LatencyMetric(
+  { it.restartLatency },
+  "RestartLatencyMean"
 ) {
   override fun compute(sample: Sample): Double = sample.mean()
 

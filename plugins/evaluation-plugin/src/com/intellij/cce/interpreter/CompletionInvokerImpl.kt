@@ -31,6 +31,7 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -71,6 +72,8 @@ class CompletionInvokerImpl(private val project: Project,
     //        assert(!dumbService.isDumb) { "Calling completion during indexing." }
 
     val start = System.currentTimeMillis()
+    val COMPLETION_START_TIMESTAMP = Key.create<Long>("completion start timestamp")
+
     val isNew = LookupManager.getActiveLookup(editor) == null
     val activeLookup = LookupManager.getActiveLookup(editor) ?: invokeCompletion(expectedText, prefix)
     val latency = System.currentTimeMillis() - start
@@ -81,6 +84,7 @@ class CompletionInvokerImpl(private val project: Project,
         emptyList(),
         latency,
         latency,
+        null,
         features = null,
         isNew = isNew,
         kindsExecutionInfo = emptyList(),
@@ -90,6 +94,7 @@ class CompletionInvokerImpl(private val project: Project,
     }
 
     val lookup = activeLookup as LookupImpl
+
     val features = MLCompletionFeaturesUtil.getCommonFeatures(lookup)
     val resultFeatures = Features(
       CommonFeatures(features.context, features.user, features.session),
@@ -103,39 +108,61 @@ class CompletionInvokerImpl(private val project: Project,
       .distinctBy { it.kindName }
       .toList()
 
-    val lookupShownLatency = lookup.shownTimestamp - start
+    val lookupShownLatency = if (isNew) lookup.shownTimestamp - start else null
 
     val expectedItemIndex = lookup.items.indexOfFirst { it.lookupString == expectedText }
     val correctElementInfo = if (expectedItemIndex != -1) {
       val correctElement = lookup.items[expectedItemIndex]
-      val addTime: Long = correctElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
+
+      val toResultAddTime: Long? = if (isNew)
+        correctElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
+      else null
+
+      val firstAppearanceTime: Long? = if (isNew)
+        correctElement.getUserData(LOOKUP_ELEMENT_LOOKUP_ADD_TIME)!!
+          .toEpochMilli() - start
+      else null
+
+      val correctKindStartTime = if (isNew)
+        correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)
+          ?.executionInfo
+          ?.executionStartTime
+          ?.toEpochMilli()
+          ?.minus(start)
+      else null
 
       CorrectElementInfo(
-        addTime,
-        addTime < lookupShownLatency,
-        correctElement.getUserData(LOOKUP_ELEMENT_LOOKUP_ADD_TIME)!!.toEpochMilli() - start,
-        correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)
-          ?.executionInfo?.executionStartTime?.toEpochMilli()
-          ?.minus(start)
+        toResultAddTime,
+        toResultAddTime?.let { it < lookupShownLatency!! },
+        firstAppearanceTime?.let { it < lookupShownLatency!! },
+        firstAppearanceTime,
+        correctKindStartTime
       )
     }
     else null
 
-    val firstToResultAddedElement = lookup.items.first { it.getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)!! == 0 }!!
-
-    val firstElemeAddTime = firstToResultAddedElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
+    val firstElemAddTime: Long? = if (isNew) {
+      lookup.items
+        .mapNotNull { it.getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)?.let { order -> it to order } }
+        .minByOrNull { it.second }!!
+        .first
+        .getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!
+        .toEpochMilli() - start
+    }
+    else null
 
     return com.intellij.cce.core.Lookup.fromExpectedText(
       expectedText,
       lookup.prefix(),
       suggestions,
       latency,
-      lookupShownLatency,
+      if (isNew) lookupShownLatency else null,
+      if (!isNew) latency else null,
       resultFeatures,
       isNew,
       kindsExecutionInfo,
       correctElementInfo,
-      firstElemeAddTime
+      firstElemAddTime
     )
   }
 
@@ -358,4 +385,3 @@ class CompletionInvokerImpl(private val project: Project,
     }
   }
 }
-
