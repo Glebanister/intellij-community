@@ -377,12 +377,6 @@ public final class JavaCompletionContributor extends CompletionContributorWithKi
   }
 
   @Override
-  public void fillCompletionVariants(@NotNull final CompletionParameters parameters,
-                                     @NotNull final CompletionResultSet _result) {
-    fillCompletionKinds(parameters, _result, new CompletionKindsImmediateExecutor());
-  }
-
-  @Override
   public void fillCompletionKinds(@NotNull final CompletionParameters parameters,
                                   @NotNull final CompletionResultSet _result,
                                   @NotNull CompletionKindsExecutor ckExecutor) {

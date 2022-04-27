@@ -13,6 +13,7 @@ import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_CO
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.Lookup
+import com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT
 import com.intellij.codeInsight.lookup.impl.LookupImpl
 import com.intellij.codeInsight.lookup.impl.LookupImpl.LOOKUP_ELEMENT_LOOKUP_ADD_TIME
 import com.intellij.completion.ml.actions.MLCompletionFeaturesUtil
@@ -100,7 +101,7 @@ class CompletionInvokerImpl(private val project: Project,
       CommonFeatures(features.context, features.user, features.session),
       lookup.items.map { MLCompletionFeaturesUtil.getElementFeatures(lookup, it).features }
     )
-    val suggestions = lookup.items.map { it.asSuggestion() }
+    val suggestions = lookup.items.map { it.asSuggestion(expectedText) }
 
 
     val kindsExecutionInfo: List<CompletionKindExecutionInfo> = lookup.items
@@ -340,7 +341,7 @@ class CompletionInvokerImpl(private val project: Project,
 
   private fun hideLookup() = (LookupManager.getActiveLookup(editor) as? LookupImpl)?.hide()
 
-  private fun LookupElement.asSuggestion(): Suggestion {
+  private fun LookupElement.asSuggestion(expectedText: String): Suggestion {
     val presentation = LookupElementPresentation()
     renderElement(presentation)
     val presentationText = "${presentation.itemText}${presentation.tailText ?: ""}" +
@@ -360,6 +361,7 @@ class CompletionInvokerImpl(private val project: Project,
       completionContributor,
       getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!,
       getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)!!,
+      insertedText == expectedText
     )
   }
 
