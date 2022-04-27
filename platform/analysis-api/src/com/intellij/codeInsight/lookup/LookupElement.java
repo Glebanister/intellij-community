@@ -5,6 +5,7 @@ import com.intellij.codeInsight.completion.InsertHandler;
 import com.intellij.codeInsight.completion.InsertionContext;
 import com.intellij.navigation.PsiElementNavigationItem;
 import com.intellij.openapi.util.ClassConditionKey;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveResult;
@@ -12,6 +13,7 @@ import com.intellij.psi.SmartPsiElementPointer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.*;
 import java.util.Collections;
 import java.util.Set;
 
@@ -26,6 +28,7 @@ import java.util.Set;
  */
 public abstract class LookupElement extends UserDataHolderBase {
   public static final LookupElement[] EMPTY_ARRAY = new LookupElement[0];
+  public static final Key<Boolean> LOOKUP_ELEMENT_HIGHLIGHT = Key.create("lookup element highlight");
 
   /**
    * @return the string which will be inserted into the editor when this lookup element is chosen
@@ -132,6 +135,10 @@ public abstract class LookupElement extends UserDataHolderBase {
    */
   public void renderElement(LookupElementPresentation presentation) {
     presentation.setItemText(getLookupString());
+    Boolean highlighted = getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlighted != null && highlighted == Boolean.TRUE) {
+      presentation.setHighlightColor(Color.MAGENTA);
+    }
   }
 
   /**

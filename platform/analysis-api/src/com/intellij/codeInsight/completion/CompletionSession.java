@@ -25,6 +25,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT;
+
 public class CompletionSession {
   private final List<Pair<? extends Collection<? extends LookupElement>, @NotNull CompletionKind>> myBatchItems = new ArrayList<>();
   private final List<LookupElement> myBatchWithoutKind = new ArrayList<>();
@@ -35,11 +37,12 @@ public class CompletionSession {
   }
 
   public void registerBatchItems(Collection<? extends LookupElement> elements) {
+    if (myResult.isResultHighlighted()) {
+      elements.forEach(elem -> elem.putUserData(LOOKUP_ELEMENT_HIGHLIGHT, true));
+    }
     var currentCompletionKind = myResult.getCurrentCompletionKind();
     if (currentCompletionKind == null) {
       myBatchWithoutKind.addAll(elements);
-      System.out.println("Registered an element without kind from context");
-      System.out.println(Arrays.toString(Thread.currentThread().getStackTrace()));
     }
     else {
       myBatchItems.add(
@@ -88,6 +91,16 @@ public class CompletionSession {
     @Override
     protected void setNullableCurrentCompletionKind(@Nullable CompletionKind completionKind) {
       originalResultSet.setNullableCurrentCompletionKind(completionKind);
+    }
+
+    @Override
+    public void setHighlightingResults(boolean doHightlight) {
+      originalResultSet.setHighlightingResults(doHightlight);
+    }
+
+    @Override
+    public boolean isResultHighlighted() {
+      return originalResultSet.isResultHighlighted();
     }
 
     @Override

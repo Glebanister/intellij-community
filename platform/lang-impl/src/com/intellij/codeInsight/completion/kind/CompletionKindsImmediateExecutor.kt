@@ -10,7 +10,7 @@ class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
     //if (kind.name in allExecutedNames) return
-    if (kind.isApplicable) kind.fillKindVariantsOnce(session)
+    if (kind.isApplicable) kind.fillKindVariantsOnce(session, false)
     //allExecutedNames.add(kind.name)
   }
 

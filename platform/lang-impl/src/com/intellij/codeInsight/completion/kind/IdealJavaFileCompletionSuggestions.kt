@@ -28,7 +28,7 @@ class IdealJavaFileCompletionSuggestions(
       val lookups = session["_lookups"].asJsonArray
       if (lookups.size() != 1)
         throw IllegalArgumentException("Each session must contain exactly one lookup")
-      val lookup = lookups[0]!!.asJsonObject
+      val lookup = lookups[0].asJsonObject
       val correctSuggestion = lookup["suggestions"].asJsonArray.find {
         it.asJsonObject["text"].asString == expectedText
       }?.asJsonObject ?: throw IllegalArgumentException("Session marked as successful, but it does not contain correct suggestion")

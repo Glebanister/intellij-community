@@ -99,6 +99,10 @@ public abstract class CompletionService {
 
     ckExecutor.executeAll();
 
+    if (ckExecutor.sureFoundCorrect()) {
+      return;
+    }
+
     for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
       ProgressManager.checkCanceled();
       CompletionContributor contributor = contributors.get(i);

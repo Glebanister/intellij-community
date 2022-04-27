@@ -9,6 +9,8 @@ import com.intellij.codeInsight.completion.impl.CompletionServiceImpl;
 import com.intellij.codeInsight.completion.impl.CompletionSorterImpl;
 import com.intellij.codeInsight.completion.kind.AfterFirstKindShowingExecutor;
 import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
+import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions;
+import com.intellij.codeInsight.completion.kind.IdealKindsExecutor;
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler;
 import com.intellij.codeInsight.hint.EditorHintListener;
 import com.intellij.codeInsight.hint.HintManager;
@@ -49,10 +51,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.patterns.ElementPattern;
-import com.intellij.psi.PsiDocumentManager;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiReference;
-import com.intellij.psi.ReferenceRange;
+import com.intellij.psi.*;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.TestModeFlags;
 import com.intellij.ui.LightweightHint;
@@ -71,6 +70,7 @@ import javax.swing.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeListener;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
@@ -886,7 +886,27 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       ProgressManager.checkCanceled();
 
       CompletionService completionService = CompletionService.getCompletionService();
-      completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
+
+      Path currentFileSystemPath = Path.of(initContext.getFile().getName());
+      PsiFileSystemItem fileParent = initContext.getFile().getParent();
+      while (fileParent != null) {
+        currentFileSystemPath = Path.of(fileParent.getName()).resolve(currentFileSystemPath);
+        fileParent = fileParent.getParent();
+      }
+
+      var idealKindsExecutor = new IdealKindsExecutor(
+        Path.of(Objects.requireNonNull(initContext.getProject().getBasePath())).relativize(currentFileSystemPath),
+        new IdealJavaFileCompletionSuggestions.FilePosition(myParameters.getPosition().getTextOffset())
+      );
+
+      completionService.setCompletionKindsExecutor(
+        idealKindsExecutor.hasIdealSuggestion()
+        ? idealKindsExecutor
+        : new CompletionKindsImmediateExecutor()
+      );
+
+      //completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
+
       completionService.performCompletion(parameters, weigher);
     });
     ProgressManager.checkCanceled();

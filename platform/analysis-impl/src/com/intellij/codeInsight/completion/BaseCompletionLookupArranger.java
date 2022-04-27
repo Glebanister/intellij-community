@@ -16,6 +16,7 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.NaturalComparator;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.patterns.StandardPatterns;
+import com.intellij.ui.JBColor;
 import com.intellij.util.ProcessingContext;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
@@ -28,6 +29,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 import java.util.function.Predicate;
+
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT;
 
 public class BaseCompletionLookupArranger extends LookupArranger implements CompletionLookupArranger {
   private static final Logger LOG = Logger.getInstance(BaseCompletionLookupArranger.class);
@@ -159,6 +162,10 @@ public class BaseCompletionLookupArranger extends LookupArranger implements Comp
   @Override
   public void addElement(LookupElement element, LookupElementPresentation presentation) {
     boolean shouldSkip = shouldSkip(element);
+    Boolean highlight = element.getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlight != null && highlight.equals(Boolean.TRUE)) {
+      presentation.setHighlightColor(JBColor.MAGENTA);
+    }
     presentation.freeze();
     element.putUserData(DEFAULT_PRESENTATION, presentation);
     CompletionSorterImpl sorter = obtainSorter(element);

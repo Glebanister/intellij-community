@@ -6,13 +6,18 @@ import java.nio.file.Path
 import kotlin.io.path.bufferedReader
 import kotlin.io.path.div
 import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.*
+import com.intellij.openapi.components.Service
 
-class IdealCompletionSuggestionsManager(
+
+@Service
+class IdealCompletionSuggestionsService(
   private val idealSuggestionsPerFile: MutableMap<Path, IdealJavaFileCompletionSuggestions> = mutableMapOf()
 ) {
-  constructor(resultsPath: Path) : this() {
-    val evaluatedFiles = (resultsPath / "data" / "files.json").bufferedReader().use {
-      JsonParser.parseReader(it).asJsonObject.asJsonObject
+
+  init {
+    val resultsPath = Path.of("/Users/glebmarin/projects/intellij-evaluation/2022-04-19_15-21-58")
+    (resultsPath / "data" / "files.json").bufferedReader().use {
+      JsonParser.parseReader(it).asJsonObject
         .entrySet()
         .forEach {
           idealSuggestionsPerFile[Path.of(it.key)] = IdealJavaFileCompletionSuggestions(
@@ -22,10 +27,12 @@ class IdealCompletionSuggestionsManager(
     }
   }
 
+
   fun getIdealSuggestion(filePath: Path,
                          position: FilePosition
   ): Suggestion? {
-    val fileSuggestions = idealSuggestionsPerFile[filePath] ?: throw IllegalArgumentException("Completion was not loaded for $filePath")
+    val fileSuggestions = idealSuggestionsPerFile[filePath] ?: throw IllegalArgumentException(
+      "Completion was not loaded for $filePath, ${idealSuggestionsPerFile.map { it.key }.joinToString { ", " }}")
     return fileSuggestions.getIdealSuggestion(position)
   }
 }

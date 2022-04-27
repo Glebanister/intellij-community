@@ -37,11 +37,12 @@ public abstract class CompletionKind {
     }
   }
 
-  public void fillKindVariantsOnce(CompletionSession session) {
+  public void fillKindVariantsOnce(CompletionSession session, boolean doHighlight) {
     if (wasExecuted()) {
       return;
     }
     session.getResult().setCurrentCompletionKind(this);
+    session.getResult().setHighlightingResults(doHighlight);
     Instant timeStart = Instant.now();
     boolean finishedWithException = false;
     try {
@@ -56,6 +57,7 @@ public abstract class CompletionKind {
                                           Duration.between(timeStart, Instant.now()),
                                           timeStart);
       session.getResult().resetCurrentCompletionKind();
+      session.getResult().setHighlightingResults(false);
     }
   }
 

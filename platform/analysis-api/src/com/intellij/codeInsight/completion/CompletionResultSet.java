@@ -77,6 +77,10 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     setNullableCurrentCompletionKind(completionKind);
   }
 
+  public abstract void setHighlightingResults(boolean doHighlight);
+
+  public abstract boolean isResultHighlighted();
+
   protected abstract @Nullable CompletionKind getCurrentCompletionKind();
 
   public void passResult(@NotNull CompletionResult result) {

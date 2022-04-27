@@ -29,6 +29,10 @@ public interface CompletionKindsExecutor {
 
   Flag makeFlagAnd(boolean init);
 
+  default boolean sureFoundCorrect() {
+    return false;
+  }
+
   default @NotNull List<CompletionContributor> reorderContirbutors(@NotNull List<CompletionContributor> contributors) {
     return contributors;
   }

@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import static com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND;
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT;
 
 /**
  * @author peter
@@ -120,6 +121,7 @@ public class BaseCompletionService extends CompletionService {
     @Nullable
     protected CompletionKind myCurrentCompletionKind;
     private final AtomicInteger myItemCounter = new AtomicInteger(0);
+    private boolean myHighlight = false;
 
     protected BaseCompletionResultSet(Consumer<? super CompletionResult> consumer, PrefixMatcher prefixMatcher,
                                       CompletionContributor contributor,
@@ -157,6 +159,16 @@ public class BaseCompletionService extends CompletionService {
         element.putUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER, elementOrder);
         passResult(matched);
       }
+    }
+
+    @Override
+    public void setHighlightingResults(boolean doHighlight) {
+      myHighlight = doHighlight;
+    }
+
+    @Override
+    public boolean isResultHighlighted() {
+      return myHighlight;
     }
 
     @Override

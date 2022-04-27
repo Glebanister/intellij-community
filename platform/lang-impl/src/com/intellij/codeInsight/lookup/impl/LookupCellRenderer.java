@@ -195,7 +195,12 @@ public final class LookupCellRenderer implements ListCellRenderer<LookupElement>
     myNameComponent.clear();
 
     Color itemColor = presentation.getItemTextForeground();
-    allowedWidth -= setItemTextLabel(item, itemColor, presentation, allowedWidth);
+    @Nullable Color itemHighlightColor = presentation.getHighlightColor();
+    if (itemHighlightColor != null) {
+      allowedWidth -= setItemTextLabel(item, itemHighlightColor, presentation, allowedWidth);
+    } else {
+      allowedWidth -= setItemTextLabel(item, itemColor, presentation, allowedWidth);
+    }
 
     myTailComponent.setFont(ObjectUtils.notNull(getCustomFont(item, false, CUSTOM_TAIL_FONT), myNormalFont));
     myTypeLabel.setFont(ObjectUtils.notNull(getCustomFont(item, false, CUSTOM_TYPE_FONT), myNormalFont));

@@ -31,6 +31,7 @@ public class LookupElementPresentation {
   private boolean myTypeGrayed;
   @Nullable private List<TextFragment> myTail;
   private volatile boolean myFrozen;
+  private @Nullable Color myHighlightColor = null;
 
   public void setIcon(@Nullable Icon icon) {
     ensureMutable();
@@ -169,13 +170,23 @@ public class LookupElementPresentation {
     myItemTextUnderlined = itemTextUnderlined;
   }
 
-  @NotNull public Color getItemTextForeground() {
+  @NotNull
+  public Color getItemTextForeground() {
     return myItemTextForeground;
+  }
+
+  public @Nullable Color getHighlightColor() {
+    return myHighlightColor;
   }
 
   public void setItemTextForeground(@NotNull Color itemTextForeground) {
     ensureMutable();
     myItemTextForeground = itemTextForeground;
+  }
+
+  public void setHighlightColor(@NotNull Color highlightColor) {
+    ensureMutable();
+    myHighlightColor = highlightColor;
   }
 
   public void copyFrom(@NotNull LookupElementPresentation presentation) {
@@ -194,6 +205,7 @@ public class LookupElementPresentation {
     myTypeIconRightAligned = presentation.myTypeIconRightAligned;
     myItemTextUnderlined = presentation.myItemTextUnderlined;
     myItemTextForeground = presentation.myItemTextForeground;
+    myHighlightColor = presentation.myHighlightColor;
   }
 
   public boolean isTypeGrayed() {

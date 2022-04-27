@@ -33,8 +33,8 @@ abstract class CompletionKindsExecutorWithSorter(
   fun executeAll(taskAfterPrimary: Runnable) {
     val executionOrder = sorter.sort(myCompletionKinds)
 
-    executionOrder.primaryBatch.forEach { it.first.fillKindVariantsOnce(it.second) }
+    executionOrder.primaryBatch.forEach { it.first.fillKindVariantsOnce(it.second, true) }
     taskAfterPrimary.run()
-    executionOrder.secondaryBatch.filter { it.first.isApplicable() }.forEach { it.first.fillKindVariantsOnce(it.second) }
+    executionOrder.secondaryBatch.filter { it.first.isApplicable() }.forEach { it.first.fillKindVariantsOnce(it.second, false) }
   }
 }

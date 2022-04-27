@@ -16,11 +16,11 @@ data class CompletionKindContext(
 
 class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : LazyKindsExecutor() {
   val myOtherKinds = ArrayList<Pair<CompletionKind, CompletionSession>>()
-  private fun executeKind(completionKind: CompletionKind, session: CompletionSession) {
+  private fun executeKind(completionKind: CompletionKind, session: CompletionSession, highlight: Boolean) {
     println("Check condition of ${completionKind.name}")
     if (completionKind.isApplicable) {
       val execTime = measureTimeMillis {
-        completionKind.fillKindVariantsOnce(session)
+        completionKind.fillKindVariantsOnce(session, highlight)
       }
       println("Executed ${completionKind.name}: $execTime ms")
     }
@@ -48,14 +48,14 @@ class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : LazyKindsExe
 
     var toFlush: CompletionSession? = null
     for ((kind, session) in myOtherKinds.subList(0, firstPortionLength)) {
-      executeKind(kind, session)
+      executeKind(kind, session, true)
       toFlush = session
     }
 
     toFlush?.flushBatchItems()
 
     for ((kind, session) in myOtherKinds.subList(firstPortionLength, myOtherKinds.size)) {
-      executeKind(kind, session)
+      executeKind(kind, session, false)
       session.flushBatchItems()
     }
   }
