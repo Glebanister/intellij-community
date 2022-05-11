@@ -43,6 +43,9 @@ class MetricsEvaluator private constructor(private val evaluationType: String) {
     registerMetric(MeanIsCorrectElementAddedBeforeLookupShown())
     registerMetric(MeanIsCorrectElementAddedToLookupBeforeLookupShown())
     registerMetric(MeanRestartLatency())
+    registerMetric(UXShowLatencyMetric(UserExperienceThreshold.Immediate))
+    registerMetric(UXShowLatencyMetric(UserExperienceThreshold.Fast))
+    registerMetric(UXShowLatencyMetric(UserExperienceThreshold.Slow))
   }
 
   fun registerMetric(metric: Metric) {

@@ -11,6 +11,7 @@ import java.nio.file.Paths
 class FeaturesStorageImpl(private val storageDir: String) : FeaturesStorage {
   companion object {
     private const val FILES_FEATURES_FILE = "files.json"
+    private const val COMPLETION_ML_PERFORMANCE_FEATURES_FILE = "completion-ml-performance-features.csv"
     private val gson: Gson = Gson()
   }
 
@@ -59,6 +60,10 @@ class FeaturesStorageImpl(private val storageDir: String) : FeaturesStorage {
     fileMapping[filePath] = targetDir
     fileFeaturesStorages[filePath] = FileArchivesStorage(Paths.get(storageDir, targetDir).toString())
     filesCounter++
+  }
+
+  private fun registerSessionForCompletionMlPerformance(session: Session) {
+
   }
 
   private class FeaturesInfo {

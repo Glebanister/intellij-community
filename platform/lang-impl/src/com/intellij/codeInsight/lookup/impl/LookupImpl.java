@@ -75,6 +75,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_SHOW_TIME;
+
 public class LookupImpl extends LightweightHint implements LookupEx, Disposable, LookupElementListPresenter {
   private static final Logger LOG = Logger.getInstance(LookupImpl.class);
 
@@ -122,8 +124,6 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
   private final ClientId myClientId = ClientId.getCurrent();
   private final AtomicInteger myDummyItemCount = new AtomicInteger();
   private final EmptyLookupItem myDummyItem = new EmptyLookupItem(CommonBundle.message("tree.node.loading"), true);
-
-  public static final Key<Instant> LOOKUP_ELEMENT_LOOKUP_ADD_TIME = Key.create("lookup element lookup add time");
 
   public LookupImpl(Project project, Editor editor, @NotNull LookupArranger arranger) {
     super(new JPanel(new BorderLayout()));
@@ -447,7 +447,7 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     synchronized (myUiLock) {
       listModel.removeAll();
       if (!items.isEmpty()) {
-        items.forEach(item -> item.putUserDataIfAbsent(LOOKUP_ELEMENT_LOOKUP_ADD_TIME, Instant.now()));
+        items.forEach(item -> item.putUserDataIfAbsent(LOOKUP_ELEMENT_SHOW_TIME, Instant.now()));
         listModel.add(items);
         addDummyItems(myDummyItemCount.get());
       }

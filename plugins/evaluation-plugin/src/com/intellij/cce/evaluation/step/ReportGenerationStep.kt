@@ -5,6 +5,7 @@ import com.intellij.cce.core.Language
 import com.intellij.cce.evaluation.FilteredSessionsStorage
 import com.intellij.cce.metric.MetricsEvaluator
 import com.intellij.cce.metric.SuggestionsComparator
+import com.intellij.cce.report.CompletionMlPerformanceDataset
 import com.intellij.cce.report.FullReportGenerator
 import com.intellij.cce.report.HtmlReportGenerator
 import com.intellij.cce.report.PlainTextReportGenerator
@@ -80,7 +81,8 @@ class ReportGenerationStep(
                                      evaluationTitles,
                                      suggestionsComparators,
                                      comparisonStorage,
-                                     strategies)
+                                     strategies,
+                                     workspace)
         for (report in reports) {
           workspace.addReport(report.type, filter.name, comparisonStorage.reportName, report.path)
         }
@@ -113,7 +115,8 @@ class ReportGenerationStep(
                              evaluationTitles: List<String>,
                              suggestionsComparators: List<SuggestionsComparator>,
                              comparisonStorage: CompareSessionsStorage,
-                             strategies: List<CompletionStrategy>): List<ReportInfo> {
+                             strategies: List<CompletionStrategy>,
+                             workspace: EvaluationWorkspace): List<ReportInfo> {
     val title2evaluator = evaluationTitles.mapIndexed { index, title ->
       title to MetricsEvaluator.withDefaultMetrics(title, strategies[index])
     }.toMap()

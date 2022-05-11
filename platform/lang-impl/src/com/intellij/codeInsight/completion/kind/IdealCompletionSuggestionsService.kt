@@ -2,11 +2,15 @@
 package com.intellij.codeInsight.completion.kind
 
 import com.google.gson.JsonParser
+import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.FilePosition
+import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.Suggestion
+import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.startup.StartupActivity
 import java.nio.file.Path
 import kotlin.io.path.bufferedReader
 import kotlin.io.path.div
-import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.*
-import com.intellij.openapi.components.Service
 
 
 @Service
@@ -15,11 +19,13 @@ class IdealCompletionSuggestionsService(
 ) {
 
   init {
-    val resultsPath = Path.of("/Users/glebmarin/projects/intellij-evaluation/2022-04-19_15-21-58")
-    (resultsPath / "data" / "files.json").bufferedReader().use {
-      JsonParser.parseReader(it).asJsonObject
+    // CHANGE IT
+    val resultsPath = Path.of("/Users/glebmarin/projects/intellij-evaluation/ideal_suggestions")
+    (resultsPath / "data" / "files.json").bufferedReader().use { filesJson ->
+      JsonParser.parseReader(filesJson).asJsonObject
         .entrySet()
         .forEach {
+          println("Loading ideal suggestions for ${it.key}")
           idealSuggestionsPerFile[Path.of(it.key)] = IdealJavaFileCompletionSuggestions(
             resultsPath / "data" / "files" / it.value.asString
           )
@@ -27,12 +33,17 @@ class IdealCompletionSuggestionsService(
     }
   }
 
-
   fun getIdealSuggestion(filePath: Path,
                          position: FilePosition
   ): Suggestion? {
     val fileSuggestions = idealSuggestionsPerFile[filePath] ?: throw IllegalArgumentException(
       "Completion was not loaded for $filePath, ${idealSuggestionsPerFile.map { it.key }.joinToString { ", " }}")
     return fileSuggestions.getIdealSuggestion(position)
+  }
+}
+
+internal class LoadIdealSuggestions : StartupActivity.DumbAware {
+  override fun runActivity(project: Project) {
+    service<IdealCompletionSuggestionsService>()
   }
 }

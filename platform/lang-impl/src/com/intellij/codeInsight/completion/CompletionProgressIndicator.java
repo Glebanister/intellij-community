@@ -64,6 +64,8 @@ import com.intellij.util.indexing.DumbModeAccessType;
 import com.intellij.util.messages.SimpleMessageBusConnection;
 import com.intellij.util.ui.update.MergingUpdateQueue;
 import com.intellij.util.ui.update.Update;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function2;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
@@ -75,6 +77,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Please don't use this class directly from plugins.
@@ -102,7 +106,6 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   };
   private final Semaphore myFreezeSemaphore = new Semaphore(1);
   private final Semaphore myFinishSemaphore = new Semaphore(1);
-  private final Semaphore myReadyToShowSemaphore = new Semaphore(1);
   @NotNull private final OffsetMap myOffsetMap;
   private final Set<Pair<Integer, ElementPattern<String>>> myRestartingPrefixConditions =
     ContainerUtil.newConcurrentSet();
@@ -572,10 +575,6 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     StatisticsUpdate.cancelLastCompletionStatisticsUpdate();
   }
 
-  boolean blockingWaitForReadyToShow(int timeoutMs) {
-    return myReadyToShowSemaphore.waitFor(timeoutMs);
-  }
-
   boolean blockingWaitForFinish(int timeoutMs) {
     if (myHandler.isTestingMode() && !TestModeFlags.is(CompletionAutoPopupHandler.ourTestingAutopopup)) {
       if (!myFinishSemaphore.waitFor(100 * 1000)) {
@@ -894,18 +893,38 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
         fileParent = fileParent.getParent();
       }
 
-      var idealKindsExecutor = new IdealKindsExecutor(
-        Path.of(Objects.requireNonNull(initContext.getProject().getBasePath())).relativize(currentFileSystemPath),
-        new IdealJavaFileCompletionSuggestions.FilePosition(myParameters.getPosition().getTextOffset())
-      );
+      var currentFilePath = Path.of(Objects.requireNonNull(initContext.getProject().getBasePath()))
+        .relativize(currentFileSystemPath);
+      var completionPosition = myParameters.getPosition().getTextOffset();
 
-      completionService.setCompletionKindsExecutor(
-        idealKindsExecutor.hasIdealSuggestion()
-        ? idealKindsExecutor
-        : new CompletionKindsImmediateExecutor()
-      );
+      //CompletionThreadingBase.setAwaitForBatchFlushFinish(true);
+      //var idealKindsExecutor = new IdealKindsExecutor(
+      //  currentFilePath,
+      //  new IdealJavaFileCompletionSuggestions.FilePosition(completionPosition),
+      //  () -> {
+      //    // CHANGE IT
+      //    ApplicationManager.getApplication().invokeAndWait(() -> {
+      //      showLookup();
+      //      CompletionThreadingBase.setAwaitForBatchFlushFinish(false);
+      //    });
+      //
+      //    //ApplicationManager.getApplication().invokeLater(() -> {
+      //    //  showLookup();
+      //    //  CompletionThreadingBase.setAwaitForBatchFlushFinish(false);
+      //    //});
+      //  }
+      //);
+      //
+      //boolean hasIdealSuggestion = idealKindsExecutor.hasIdealSuggestion();
+      //
+      //completionService.setCompletionKindsExecutor(
+      //  hasIdealSuggestion
+      //  ? idealKindsExecutor
+      //  : new CompletionKindsImmediateExecutor()
+      //);
 
-      //completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
+      // CHANGE IT
+      completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
 
       completionService.performCompletion(parameters, weigher);
     });
@@ -913,10 +932,6 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
 
     weigher.waitFor();
     ProgressManager.checkCanceled();
-  }
-
-  private void indicateReadyToShow() {
-    myReadyToShowSemaphore.up();
   }
 
   @NotNull

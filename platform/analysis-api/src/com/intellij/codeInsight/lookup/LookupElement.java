@@ -10,10 +10,12 @@ import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveResult;
 import com.intellij.psi.SmartPsiElementPointer;
+import com.intellij.ui.JBColor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.Set;
 
@@ -23,12 +25,13 @@ import java.util.Set;
  * Another way is to subclass it. Use the latter way only if you need it to implement some additional interface, to modify equals/hashCode
  * or other advanced logic.
  *
- * @see com.intellij.codeInsight.completion.PrioritizedLookupElement
  * @author peter
+ * @see com.intellij.codeInsight.completion.PrioritizedLookupElement
  */
 public abstract class LookupElement extends UserDataHolderBase {
   public static final LookupElement[] EMPTY_ARRAY = new LookupElement[0];
   public static final Key<Boolean> LOOKUP_ELEMENT_HIGHLIGHT = Key.create("lookup element highlight");
+  public static final Key<Instant> LOOKUP_ELEMENT_SHOW_TIME = Key.create("lookup element lookup add time");
 
   /**
    * @return the string which will be inserted into the editor when this lookup element is chosen
@@ -92,10 +95,10 @@ public abstract class LookupElement extends UserDataHolderBase {
 
   /**
    * Performs changes after the current lookup element is chosen by the user.<p/>
-   *
+   * <p>
    * When this method is invoked, the lookup string is already inserted into the editor.
    * In addition, the document is committed, unless {@link #requiresCommittedDocuments()} returns false.<p/>
-   *
+   * <p>
    * This method is invoked inside a write action. If you need to show dialogs,
    * please do that inside {@link InsertionContext#setLaterRunnable}.
    *
@@ -107,7 +110,7 @@ public abstract class LookupElement extends UserDataHolderBase {
 
   /**
    * @return whether {@link #handleInsert} expects all documents to be committed at the moment of its invocation.
-   * The default is {@code true}, overriders can change that, for example if automatic commit is too slow. 
+   * The default is {@code true}, overriders can change that, for example if automatic commit is too slow.
    */
   public boolean requiresCommittedDocuments() {
     return true;
@@ -128,7 +131,7 @@ public abstract class LookupElement extends UserDataHolderBase {
   /**
    * Fill the given presentation object with details specifying how this lookup element should look when rendered.
    * By default, just sets the item text to the lookup string.<p></p>
-   *
+   * <p>
    * This method is called before the item can be shown in the suggestion list, so it should be relatively fast to ensure that
    * list is shown as soon as possible. If there are heavy computations involved, consider making them optional and moving into
    * to {@link #getExpensiveRenderer()}.
@@ -136,8 +139,8 @@ public abstract class LookupElement extends UserDataHolderBase {
   public void renderElement(LookupElementPresentation presentation) {
     presentation.setItemText(getLookupString());
     Boolean highlighted = getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
-    if (highlighted != null && highlighted == Boolean.TRUE) {
-      presentation.setHighlightColor(Color.MAGENTA);
+    if (highlighted != null && highlighted.equals(Boolean.TRUE)) {
+      presentation.setHighlightColor(JBColor.MAGENTA);
     }
   }
 
@@ -151,7 +154,9 @@ public abstract class LookupElement extends UserDataHolderBase {
     return null;
   }
 
-  /** Prefer to use {@link #as(Class)} */
+  /**
+   * Prefer to use {@link #as(Class)}
+   */
   @Nullable
   public <T> T as(ClassConditionKey<T> conditionKey) {
     //noinspection unchecked
@@ -165,7 +170,7 @@ public abstract class LookupElement extends UserDataHolderBase {
   @Nullable
   public <T> T as(Class<T> clazz) {
     //noinspection unchecked
-    return clazz.isInstance(this) ? (T) this : null;
+    return clazz.isInstance(this) ? (T)this : null;
   }
 
   /**

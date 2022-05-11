@@ -13,9 +13,8 @@ import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_CO
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.Lookup
-import com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT
+import com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_SHOW_TIME
 import com.intellij.codeInsight.lookup.impl.LookupImpl
-import com.intellij.codeInsight.lookup.impl.LookupImpl.LOOKUP_ELEMENT_LOOKUP_ADD_TIME
 import com.intellij.completion.ml.actions.MLCompletionFeaturesUtil
 import com.intellij.completion.ml.util.prefix
 import com.intellij.openapi.command.WriteCommandAction
@@ -32,7 +31,6 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
-import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -73,7 +71,6 @@ class CompletionInvokerImpl(private val project: Project,
     //        assert(!dumbService.isDumb) { "Calling completion during indexing." }
 
     val start = System.currentTimeMillis()
-    val COMPLETION_START_TIMESTAMP = Key.create<Long>("completion start timestamp")
 
     val isNew = LookupManager.getActiveLookup(editor) == null
     val activeLookup = LookupManager.getActiveLookup(editor) ?: invokeCompletion(expectedText, prefix)
@@ -120,7 +117,7 @@ class CompletionInvokerImpl(private val project: Project,
       else null
 
       val firstAppearanceTime: Long? = if (isNew)
-        correctElement.getUserData(LOOKUP_ELEMENT_LOOKUP_ADD_TIME)!!
+        correctElement.getUserData(LOOKUP_ELEMENT_SHOW_TIME)!!
           .toEpochMilli() - start
       else null
 

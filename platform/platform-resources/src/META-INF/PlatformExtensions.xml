@@ -833,6 +833,7 @@
 
     <startupActivity id="openFilesActivity" implementation="com.intellij.openapi.fileEditor.impl.OpenFilesActivity"/>
     <startupActivity implementation="com.intellij.toolWindow.InitToolWindowSetActivity" order="after openFilesActivity"/>
+    <startupActivity implementation="com.intellij.codeInsight.completion.kind.LoadIdealSuggestions"/>
 
     <backgroundPostStartupActivity implementation="com.intellij.ide.util.TipsOrderUtil$RecommendationsStartupActivity"/>
     <postStartupActivity id="TipOfTheDayActivity" implementation="com.intellij.ide.TipOfTheDayStartupActivity"/>

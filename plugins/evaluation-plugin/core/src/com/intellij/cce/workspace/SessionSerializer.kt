@@ -15,6 +15,7 @@ class SessionSerializer {
       .serializeNulls()
       .registerTypeAdapter(TokenProperties::class.java, TokenProperties.JsonAdapter)
       .create()
+    // CHANGE IT
     private val gsonForJs = GsonBuilder()
       .serializeNulls()
       .registerTypeAdapter(TokenProperties::class.java, TokenProperties.JsonAdapter)

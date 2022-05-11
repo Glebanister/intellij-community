@@ -17,6 +17,7 @@ import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectManagerListener;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.Pair;
 import com.intellij.patterns.ElementPattern;
 import com.intellij.psi.Weigher;
 import com.intellij.util.Consumer;
@@ -26,6 +27,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -142,6 +144,14 @@ public final class CompletionServiceImpl extends BaseCompletionService {
     @Override
     public void addAllElements(@NotNull Iterable<? extends LookupElement> elements) {
       CompletionThreadingBase.withBatchUpdate(() -> super.addAllElements(elements), myParameters.getProcess());
+    }
+
+    @Override
+    public void addAllElementsWithKinds(
+      @NotNull final Iterable<Pair<? extends Collection<? extends LookupElement>, @NotNull CompletionKind>> elementsWithKinds,
+      @NotNull final Iterable<? extends LookupElement> elementsWithoutKind
+    ) {
+      CompletionThreadingBase.withBatchUpdate(() -> super.addAllElementsWithKinds(elementsWithKinds, elementsWithoutKind), myParameters.getProcess());
     }
 
     @Override

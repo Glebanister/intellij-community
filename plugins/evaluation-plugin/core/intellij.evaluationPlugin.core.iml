@@ -25,5 +25,7 @@
     <orderEntry type="library" name="commons-codec" level="project" />
     <orderEntry type="library" name="commons-compress" level="project" />
     <orderEntry type="library" name="Velocity" level="project" />
+    <orderEntry type="module" module-name="intellij.platform.util.text.matching" />
+    <orderEntry type="module" module-name="intellij.java.impl" />
   </component>
 </module>

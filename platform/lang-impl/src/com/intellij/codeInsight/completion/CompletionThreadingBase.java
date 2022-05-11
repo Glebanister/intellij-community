@@ -15,12 +15,18 @@
  */
 package com.intellij.codeInsight.completion;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class CompletionThreadingBase implements CompletionThreading {
   protected final static ThreadLocal<Boolean> ourIsInBatchUpdate = ThreadLocal.withInitial(() -> Boolean.FALSE);
+  protected static volatile boolean awaitForBatchFlushFinish = false;
+  protected final static Logger LOG = Logger.getInstance(CompletionThreadingBase.class);
 
   public static void withBatchUpdate(Runnable runnable, CompletionProcess process) {
     if (ourIsInBatchUpdate.get().booleanValue() || !(process instanceof CompletionProgressIndicator)) {
@@ -34,11 +40,24 @@ public abstract class CompletionThreadingBase implements CompletionThreading {
       ProgressManager.checkCanceled();
       CompletionProgressIndicator currentIndicator = (CompletionProgressIndicator)process;
       CompletionThreadingBase threading = Objects.requireNonNull(currentIndicator.getCompletionThreading());
-      threading.flushBatchResult(currentIndicator);
-    } finally {
+      Future<?> flushResult = threading.submitFlushBatchResult(currentIndicator);
+      if (awaitForBatchFlushFinish) {
+        try {
+          flushResult.get();
+        }
+        catch (ExecutionException | InterruptedException e) {
+          LOG.error(e);
+        }
+      }
+    }
+    finally {
       ourIsInBatchUpdate.set(Boolean.FALSE);
     }
   }
 
-  protected abstract void flushBatchResult(CompletionProgressIndicator indicator);
+  public static void setAwaitForBatchFlushFinish(boolean value) {
+    awaitForBatchFlushFinish = value;
+  }
+
+  protected abstract Future<?> submitFlushBatchResult(CompletionProgressIndicator indicator);
 }

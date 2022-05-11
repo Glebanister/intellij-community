@@ -35,7 +35,7 @@ class IdealJavaFileCompletionSuggestions(
       val correctKind = correctSuggestion["completionContributorKind"].let {
         if (it.isJsonNull) null
         else it.asString
-      } ?: return
+      } ?: return@forEach
       knownSuggestions[FilePosition(offset)] = Suggestion(correctKind, expectedText)
     }
   }

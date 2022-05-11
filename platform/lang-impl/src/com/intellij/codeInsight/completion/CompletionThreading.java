@@ -15,10 +15,7 @@ import com.intellij.util.concurrency.Semaphore;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * @author peter
@@ -66,7 +63,7 @@ class SyncCompletion extends CompletionThreadingBase {
   }
 
   @Override
-  protected void flushBatchResult(CompletionProgressIndicator indicator) {
+  protected Future<?> submitFlushBatchResult(CompletionProgressIndicator indicator) {
     try {
       indicator.withSingleUpdate(() -> {
         for (CompletionResult result : myBatchList) {
@@ -76,6 +73,7 @@ class SyncCompletion extends CompletionThreadingBase {
     } finally {
       myBatchList.clear();
     }
+    return CompletableFuture.completedFuture(new Object());
   }
 }
 
@@ -151,19 +149,21 @@ class AsyncCompletion extends CompletionThreadingBase {
   }
 
   @Override
-  protected void flushBatchResult(CompletionProgressIndicator indicator) {
+  protected Future<?> submitFlushBatchResult(CompletionProgressIndicator indicator) {
     ArrayList<CompletionResult> batchListCopy = new ArrayList<>(myBatchList);
     myBatchList.clear();
-
+    CompletableFuture<Object> flushCompleted = new CompletableFuture<>();
     myQueue.offer(() -> {
       tryReadOrCancel(indicator, () ->
       indicator.withSingleUpdate(() -> {
         for (CompletionResult result : batchListCopy) {
           indicator.addItem(result);
         }
+        flushCompleted.complete(new Object());
       }));
       return true;
     });
+    return flushCompleted;
   }
 
   static void tryReadOrCancel(ProgressIndicator indicator, Runnable runnable) {
@@ -176,4 +176,3 @@ class AsyncCompletion extends CompletionThreadingBase {
     }
   }
 }
-

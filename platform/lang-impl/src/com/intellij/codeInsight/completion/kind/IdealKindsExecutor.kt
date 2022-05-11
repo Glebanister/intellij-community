@@ -12,7 +12,8 @@ import java.util.function.Supplier
 
 class IdealKindsExecutor(
   private val filePath: Path,
-  private val filePosition: FilePosition
+  private val filePosition: FilePosition,
+  private val showLookup: Runnable
 ) : CompletionKindsExecutor {
   private val idealSuggestions = service<IdealCompletionSuggestionsService>()
   private var executed: Boolean = false
@@ -23,6 +24,7 @@ class IdealKindsExecutor(
       if (it == kind.name) {
         kind.fillKindVariantsOnce(session, true)
         session.flushBatchItems()
+        showLookup.run()
         executed = true
       }
     }
@@ -55,6 +57,8 @@ class IdealKindsExecutor(
 
     val otherContributors: List<CompletionContributor> = contributorsUnordered
       .filter { c: CompletionContributor? -> c !is CompletionContributorWithKinds }
+
+    //println("with kinds: ${withKindsContributors.size}, without: ${otherContributors.size}")
 
     return withKindsContributors + otherContributors
   }

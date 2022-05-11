@@ -329,16 +329,6 @@ public class CodeCompletionHandlerBase {
       return;
     }
 
-    //int readyToShowTimeout = calcSyncTimeOut(startingTime);
-    //System.out.printf("Waiting for ready to show for %s\n", readyToShowTimeout);
-    //if (indicator.blockingWaitForReadyToShow(readyToShowTimeout)) {
-    //  System.out.println("Showing lookup early!");
-    //  indicator.showLookup();
-    //}
-    //else {
-    //  System.out.println("Can't wait no more");
-    //}
-
     int timeout = calcSyncTimeOut(startingTime);
     if (indicator.blockingWaitForFinish(timeout)) {
       checkForExceptions(future);

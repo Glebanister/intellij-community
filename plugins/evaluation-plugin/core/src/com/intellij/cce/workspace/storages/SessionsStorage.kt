@@ -2,6 +2,7 @@ package com.intellij.cce.workspace.storages
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.intellij.cce.report.CompletionMlPerformanceDataset
 import com.intellij.cce.workspace.SessionSerializer
 import com.intellij.cce.workspace.info.FileSessionsInfo
 import java.io.FileReader
