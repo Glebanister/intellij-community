@@ -3,6 +3,7 @@ package com.intellij.codeInsight.completion.kind
 
 import com.intellij.codeInsight.completion.CompletionContributor
 import com.intellij.codeInsight.completion.CompletionContributorWithKinds
+import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.openapi.components.service
 import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.*
@@ -36,7 +37,7 @@ class IdealKindsExecutor(
 
   override fun sureFoundCorrect(): Boolean = executed
 
-  override fun executeAll() {}
+  override fun executeAll(parameters: CompletionParameters) {}
 
   override fun <T : Any?> wrapNotNullSupplier(supplier: Supplier<T>) = LazyValue(supplier)
 

@@ -4,16 +4,16 @@ package com.intellij.codeInsight.completion.kind
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.codeInsight.completion.kind.CompletionKind
 import java.util.Comparator
+import javax.annotation.processing.Completion
 import kotlin.streams.toList
 
 class CompletionKindsExecutionDecision(val primaryBatch: List<Pair<CompletionKind, CompletionSession>>,
                                        val secondaryBatch: List<Pair<CompletionKind, CompletionSession>>) {
   companion object {
-    private fun <T> fromWeights(
-      kindWeights: Collection<Map.Entry<Pair<CompletionKind, CompletionSession>, Double>>,
+    fun fromWeights(
+      kindWeights: Collection<Pair<Pair<CompletionKind, CompletionSession>, Double>>,
       primaryBatchSize: Int
     ): CompletionKindsExecutionDecision {
-
       val order: List<Pair<CompletionKind, CompletionSession>> = kindWeights.stream()
         .sorted(Comparator.comparing { (_, weight) -> weight })
         .map { it.component1() }
@@ -21,6 +21,15 @@ class CompletionKindsExecutionDecision(val primaryBatch: List<Pair<CompletionKin
       return CompletionKindsExecutionDecision(
         order.subList(0, primaryBatchSize),
         order.subList(primaryBatchSize, order.size)
+      )
+    }
+
+    fun keepGivenOrder(
+      kinds: Collection<Pair<CompletionKind, CompletionSession>>
+    ): CompletionKindsExecutionDecision {
+      return CompletionKindsExecutionDecision(
+        kinds.toList(),
+        emptyList()
       )
     }
   }

@@ -10,6 +10,7 @@ import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionProgressIndicator
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.Lookup
@@ -35,7 +36,10 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.TestModeFlags
+import com.intellij.util.concurrency.Semaphore
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class CompletionInvokerImpl(private val project: Project,
                             private val language: Language,
@@ -298,7 +302,7 @@ class CompletionInvokerImpl(private val project: Project,
     val handlerFactory = CodeCompletionHandlerFactory.findCompletionHandlerFactory(project, language)
     val handler = handlerFactory?.createHandler(completionType, expectedText, prefix) ?: object : CodeCompletionHandlerBase(completionType,
                                                                                                                             false, false,
-                                                                                                                            true) {
+                                                                                                                            false) {
       // Guarantees synchronous execution
       override fun isTestingCompletionQualityMode() = true
       override fun lookupItemSelected(indicator: CompletionProgressIndicator?,
@@ -309,7 +313,16 @@ class CompletionInvokerImpl(private val project: Project,
       }
     }
     try {
-      handler.invokeCompletion(project, editor)
+      val latch = CountDownLatch(1)
+      handler.invokeCompletionIndicatingFinish(project, editor) {
+        println("Completion finished!")
+        latch.countDown()
+      }
+      val waitTime = 100_000;
+      println("Waiting for ${waitTime}ms")
+      if (!latch.await(waitTime.toLong(), TimeUnit.MILLISECONDS)) {
+        LOG.info("Completion took too long")
+      }
     }
     catch (e: AssertionError) {
       LOG.warn("Completion invocation ended with error", e)

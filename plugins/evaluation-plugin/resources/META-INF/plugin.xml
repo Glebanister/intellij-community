@@ -21,6 +21,10 @@
     <registryKey key="evaluation.plugin.disable.sdk.check" defaultValue="false"
                  description="Disables check that project sdk configured properly" restartRequired="false"/>
     <completion.ml.featuresOverride language="" implementationClass="com.intellij.cce.interpreter.DisableUserDependentFeatures"/>
+
+    <completion.kind.executor language="ALL"
+                              id="CompletionKindsImmediateExecutor"
+                              implementationClass="com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor"/>
   </extensions>
 
   <extensionPoints>

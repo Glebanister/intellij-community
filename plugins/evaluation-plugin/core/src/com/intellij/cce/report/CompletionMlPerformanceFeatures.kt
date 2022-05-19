@@ -176,8 +176,7 @@ data class CompletionMlPerformanceDataset(
       rawFeatures["ml_ctx_common_lines_in_document"]!!.toDouble()
     )
     processedFeatures["indent_level"] = rawFeatures["ml_ctx_common_indent_level"]!!.toDouble()
-    val caseSensitivityKey = "ml_ctx_common_case_sensitivity"
-    processedFeatures.putAll(computeCaseSensitivity(rawFeatures[caseSensitivityKey]!!))
+    processedFeatures.putAll(computeCaseSensitivity(rawFeatures["ml_ctx_common_case_sensitivity"]!!))
 
     for (parentN in 1..PSI_LEVELS_TO_REMEMBER) {
       processedFeatures.putAll(computePsiParent(rawFeatures["ml_ctx_common_parent_$parentN"], parentN))

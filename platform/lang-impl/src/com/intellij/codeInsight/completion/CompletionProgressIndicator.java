@@ -7,10 +7,7 @@ import com.intellij.codeInsight.CodeInsightSettings;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl;
 import com.intellij.codeInsight.completion.impl.CompletionSorterImpl;
-import com.intellij.codeInsight.completion.kind.AfterFirstKindShowingExecutor;
-import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
-import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions;
-import com.intellij.codeInsight.completion.kind.IdealKindsExecutor;
+import com.intellij.codeInsight.completion.kind.*;
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler;
 import com.intellij.codeInsight.hint.EditorHintListener;
 import com.intellij.codeInsight.hint.HintManager;
@@ -133,10 +130,11 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   private final Object myLock = ObjectUtils.sentinel("CompletionProgressIndicator");
 
   private final EmptyCompletionNotifier myEmptyCompletionNotifier;
+  private final Runnable myIndicateFinish;
 
   CompletionProgressIndicator(Editor editor, @NotNull Caret caret, int invocationCount,
                               CodeCompletionHandlerBase handler, @NotNull OffsetMap offsetMap, @NotNull OffsetsInFile hostOffsets,
-                              boolean hasModifiers, @NotNull LookupImpl lookup) {
+                              boolean hasModifiers, @NotNull LookupImpl lookup, Runnable indicateFinish) {
     myEditor = editor;
     myCaret = caret;
     myHandler = handler;
@@ -177,6 +175,8 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     if (hasModifiers && !ApplicationManager.getApplication().isUnitTestMode()) {
       trackModifiers();
     }
+
+    myIndicateFinish = indicateFinish;
   }
 
   @Override
@@ -863,12 +863,14 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   }
 
   void runContributors(CompletionInitializationContext initContext) {
+    System.out.println("runContributors");
     CompletionParameters parameters = Objects.requireNonNull(myParameters);
     myThreading.startThread(ProgressWrapper.wrap(this), () -> AsyncCompletion.tryReadOrCancel(this, () -> scheduleAdvertising(parameters)));
     WeighingDelegate weigher = myThreading.delegateWeighing(this);
 
     try {
       calculateItems(initContext, weigher, parameters);
+      myIndicateFinish.run();
     }
     catch (ProcessCanceledException ignore) {
       cancel(); // some contributor may just throw PCE; if indicator is not canceled everything will hang
@@ -880,6 +882,7 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   }
 
   private void calculateItems(CompletionInitializationContext initContext, WeighingDelegate weigher, CompletionParameters parameters) {
+    System.out.println("calculateItems");
     DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(() -> {
       duringCompletion(initContext, parameters);
       ProgressManager.checkCanceled();
@@ -924,8 +927,9 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       //);
 
       // CHANGE IT
-      completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
-
+      completionService.setCompletionKindsExecutor(CompletionKindsExecutor.getInstance());
+      //completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
+      System.out.println("run performCompletion");
       completionService.performCompletion(parameters, weigher);
     });
     ProgressManager.checkCanceled();

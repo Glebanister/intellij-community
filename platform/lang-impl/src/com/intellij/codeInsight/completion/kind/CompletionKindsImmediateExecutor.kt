@@ -1,20 +1,18 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.completion.kind
 
+import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.codeInsight.completion.kind.state.*
 import java.util.function.Supplier
 
 class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
-  //private val allExecutedNames: MutableSet<String> = mutableSetOf()
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
-    //if (kind.name in allExecutedNames) return
     if (kind.isApplicable) kind.fillKindVariantsOnce(session, false)
-    //allExecutedNames.add(kind.name)
   }
 
-  override fun executeAll() {}
+  override fun executeAll(parameters: CompletionParameters) {}
 
   override fun <T> wrapNotNullSupplier(supplier: Supplier<T>) = ImmediatelyGettingSupplier { supplier.get() }
 

@@ -52,17 +52,19 @@ import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.psi.stubs.StubTextInconsistencyException;
 import com.intellij.psi.util.PsiUtilBase;
 import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.indexing.DumbModeAccessType;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 @SuppressWarnings("deprecation")
 public class CodeCompletionHandlerBase {
@@ -137,6 +139,11 @@ public class CodeCompletionHandlerBase {
     }
   }
 
+  public final void invokeCompletionIndicatingFinish(final Project project, final Editor editor, Runnable indicateFinish) {
+    clearCaretMarkers(editor);
+    invokeCompletion(project, editor, 1, false, editor.getCaretModel().getPrimaryCaret(), indicateFinish);
+  }
+
   public final void invokeCompletion(final Project project, final Editor editor) {
     invokeCompletion(project, editor, 1);
   }
@@ -147,10 +154,10 @@ public class CodeCompletionHandlerBase {
 
   public final void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers) {
     clearCaretMarkers(editor);
-    invokeCompletion(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret());
+    invokeCompletion(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret(), () -> {});
   }
 
-  private void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret) {
+  private void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret, Runnable indicateFinish) {
     markCaretAsProcessed(caret);
 
     if (invokedExplicitly) {
@@ -202,7 +209,7 @@ public class CodeCompletionHandlerBase {
         context = new CompletionInitializationContextImpl(editor, caret, psiFile, completionType, invocationCount);
       }
 
-      doComplete(context, hasModifiers, hasValidContext, startingTime);
+      doComplete(context, hasModifiers, hasValidContext, startingTime, indicateFinish);
     };
     try {
       if (autopopup) {
@@ -252,7 +259,9 @@ public class CodeCompletionHandlerBase {
   private void doComplete(CompletionInitializationContextImpl initContext,
                           boolean hasModifiers,
                           boolean isValidContext,
-                          long startingTime) {
+                          long startingTime,
+                          Runnable indicateFinish) {
+    System.out.println("CodeCompletionHandlerBase.doComplete");
     final Editor editor = initContext.getEditor();
     CompletionAssertions.checkEditorValid(editor);
 
@@ -273,7 +282,7 @@ public class CodeCompletionHandlerBase {
                                                                             initContext.getInvocationCount(), this,
                                                                             initContext.getOffsetMap(),
                                                                             initContext.getHostOffsets(),
-                                                                            hasModifiers, lookup);
+                                                                            hasModifiers, lookup, indicateFinish);
 
 
     if (synchronous && isValidContext) {
@@ -292,6 +301,7 @@ public class CodeCompletionHandlerBase {
   private void scheduleContributorsAfterAsyncCommit(CompletionInitializationContextImpl initContext,
                                                     CompletionProgressIndicator indicator,
                                                     boolean hasModifiers) {
+    System.out.println("CodeCompletionHandlerBase.scheduleContributorsAfterAsyncCommit");
     CompletionPhase phase;
     if (synchronous) {
       phase = new CompletionPhase.BgCalculation(indicator);
@@ -316,12 +326,14 @@ public class CodeCompletionHandlerBase {
         startContributorThread(initContext, indicator, hostCopyOffsets, hasModifiers);
       })
       .submit(AppExecutorUtil.getAppExecutorService());
+    System.out.println("CodeCompletionHandlerBase.scheduleContributorsAfterAsyncCommit: submitted ReadAction");
   }
 
   private void trySynchronousCompletion(CompletionInitializationContextImpl initContext,
                                         boolean hasModifiers,
                                         long startingTime,
                                         CompletionProgressIndicator indicator, OffsetsInFile hostCopyOffsets) {
+    System.out.println("CodeCompletionHandlerBase.trySynchronousCompletion");
     CompletionServiceImpl.setCompletionPhase(new CompletionPhase.Synchronous(indicator));
 
     Future<?> future = startContributorThread(initContext, indicator, hostCopyOffsets, hasModifiers);
@@ -353,6 +365,7 @@ public class CodeCompletionHandlerBase {
                                            CompletionProgressIndicator indicator,
                                            OffsetsInFile hostCopyOffsets,
                                            boolean hasModifiers) {
+    System.out.println("CodeCompletionHandlerBase.startContributorThread");
     if (!hostCopyOffsets.getFile().isValid()) {
       completionFinished(indicator, hasModifiers);
       return null;
@@ -452,7 +465,7 @@ public class CodeCompletionHandlerBase {
 
       Caret nextCaret = getNextCaretToProcess(indicator.getEditor());
       if (nextCaret != null) {
-        invokeCompletion(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret);
+        invokeCompletion(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret, () -> {});
       }
       else {
         indicator.handleEmptyLookup(true);
@@ -849,7 +862,7 @@ public class CodeCompletionHandlerBase {
     return ProgressIndicatorUtils.withTimeout(maxDurationMillis, task);
   }
 
-  private static int calcSyncTimeOut(long startTime) {
+  public static int calcSyncTimeOut(long startTime) {
     return (int)Math.max(300, ourAutoInsertItemTimeout - (System.currentTimeMillis() - startTime));
   }
 

@@ -151,6 +151,12 @@ public final class CompletionServiceImpl extends BaseCompletionService {
       @NotNull final Iterable<Pair<? extends Collection<? extends LookupElement>, @NotNull CompletionKind>> elementsWithKinds,
       @NotNull final Iterable<? extends LookupElement> elementsWithoutKind
     ) {
+      for (var elem : elementsWithKinds) {
+        var kind = elem.second;
+        for (var e : elem.first) {
+          System.out.printf(" - %s (%s)\n", e.getLookupString(), kind.getName());
+        }
+      }
       CompletionThreadingBase.withBatchUpdate(() -> super.addAllElementsWithKinds(elementsWithKinds, elementsWithoutKind), myParameters.getProcess());
     }
 
