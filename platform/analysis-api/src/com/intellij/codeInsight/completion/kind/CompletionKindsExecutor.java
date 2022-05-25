@@ -8,6 +8,7 @@ import com.intellij.codeInsight.completion.CompletionSession;
 import com.intellij.codeInsight.completion.kind.state.Flag;
 import com.intellij.codeInsight.completion.kind.state.LazyNullableValue;
 import com.intellij.codeInsight.completion.kind.state.LazyValue;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -19,20 +20,25 @@ import java.util.stream.Collectors;
 public interface CompletionKindsExecutor {
   ExtensionPointName<CompletionKindsExecutorEP> EP = new ExtensionPointName<>("com.intellij.completion.kind.executor");
 
-  static CompletionKindsExecutor getInstance() {
+  static CompletionKindsExecutor createInstance() {
     int size = EP.getExtensionList().size();
     if (size == 0) {
       throw new IllegalStateException("No CompletionKindsExecutor was defined");
     }
     if (size > 1) {
-      throw new IllegalStateException("Found more than one CompletionKindsExecutor:" + EP.getExtensionList().stream().map((e) -> {
-          return e.getInstance().getClass().getName();
-        })
-        .collect(Collectors.joining(", "))
+      throw new IllegalStateException("Found more than one CompletionKindsExecutor:"
+                                      + EP.getExtensionList()
+                                        .stream()
+                                        .map((e) -> {
+                                          return e.getInstance().getClass().getName();
+                                        })
+                                        .collect(Collectors.joining(", "))
       );
     }
-    return EP.getExtensionList().get(0).getInstance();
+    return EP.getExtensionList().get(0).createInstance(ApplicationManager.getApplication());
   }
+
+  void whenLookupReady(@NotNull Runnable doShowLookup);
 
   void addKind(@NotNull CompletionKind kind, @NotNull CompletionSession session);
 

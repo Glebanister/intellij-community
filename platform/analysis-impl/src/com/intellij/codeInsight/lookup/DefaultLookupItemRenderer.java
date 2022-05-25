@@ -47,9 +47,9 @@ public class DefaultLookupItemRenderer extends LookupElementRenderer<LookupItem<
     presentation.setTailText(getText2(item), item.getAttribute(LookupItem.TAIL_TEXT_SMALL_ATTR) != null);
     presentation.setTypeText(getText3(item), null);
 
-    Boolean highlight = item.getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
-    if (highlight != null && highlight.equals(Boolean.TRUE)) {
-      presentation.setHighlightColor(JBColor.MAGENTA);
+    JBColor highlight = item.getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlight != null) {
+      presentation.setHighlightColor(highlight);
     }
   }
 

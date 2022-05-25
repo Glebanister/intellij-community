@@ -10,6 +10,7 @@ import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.Pair;
 import com.intellij.patterns.ElementPattern;
 import com.intellij.patterns.StandardPatterns;
+import com.intellij.ui.JBColor;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -77,9 +78,9 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     setNullableCurrentCompletionKind(completionKind);
   }
 
-  public abstract void setHighlightingResults(boolean doHighlight);
+  public abstract void setHighlightingResults(@Nullable JBColor color);
 
-  public abstract boolean isResultHighlighted();
+  public abstract @Nullable JBColor isResultHighlighted();
 
   protected abstract @Nullable CompletionKind getCurrentCompletionKind();
 

@@ -2,28 +2,37 @@
 package com.intellij.codeInsight.completion.kind
 
 import com.intellij.codeInsight.completion.CompletionContributor
-import com.intellij.codeInsight.completion.CompletionContributorWithKinds
 import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionSession
+import com.intellij.codeInsight.completion.CompletionThreadingBase
+import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.FilePosition
+import com.intellij.codeInsight.completion.kind.state.ConstFlag
+import com.intellij.codeInsight.completion.kind.state.LatestValueTakingFlag
+import com.intellij.codeInsight.completion.kind.state.LazyNullableValue
+import com.intellij.codeInsight.completion.kind.state.LazyValue
 import com.intellij.openapi.components.service
-import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.*
-import com.intellij.codeInsight.completion.kind.state.*
+import com.intellij.ui.JBColor
 import java.nio.file.Path
 import java.util.function.Supplier
 
 class IdealKindsExecutor(
   private val filePath: Path,
   private val filePosition: FilePosition,
-  private val showLookup: Runnable
+  private var showLookup: Runnable
 ) : CompletionKindsExecutor {
   private val idealSuggestions = service<IdealCompletionSuggestionsService>()
   private var executed: Boolean = false
+
+  override fun whenLookupReady(doShowLookup: Runnable) {
+    showLookup = doShowLookup
+  }
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
     if (executed) return
     idealSuggestions.getIdealSuggestion(filePath, filePosition)?.completionKind?.let {
       if (it == kind.name) {
-        kind.fillKindVariantsOnce(session, true)
+        CompletionThreadingBase.setAwaitForBatchFlushFinishOnce()
+        kind.fillKindVariantsOnce(session, JBColor.PINK)
         session.flushBatchItems()
         showLookup.run()
         executed = true
@@ -51,16 +60,6 @@ class IdealKindsExecutor(
 
   override fun makeFlagAnd(init: Boolean) = LatestValueTakingFlag(init)
 
-  override fun reorderContirbutors(contributorsUnordered: MutableList<CompletionContributor>): List<CompletionContributor> {
-    val withKindsContributors: List<CompletionContributor> = contributorsUnordered
-      .filterIsInstance<CompletionContributorWithKinds>()
-      .map { c: CompletionContributor? -> c as CompletionContributorWithKinds }
-
-    val otherContributors: List<CompletionContributor> = contributorsUnordered
-      .filter { c: CompletionContributor? -> c !is CompletionContributorWithKinds }
-
-    //println("with kinds: ${withKindsContributors.size}, without: ${otherContributors.size}")
-
-    return withKindsContributors + otherContributors
-  }
+  override fun reorderContirbutors(contributorsUnordered: MutableList<CompletionContributor>) =
+    reorderContirbutorsWithKindsFirst(contributorsUnordered)
 }

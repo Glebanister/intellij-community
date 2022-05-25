@@ -30,7 +30,7 @@ import java.util.Set;
  */
 public abstract class LookupElement extends UserDataHolderBase {
   public static final LookupElement[] EMPTY_ARRAY = new LookupElement[0];
-  public static final Key<Boolean> LOOKUP_ELEMENT_HIGHLIGHT = Key.create("lookup element highlight");
+  public static final Key<JBColor> LOOKUP_ELEMENT_HIGHLIGHT = Key.create("lookup element highlight");
   public static final Key<Instant> LOOKUP_ELEMENT_SHOW_TIME = Key.create("lookup element lookup add time");
 
   /**
@@ -138,9 +138,9 @@ public abstract class LookupElement extends UserDataHolderBase {
    */
   public void renderElement(LookupElementPresentation presentation) {
     presentation.setItemText(getLookupString());
-    Boolean highlighted = getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
-    if (highlighted != null && highlighted.equals(Boolean.TRUE)) {
-      presentation.setHighlightColor(JBColor.MAGENTA);
+    JBColor highlighted = getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlighted != null) {
+      presentation.setHighlightColor(highlighted);
     }
   }
 

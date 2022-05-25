@@ -108,6 +108,12 @@ public class CodeCompletionHandlerBase {
                                    boolean invokedExplicitly,
                                    boolean autopopup,
                                    boolean synchronous) {
+    //if (!synchronous) {
+    //  System.out.println("CodeCompletionHandlerBase.CodeCompletionHandlerBase");
+    //  System.out.println(
+    //    Arrays.stream(Thread.currentThread().getStackTrace()).map(Object::toString).collect(Collectors.joining("\n\t- "))
+    //  );
+    //}
     this.completionType = completionType;
     this.invokedExplicitly = invokedExplicitly;
     this.autopopup = autopopup;
@@ -261,7 +267,6 @@ public class CodeCompletionHandlerBase {
                           boolean isValidContext,
                           long startingTime,
                           Runnable indicateFinish) {
-    System.out.println("CodeCompletionHandlerBase.doComplete");
     final Editor editor = initContext.getEditor();
     CompletionAssertions.checkEditorValid(editor);
 
@@ -301,7 +306,6 @@ public class CodeCompletionHandlerBase {
   private void scheduleContributorsAfterAsyncCommit(CompletionInitializationContextImpl initContext,
                                                     CompletionProgressIndicator indicator,
                                                     boolean hasModifiers) {
-    System.out.println("CodeCompletionHandlerBase.scheduleContributorsAfterAsyncCommit");
     CompletionPhase phase;
     if (synchronous) {
       phase = new CompletionPhase.BgCalculation(indicator);
@@ -326,14 +330,12 @@ public class CodeCompletionHandlerBase {
         startContributorThread(initContext, indicator, hostCopyOffsets, hasModifiers);
       })
       .submit(AppExecutorUtil.getAppExecutorService());
-    System.out.println("CodeCompletionHandlerBase.scheduleContributorsAfterAsyncCommit: submitted ReadAction");
   }
 
   private void trySynchronousCompletion(CompletionInitializationContextImpl initContext,
                                         boolean hasModifiers,
                                         long startingTime,
                                         CompletionProgressIndicator indicator, OffsetsInFile hostCopyOffsets) {
-    System.out.println("CodeCompletionHandlerBase.trySynchronousCompletion");
     CompletionServiceImpl.setCompletionPhase(new CompletionPhase.Synchronous(indicator));
 
     Future<?> future = startContributorThread(initContext, indicator, hostCopyOffsets, hasModifiers);
@@ -365,7 +367,6 @@ public class CodeCompletionHandlerBase {
                                            CompletionProgressIndicator indicator,
                                            OffsetsInFile hostCopyOffsets,
                                            boolean hasModifiers) {
-    System.out.println("CodeCompletionHandlerBase.startContributorThread");
     if (!hostCopyOffsets.getFile().isValid()) {
       completionFinished(indicator, hasModifiers);
       return null;

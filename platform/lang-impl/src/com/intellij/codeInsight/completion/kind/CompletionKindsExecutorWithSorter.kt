@@ -4,10 +4,12 @@ package com.intellij.codeInsight.completion.kind
 import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.codeInsight.completion.kind.state.*
+import com.intellij.ui.JBColor
+import java.lang.IllegalStateException
 import java.util.function.Supplier
 
 abstract class CompletionKindsExecutorWithSorter(
-  private val doShowLookup: Runnable,
+  private var doShowLookup: Runnable? = null,
   private val myCompletionKinds: MutableList<Pair<CompletionKind, CompletionSession>> = ArrayList()
 ) : CompletionKindsExecutor {
 
@@ -15,14 +17,27 @@ abstract class CompletionKindsExecutorWithSorter(
     myCompletionKinds.add(kind to session)
   }
 
+  override fun whenLookupReady(doShowLookup: Runnable) {
+    this.doShowLookup = doShowLookup
+  }
+
   abstract val sorter: CompletionKindsRelevanceSorter
 
   override fun executeAll(parameters: CompletionParameters) {
     val executionOrder = sorter.sort(myCompletionKinds, parameters)
 
-    executionOrder.primaryBatch.forEach { it.first.fillKindVariantsOnce(it.second, true) }
-    doShowLookup.run()
-    executionOrder.secondaryBatch.filter { it.first.isApplicable }.forEach { it.first.fillKindVariantsOnce(it.second, false) }
+    val sessions = mutableSetOf<CompletionSession>()
+    executionOrder.primaryBatch.filter { it.first.isApplicable }.forEach { (kind, session) ->
+      kind.fillKindVariantsOnce(session, JBColor.GREEN)
+      sessions.add(session)
+    }
+
+    sessions.forEach { it.flushBatchItems() }
+    doShowLookup?.run() ?: throw IllegalStateException("Show lookup activity is not set")
+    executionOrder.secondaryBatch.filter { it.first.isApplicable }.forEach {
+      it.first.fillKindVariantsOnce(it.second, JBColor.YELLOW)
+      it.second.flushBatchItems()
+    }
   }
 
   override fun <T> wrapNotNullSupplier(supplier: Supplier<T>) = LazyValue(supplier)

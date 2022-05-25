@@ -9,13 +9,15 @@ import kotlin.streams.toList
 
 class CompletionKindsExecutionDecision(val primaryBatch: List<Pair<CompletionKind, CompletionSession>>,
                                        val secondaryBatch: List<Pair<CompletionKind, CompletionSession>>) {
+  fun isEmpty() = primaryBatch.isEmpty() && secondaryBatch.isEmpty()
+
   companion object {
     fun fromWeights(
       kindWeights: Collection<Pair<Pair<CompletionKind, CompletionSession>, Double>>,
       primaryBatchSize: Int
     ): CompletionKindsExecutionDecision {
       val order: List<Pair<CompletionKind, CompletionSession>> = kindWeights.stream()
-        .sorted(Comparator.comparing { (_, weight) -> weight })
+        .sorted(Comparator.comparing { (_, weight) -> -weight })
         .map { it.component1() }
         .toList();
       return CompletionKindsExecutionDecision(

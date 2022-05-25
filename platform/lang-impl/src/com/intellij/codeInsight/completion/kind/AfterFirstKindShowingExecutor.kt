@@ -5,6 +5,7 @@ import com.intellij.codeInsight.completion.CompletionContributor
 import com.intellij.codeInsight.completion.CompletionContributorWithKinds
 import com.intellij.codeInsight.completion.CompletionSession
 import com.intellij.codeInsight.completion.kind.state.*
+import com.intellij.ui.JBColor
 import java.util.function.Supplier
 import kotlin.system.measureTimeMillis
 
@@ -14,19 +15,18 @@ data class CompletionKindContext(
 
   )
 
-class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : LazyKindsExecutor() {
+class AfterFirstKindShowingExecutor(var myDoShowLookup: Runnable) : LazyKindsExecutor() {
   val myOtherKinds = ArrayList<Pair<CompletionKind, CompletionSession>>()
   private fun executeKind(completionKind: CompletionKind, session: CompletionSession, highlight: Boolean) {
-    println("Check condition of ${completionKind.name}")
     if (completionKind.isApplicable) {
       val execTime = measureTimeMillis {
-        completionKind.fillKindVariantsOnce(session, highlight)
+        completionKind.fillKindVariantsOnce(session, if (highlight) JBColor.GREEN else null)
       }
-      println("Executed ${completionKind.name}: $execTime ms")
     }
-    else {
-      println("Not applicable: ${completionKind.name}")
-    }
+  }
+
+  override fun whenLookupReady(doShowLookup: Runnable) {
+    myDoShowLookup = doShowLookup
   }
 
   override fun addKind(kind: CompletionKind,
@@ -84,14 +84,6 @@ class AfterFirstKindShowingExecutor(val myDoShowLookup: Runnable) : LazyKindsExe
     return LatestValueTakingFlag(init);
   }
 
-  override fun reorderContirbutors(contributorsUnordered: MutableList<CompletionContributor>): List<CompletionContributor> {
-    val withKindsContributors: List<CompletionContributor> = contributorsUnordered
-      .filterIsInstance<CompletionContributorWithKinds>()
-      .map { c: CompletionContributor? -> c as CompletionContributorWithKinds }
-
-    val otherContributors: List<CompletionContributor> = contributorsUnordered
-      .filter { c: CompletionContributor? -> c !is CompletionContributorWithKinds }
-
-    return withKindsContributors + otherContributors
-  }
+  override fun reorderContirbutors(contributorsUnordered: MutableList<CompletionContributor>) =
+    reorderContirbutorsWithKindsFirst(contributorsUnordered)
 }

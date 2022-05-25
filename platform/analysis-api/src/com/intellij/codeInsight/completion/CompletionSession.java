@@ -20,6 +20,7 @@ import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.util.Pair;
 import com.intellij.patterns.ElementPattern;
+import com.intellij.ui.JBColor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,9 +38,7 @@ public class CompletionSession {
   }
 
   public void registerBatchItems(Collection<? extends LookupElement> elements) {
-    if (myResult.isResultHighlighted()) {
-      elements.forEach(elem -> elem.putUserData(LOOKUP_ELEMENT_HIGHLIGHT, true));
-    }
+    elements.forEach(elem -> elem.putUserData(LOOKUP_ELEMENT_HIGHLIGHT, myResult.isResultHighlighted()));
     var currentCompletionKind = myResult.getCurrentCompletionKind();
     if (currentCompletionKind == null) {
       myBatchWithoutKind.addAll(elements);
@@ -94,12 +93,12 @@ public class CompletionSession {
     }
 
     @Override
-    public void setHighlightingResults(boolean doHightlight) {
-      originalResultSet.setHighlightingResults(doHightlight);
+    public void setHighlightingResults(@Nullable JBColor color) {
+      originalResultSet.setHighlightingResults(color);
     }
 
     @Override
-    public boolean isResultHighlighted() {
+    public @Nullable JBColor isResultHighlighted() {
       return originalResultSet.isResultHighlighted();
     }
 

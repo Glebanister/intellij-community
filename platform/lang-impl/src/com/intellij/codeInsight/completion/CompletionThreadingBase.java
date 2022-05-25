@@ -42,6 +42,7 @@ public abstract class CompletionThreadingBase implements CompletionThreading {
       CompletionThreadingBase threading = Objects.requireNonNull(currentIndicator.getCompletionThreading());
       Future<?> flushResult = threading.submitFlushBatchResult(currentIndicator);
       if (awaitForBatchFlushFinish) {
+        awaitForBatchFlushFinish = false;
         try {
           flushResult.get();
         }
@@ -55,8 +56,8 @@ public abstract class CompletionThreadingBase implements CompletionThreading {
     }
   }
 
-  public static void setAwaitForBatchFlushFinish(boolean value) {
-    awaitForBatchFlushFinish = value;
+  public static void setAwaitForBatchFlushFinishOnce() {
+    awaitForBatchFlushFinish = true;
   }
 
   protected abstract Future<?> submitFlushBatchResult(CompletionProgressIndicator indicator);

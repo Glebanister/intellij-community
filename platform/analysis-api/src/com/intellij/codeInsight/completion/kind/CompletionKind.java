@@ -4,6 +4,7 @@ package com.intellij.codeInsight.completion.kind;
 import com.intellij.codeInsight.completion.CompletionSession;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.util.Key;
+import com.intellij.ui.JBColor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -37,12 +38,12 @@ public abstract class CompletionKind {
     }
   }
 
-  public void fillKindVariantsOnce(CompletionSession session, boolean doHighlight) {
+  public void fillKindVariantsOnce(CompletionSession session, @Nullable JBColor highlightColor) {
     if (wasExecuted()) {
       return;
     }
     session.getResult().setCurrentCompletionKind(this);
-    session.getResult().setHighlightingResults(doHighlight);
+    session.getResult().setHighlightingResults(highlightColor);
     Instant timeStart = Instant.now();
     boolean finishedWithException = false;
     try {
@@ -57,7 +58,7 @@ public abstract class CompletionKind {
                                           Duration.between(timeStart, Instant.now()),
                                           timeStart);
       session.getResult().resetCurrentCompletionKind();
-      session.getResult().setHighlightingResults(false);
+      session.getResult().setHighlightingResults(null);
     }
   }
 

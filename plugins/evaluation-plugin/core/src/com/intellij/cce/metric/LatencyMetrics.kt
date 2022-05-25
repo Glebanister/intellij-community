@@ -115,3 +115,12 @@ class MeanRestartLatency : LatencyMetric(
   override val valueType = MetricValueType.DOUBLE
 }
 
+class GoodHasKind : LatencyMetric(
+  { it.correctElementInfo?.hasKind?.let { flag -> if (flag) 1 else 0 } },
+  "GoodHasKind"
+) {
+  override fun compute(sample: Sample): Double = sample.mean()
+
+  override val valueType = MetricValueType.DOUBLE
+}
+

@@ -863,7 +863,6 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   }
 
   void runContributors(CompletionInitializationContext initContext) {
-    System.out.println("runContributors");
     CompletionParameters parameters = Objects.requireNonNull(myParameters);
     myThreading.startThread(ProgressWrapper.wrap(this), () -> AsyncCompletion.tryReadOrCancel(this, () -> scheduleAdvertising(parameters)));
     WeighingDelegate weigher = myThreading.delegateWeighing(this);
@@ -882,54 +881,47 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   }
 
   private void calculateItems(CompletionInitializationContext initContext, WeighingDelegate weigher, CompletionParameters parameters) {
-    System.out.println("calculateItems");
     DumbModeAccessType.RELIABLE_DATA_ONLY.ignoreDumbMode(() -> {
       duringCompletion(initContext, parameters);
       ProgressManager.checkCanceled();
 
       CompletionService completionService = CompletionService.getCompletionService();
 
-      Path currentFileSystemPath = Path.of(initContext.getFile().getName());
-      PsiFileSystemItem fileParent = initContext.getFile().getParent();
-      while (fileParent != null) {
-        currentFileSystemPath = Path.of(fileParent.getName()).resolve(currentFileSystemPath);
-        fileParent = fileParent.getParent();
-      }
+      //Path currentFileSystemPath = Path.of(initContext.getFile().getName());
+      //PsiFileSystemItem fileParent = initContext.getFile().getParent();
+      //while (fileParent != null) {
+      //  currentFileSystemPath = Path.of(fileParent.getName()).resolve(currentFileSystemPath);
+      //  fileParent = fileParent.getParent();
+      //}
 
-      var currentFilePath = Path.of(Objects.requireNonNull(initContext.getProject().getBasePath()))
-        .relativize(currentFileSystemPath);
-      var completionPosition = myParameters.getPosition().getTextOffset();
-
-      //CompletionThreadingBase.setAwaitForBatchFlushFinish(true);
+      //var currentFilePath = Path.of(Objects.requireNonNull(initContext.getProject().getBasePath()))
+      //  .relativize(currentFileSystemPath);
+      //var completionPosition = myParameters.getPosition().getTextOffset();
+      //
       //var idealKindsExecutor = new IdealKindsExecutor(
       //  currentFilePath,
       //  new IdealJavaFileCompletionSuggestions.FilePosition(completionPosition),
       //  () -> {
       //    // CHANGE IT
-      //    ApplicationManager.getApplication().invokeAndWait(() -> {
+      //    ApplicationManager.getApplication().invokeLater(() -> {
       //      showLookup();
-      //      CompletionThreadingBase.setAwaitForBatchFlushFinish(false);
       //    });
-      //
-      //    //ApplicationManager.getApplication().invokeLater(() -> {
-      //    //  showLookup();
-      //    //  CompletionThreadingBase.setAwaitForBatchFlushFinish(false);
-      //    //});
       //  }
       //);
       //
-      //boolean hasIdealSuggestion = idealKindsExecutor.hasIdealSuggestion();
+      ////boolean hasIdealSuggestion = idealKindsExecutor.hasIdealSuggestion();
       //
-      //completionService.setCompletionKindsExecutor(
-      //  hasIdealSuggestion
-      //  ? idealKindsExecutor
-      //  : new CompletionKindsImmediateExecutor()
-      //);
+      //completionService.setCompletionKindsExecutor(idealKindsExecutor);
 
       // CHANGE IT
-      completionService.setCompletionKindsExecutor(CompletionKindsExecutor.getInstance());
-      //completionService.setCompletionKindsExecutor(new CompletionKindsImmediateExecutor());
-      System.out.println("run performCompletion");
+      CompletionKindsExecutor executor = CompletionKindsExecutor.createInstance();
+      System.out.printf("Current CompletionKindsExecutor: %s\n", executor.getClass().getSimpleName());
+      executor.whenLookupReady(() -> {
+        ApplicationManager.getApplication().invokeLater(() -> {
+          showLookup();
+        });
+      });
+      completionService.setCompletionKindsExecutor(executor);
       completionService.performCompletion(parameters, weigher);
     });
     ProgressManager.checkCanceled();

@@ -10,7 +10,6 @@ import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionProgressIndicator
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND
-import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
 import com.intellij.codeInsight.lookup.*
 import com.intellij.codeInsight.lookup.Lookup
@@ -18,6 +17,8 @@ import com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_SHOW_TIME
 import com.intellij.codeInsight.lookup.impl.LookupImpl
 import com.intellij.completion.ml.actions.MLCompletionFeaturesUtil
 import com.intellij.completion.ml.util.prefix
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.impl.UndoManagerImpl
 import com.intellij.openapi.diagnostic.Logger
@@ -36,7 +37,7 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.TestModeFlags
-import com.intellij.util.concurrency.Semaphore
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -133,12 +134,15 @@ class CompletionInvokerImpl(private val project: Project,
           ?.minus(start)
       else null
 
+      val correctHasKind = correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND) != null
+
       CorrectElementInfo(
         toResultAddTime,
         toResultAddTime?.let { it < lookupShownLatency!! },
         firstAppearanceTime?.let { it < lookupShownLatency!! },
         firstAppearanceTime,
-        correctKindStartTime
+        correctKindStartTime,
+        correctHasKind
       )
     }
     else null
@@ -302,7 +306,7 @@ class CompletionInvokerImpl(private val project: Project,
     val handlerFactory = CodeCompletionHandlerFactory.findCompletionHandlerFactory(project, language)
     val handler = handlerFactory?.createHandler(completionType, expectedText, prefix) ?: object : CodeCompletionHandlerBase(completionType,
                                                                                                                             false, false,
-                                                                                                                            false) {
+                                                                                                                            true) {
       // Guarantees synchronous execution
       override fun isTestingCompletionQualityMode() = true
       override fun lookupItemSelected(indicator: CompletionProgressIndicator?,
@@ -313,16 +317,20 @@ class CompletionInvokerImpl(private val project: Project,
       }
     }
     try {
-      val latch = CountDownLatch(1)
-      handler.invokeCompletionIndicatingFinish(project, editor) {
-        println("Completion finished!")
-        latch.countDown()
-      }
-      val waitTime = 100_000;
-      println("Waiting for ${waitTime}ms")
-      if (!latch.await(waitTime.toLong(), TimeUnit.MILLISECONDS)) {
-        LOG.info("Completion took too long")
-      }
+      handler.invokeCompletion(project, editor)
+      //val ourExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("Completion Preparation", 1)
+      //val latch = CountDownLatch(1)
+      //ReadAction
+      //  .nonBlocking { }
+      //  .finishOnUiThread(ModalityState.current()) {
+      //    handler.invokeCompletionIndicatingFinish(project, editor) {
+      //      //println("Completion finished!")
+      //      latch.countDown()
+      //    }
+      //  }
+      //  .submit(ourExecutor)
+      //println("Waiting for completion to end")
+      //latch.await()
     }
     catch (e: AssertionError) {
       LOG.warn("Completion invocation ended with error", e)

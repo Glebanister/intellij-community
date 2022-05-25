@@ -21,6 +21,7 @@ open class ResourcesModelMetadataReader(protected val metadataHolder: Class<*>, 
 
   private fun resourceContent(fileName: String): String {
     val resource = "$featuresDirectory/$fileName"
+    println("source of ${resource}: ${metadataHolder.classLoader.getResource(resource)}")
     val fileStream = metadataHolder.classLoader.getResourceAsStream(resource)
                      ?: throw InconsistentMetadataException(
                        "Metadata file not found: $resource. Resources holder: ${metadataHolder.name}")

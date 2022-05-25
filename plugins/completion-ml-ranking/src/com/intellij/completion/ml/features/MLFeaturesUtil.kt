@@ -5,6 +5,8 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import com.intellij.codeInsight.completion.ml.MLFeatureValue
 import com.intellij.internal.statistic.utils.getPluginInfo
 import com.intellij.openapi.util.Version
+import com.intellij.psi.codeStyle.NameUtil
+import java.util.*
 
 internal object MLFeaturesUtil {
   fun getRawValue(featureValue: MLFeatureValue): Any {

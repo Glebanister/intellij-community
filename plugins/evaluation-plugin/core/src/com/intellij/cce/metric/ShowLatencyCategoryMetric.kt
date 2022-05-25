@@ -33,6 +33,6 @@ enum class UserExperienceThreshold(public val range: LongRange) {
 }
 
 class UXShowLatencyMetric(threshold: UserExperienceThreshold) : ShowLatencyCategoryMetric(
-  threshold.name,
+  "Session${threshold.name}",
   threshold.range
 )

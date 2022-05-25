@@ -162,9 +162,9 @@ public class BaseCompletionLookupArranger extends LookupArranger implements Comp
   @Override
   public void addElement(LookupElement element, LookupElementPresentation presentation) {
     boolean shouldSkip = shouldSkip(element);
-    Boolean highlight = element.getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
-    if (highlight != null && highlight.equals(Boolean.TRUE)) {
-      presentation.setHighlightColor(JBColor.MAGENTA);
+    JBColor highlight = element.getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlight != null) {
+      presentation.setHighlightColor(highlight);
     }
     presentation.freeze();
     element.putUserData(DEFAULT_PRESENTATION, presentation);

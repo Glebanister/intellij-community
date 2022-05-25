@@ -5,7 +5,8 @@ data class CorrectElementInfo(
   val addedToResultBeforeLookupShown: Boolean?,
   val addedToLookupBeforeLookupShown: Boolean?,
   val firstAppearanceTime: Long?,
-  val kindStartTime: Long?
+  val kindStartTime: Long?,
+  val hasKind: Boolean,
 )
 
 data class Lookup(

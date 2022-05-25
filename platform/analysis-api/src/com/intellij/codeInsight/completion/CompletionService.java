@@ -76,7 +76,6 @@ public abstract class CompletionService {
                                              PrefixMatcher matcher, Consumer<? super CompletionResult> consumer,
                                              CompletionSorter customSorter) {
     CompletionKindsExecutor ckExecutor = getCompletionKindsExecutor();
-    System.out.println("CompletionService.getVariantsFromContributors");
     List<CompletionContributor> contributors = ckExecutor.reorderContirbutors(CompletionContributor.forParameters(parameters));
 
     for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
@@ -92,13 +91,11 @@ public abstract class CompletionService {
         result = result.withRelevanceSorter(customSorter);
       }
 
-      System.out.printf("[+] Completion kinds for %s\n", contributor.getClass().getSimpleName());
       ((CompletionContributorWithKinds)contributor).fillCompletionKinds(
         parameters, result, ckExecutor
       );
     }
 
-    System.out.println("[+] Execute all kinds!");
     ckExecutor.executeAll(parameters);
 
     // CHANGE IT
@@ -118,7 +115,6 @@ public abstract class CompletionService {
       if (customSorter != null) {
         result = result.withRelevanceSorter(customSorter);
       }
-      System.out.printf("[+] Fill complteion variants for %s\n", contributor.getClass().getSimpleName());
       contributor.fillCompletionVariants(parameters, result);
       if (result.isStopped()) {
         return;
@@ -147,7 +143,6 @@ public abstract class CompletionService {
    */
   public void performCompletion(CompletionParameters parameters,
                                 Consumer<? super CompletionResult> consumer) {
-    System.out.println("CompletionService.performCompletion");
     final Set<LookupElement> lookupSet = ContainerUtil.newConcurrentSet();
 
     AtomicBoolean typoTolerant = new AtomicBoolean();

@@ -18,6 +18,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.Weigher;
 import com.intellij.psi.WeighingService;
 import com.intellij.psi.impl.DebugUtil;
+import com.intellij.ui.JBColor;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -121,7 +122,7 @@ public class BaseCompletionService extends CompletionService {
     @Nullable
     protected CompletionKind myCurrentCompletionKind;
     private final AtomicInteger myItemCounter = new AtomicInteger(0);
-    private boolean myHighlight = false;
+    private @Nullable JBColor myHighlight = null;
 
     protected BaseCompletionResultSet(Consumer<? super CompletionResult> consumer, PrefixMatcher prefixMatcher,
                                       CompletionContributor contributor,
@@ -162,12 +163,12 @@ public class BaseCompletionService extends CompletionService {
     }
 
     @Override
-    public void setHighlightingResults(boolean doHighlight) {
-      myHighlight = doHighlight;
+    public void setHighlightingResults(@Nullable JBColor color) {
+      myHighlight = color;
     }
 
     @Override
-    public boolean isResultHighlighted() {
+    public JBColor isResultHighlighted() {
       return myHighlight;
     }
 

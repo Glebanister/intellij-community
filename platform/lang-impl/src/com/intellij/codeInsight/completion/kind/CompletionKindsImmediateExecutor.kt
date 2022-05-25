@@ -7,9 +7,11 @@ import com.intellij.codeInsight.completion.kind.state.*
 import java.util.function.Supplier
 
 class CompletionKindsImmediateExecutor : CompletionKindsExecutor {
+  override fun whenLookupReady(doShowLookup: Runnable) {
+  }
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
-    if (kind.isApplicable) kind.fillKindVariantsOnce(session, false)
+    if (kind.isApplicable) kind.fillKindVariantsOnce(session, null)
   }
 
   override fun executeAll(parameters: CompletionParameters) {}
