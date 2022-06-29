@@ -22,26 +22,32 @@ class IdealJavaFileCompletionSuggestions(
     sessions.forEach { sessionJson ->
       val session = sessionJson.asJsonObject
       val known = session["success"].asBoolean
-      if (!known) return
-      val offset = session["offset"].asInt
-      val expectedText = session["expectedText"].asString
-      val lookups = session["_lookups"].asJsonArray
-      if (lookups.size() != 1)
-        throw IllegalArgumentException("Each session must contain exactly one lookup")
-      val lookup = lookups[0].asJsonObject
-      val correctSuggestion = lookup["suggestions"].asJsonArray.find {
-        it.asJsonObject["text"].asString == expectedText
-      }?.asJsonObject ?: throw IllegalArgumentException("Session marked as successful, but it does not contain correct suggestion")
-      val correctKind = correctSuggestion["completionContributorKind"].let {
-        if (it.isJsonNull) null
-        else it.asString
-      } ?: return@forEach
-      knownSuggestions[FilePosition(offset)] = Suggestion(correctKind, expectedText)
+      if (known) {
+        val offset = session["offset"].asInt
+        val expectedText = session["expectedText"].asString
+        val lookups = session["_lookups"].asJsonArray
+        if (lookups.size() != 1)
+          throw IllegalArgumentException("Each session must contain exactly one lookup")
+        val lookup = lookups[0].asJsonObject
+        val correctSuggestion = lookup["suggestions"].asJsonArray.find {
+          it.asJsonObject["text"].asString == expectedText
+        }?.asJsonObject ?: throw IllegalArgumentException("Session marked as successful, but it does not contain correct suggestion")
+        correctSuggestion["completionContributorKind"].let {
+          if (it.isJsonNull) null
+          else it.asString
+        }?.let { correctKind ->
+          knownSuggestions[FilePosition(offset)] = Suggestion(correctKind, expectedText)
+        }
+      }
     }
   }
 
   fun getIdealSuggestion(position: FilePosition): Suggestion? {
     return knownSuggestions[position]
+  }
+
+  fun maxOffset(): Int {
+    return knownSuggestions.keys.maxByOrNull { it.offset }!!.offset
   }
 
   data class FilePosition(

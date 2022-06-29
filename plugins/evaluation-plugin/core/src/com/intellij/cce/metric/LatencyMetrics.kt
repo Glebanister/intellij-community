@@ -124,3 +124,12 @@ class GoodHasKind : LatencyMetric(
   override val valueType = MetricValueType.DOUBLE
 }
 
+class LookupWasShown : LatencyMetric(
+  { if (it.lookupIsShown) 1 else 0 },
+  "LookupWasShown"
+) {
+  override fun compute(sample: Sample): Double = sample.mean()
+
+  override val valueType = MetricValueType.DOUBLE
+}
+

@@ -10,10 +10,12 @@ import com.intellij.codeInsight.completion.kind.state.ConstFlag
 import com.intellij.codeInsight.completion.kind.state.LatestValueTakingFlag
 import com.intellij.codeInsight.completion.kind.state.LazyNullableValue
 import com.intellij.codeInsight.completion.kind.state.LazyValue
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.ui.JBColor
 import java.nio.file.Path
 import java.util.function.Supplier
+import kotlin.io.path.name
 
 class IdealKindsExecutor(
   private val filePath: Path,
@@ -22,22 +24,29 @@ class IdealKindsExecutor(
 ) : CompletionKindsExecutor {
   private val idealSuggestions = service<IdealCompletionSuggestionsService>()
   private var executed: Boolean = false
+  private val otherKindsToExecute = mutableListOf<Pair<CompletionKind, CompletionSession>>()
+  private var executedAll = false
 
   override fun whenLookupReady(doShowLookup: Runnable) {
     showLookup = doShowLookup
   }
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
-    if (executed) return
+    var thisKindExecuted = false
     idealSuggestions.getIdealSuggestion(filePath, filePosition)?.completionKind?.let {
       if (it == kind.name) {
-        CompletionThreadingBase.setAwaitForBatchFlushFinishOnce()
-        kind.fillKindVariantsOnce(session, JBColor.PINK)
-        session.flushBatchItems()
+        thisKindExecuted = true
+        if (executed) return@let
+        if (kind.isApplicable) {
+          CompletionThreadingBase.setAwaitForBatchFlushFinishOnce()
+          kind.fillKindVariantsOnce(session, JBColor.PINK)
+          session.flushBatchItems()
+        }
         showLookup.run()
         executed = true
       }
     }
+    if (!thisKindExecuted) otherKindsToExecute.add(kind to session)
   }
 
   fun hasIdealSuggestion(): Boolean {
@@ -46,7 +55,21 @@ class IdealKindsExecutor(
 
   override fun sureFoundCorrect(): Boolean = executed
 
-  override fun executeAll(parameters: CompletionParameters) {}
+  override fun executeAll(parameters: CompletionParameters) {
+    if (executedAll) return
+    executedAll = true
+    if (!executed) {
+      showLookup.run()
+    }
+    val allSessions = mutableSetOf<CompletionSession>()
+    otherKindsToExecute.forEach { (kind, session) ->
+      if (kind.isApplicable) {
+        allSessions.add(session)
+        kind.fillKindVariantsOnce(session, JBColor.LIGHT_GRAY)
+      }
+    }
+    allSessions.forEach(CompletionSession::flushBatchItems)
+  }
 
   override fun <T : Any?> wrapNotNullSupplier(supplier: Supplier<T>) = LazyValue(supplier)
 

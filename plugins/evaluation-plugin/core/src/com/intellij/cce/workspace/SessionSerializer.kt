@@ -27,25 +27,25 @@ class SessionSerializer {
           return jsonObject
         }
       })
-      //.registerTypeAdapter(Lookup::class.java, object : JsonSerializer<Lookup> {
-      //  override fun serialize(src: Lookup, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
-      //    val jsonObject = JsonObject()
-      //    jsonObject.addProperty("prefix", src.prefix)
-      //    jsonObject.addProperty("latency", src.latency)
-      //    jsonObject.addProperty("shownLatency", src.shownLatency)
-      //    jsonObject.addProperty("restartLatency", src.restartLatency)
-      //    jsonObject.add("features", context.serialize(src.features))
-      //    jsonObject.addProperty("selectedPosition", src.selectedPosition)
-      //    jsonObject.addProperty("isNew", src.isNew)
-      //    jsonObject.add("correctElementInfo", context.serialize(src.correctElementInfo))
-      //    jsonObject.addProperty("firstElementAddTime", src.firstElementAddTime)
-      //    jsonObject.add("kindsExecutionInfo", context.serialize(src.kindsExecutionInfo))
-      //    jsonObject.add("suggestions", context.serialize(src.suggestions.filter {
-      //      it.isHighlighted
-      //    }))
-      //    return jsonObject
-      //  }
-      //})
+      .registerTypeAdapter(Lookup::class.java, object : JsonSerializer<Lookup> {
+        override fun serialize(src: Lookup, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
+          val jsonObject = JsonObject()
+          jsonObject.addProperty("prefix", src.prefix)
+          jsonObject.addProperty("latency", src.latency)
+          jsonObject.addProperty("shownLatency", src.shownLatency)
+          jsonObject.addProperty("restartLatency", src.restartLatency)
+          jsonObject.add("features", context.serialize(src.features))
+          jsonObject.addProperty("selectedPosition", src.selectedPosition)
+          jsonObject.addProperty("isNew", src.isNew)
+          jsonObject.add("correctElementInfo", context.serialize(src.correctElementInfo))
+          jsonObject.addProperty("firstElementAddTime", src.firstElementAddTime)
+          jsonObject.add("kindsExecutionInfo", context.serialize(src.kindsExecutionInfo))
+          jsonObject.add("suggestions", context.serialize(src.suggestions.filter {
+            it.isHighlighted
+          }))
+          return jsonObject
+        }
+      })
       .create()
 
     private fun escapeHtml(value: String) =

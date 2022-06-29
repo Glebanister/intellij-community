@@ -3,6 +3,7 @@ package com.intellij.codeInsight.completion.kind
 
 import com.intellij.codeInsight.completion.CompletionParameters
 import com.intellij.codeInsight.completion.CompletionSession
+import com.intellij.codeInsight.completion.CompletionThreadingBase
 import com.intellij.codeInsight.completion.kind.state.*
 import com.intellij.ui.JBColor
 import java.lang.IllegalStateException
@@ -10,7 +11,8 @@ import java.util.function.Supplier
 
 abstract class CompletionKindsExecutorWithSorter(
   private var doShowLookup: Runnable? = null,
-  private val myCompletionKinds: MutableList<Pair<CompletionKind, CompletionSession>> = ArrayList()
+  private val myCompletionKinds: MutableList<Pair<CompletionKind, CompletionSession>> = ArrayList(),
+  private var executed: Boolean = false
 ) : CompletionKindsExecutor {
 
   override fun addKind(kind: CompletionKind, session: CompletionSession) {
@@ -24,6 +26,9 @@ abstract class CompletionKindsExecutorWithSorter(
   abstract val sorter: CompletionKindsRelevanceSorter
 
   override fun executeAll(parameters: CompletionParameters) {
+    if (executed) return
+    executed = true
+    CompletionThreadingBase.setAwaitForBatchFlushFinishOnce()
     val executionOrder = sorter.sort(myCompletionKinds, parameters)
 
     val sessions = mutableSetOf<CompletionSession>()

@@ -12,6 +12,7 @@ import com.intellij.completion.ml.ranker.local.catboost.LocalCatBoostModelProvid
 import com.intellij.completion.ml.sorting.ContextFeaturesContributor
 import com.intellij.completion.ml.storage.MutableLookupStorage
 import java.lang.IllegalStateException
+import java.nio.file.Path
 import java.util.zip.ZipFile
 
 
@@ -59,7 +60,7 @@ class MLKindsRelevanceSorter : CompletionKindsRelevanceSorter {
 
   companion object {
     val model = LocalCatBoostModelProvider()
-      .loadModel(ZipFile("/Users/glebmarin/projects/ml-completion-performance/model-java/local_model.zip"))
+      .loadModel(ZipFile("../ml-completion-performance/model-java/local_model.zip"))
       .decisionFunction
   }
 }

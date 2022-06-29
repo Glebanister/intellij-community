@@ -7,7 +7,6 @@ import com.intellij.codeInsight.completion.CompletionContributorWithKinds
 fun reorderContirbutorsWithKindsFirst(contributorsUnordered: MutableList<CompletionContributor>): List<CompletionContributor> {
   val withKindsContributors: List<CompletionContributor> = contributorsUnordered
     .filterIsInstance<CompletionContributorWithKinds>()
-    .map { c: CompletionContributor? -> c as CompletionContributorWithKinds }
 
   val otherContributors: List<CompletionContributor> = contributorsUnordered
     .filter { c: CompletionContributor? -> c !is CompletionContributorWithKinds }

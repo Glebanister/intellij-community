@@ -4,6 +4,7 @@ package com.intellij.codeInsight.completion.kind
 import com.google.gson.JsonParser
 import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.FilePosition
 import com.intellij.codeInsight.completion.kind.IdealJavaFileCompletionSuggestions.Suggestion
+import com.intellij.largeFilesEditor.search.Position
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -29,8 +30,22 @@ class IdealCompletionSuggestionsService(
           idealSuggestionsPerFile[Path.of(it.key)] = IdealJavaFileCompletionSuggestions(
             resultsPath / "data" / "files" / it.value.asString
           )
+          println("Loaded ideal suggestions for ${it.key}. Max offset: ${idealSuggestionsPerFile[Path.of(it.key)]!!.maxOffset()}")
         }
     }
+  }
+
+  fun closePositions(filePath: Path,
+                     position: FilePosition): List<Pair<FilePosition, String>> {
+    val closePositions = mutableListOf<Pair<FilePosition, String>>()
+    for (delta in -100..100) {
+      val closePosition = FilePosition(position.offset + delta)
+
+      getIdealSuggestion(filePath, closePosition)?.let {
+        closePositions.add(closePosition to it.expectedText)
+      }
+    }
+    return closePositions
   }
 
   fun getIdealSuggestion(filePath: Path,

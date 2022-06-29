@@ -685,12 +685,15 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     return myShown;
   }
 
-  public boolean showLookup() {
+  public boolean showLookup(Runnable indicateShown) {
+    if (myStampShown == 0) {
+      myStampShown = System.currentTimeMillis();
+    }
+    indicateShown.run();
     ApplicationManager.getApplication().assertIsDispatchThread();
     checkValid();
     LOG.assertTrue(!myShown);
     myShown = true;
-    myStampShown = System.currentTimeMillis();
 
     fireLookupShown();
 
@@ -704,6 +707,10 @@ public class LookupImpl extends LightweightHint implements LookupEx, Disposable,
     LookupUsageTracker.trackLookup(myCreatedTimestamp, this);
 
     return doShowLookup();
+  }
+
+  public boolean showLookup() {
+    return showLookup(() -> {});
   }
 
   public Long getShownTimestamp() {

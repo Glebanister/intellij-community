@@ -21,6 +21,7 @@ data class Lookup(
   val kindsExecutionInfo: List<CompletionKindExecutionInfo>,
   val correctElementInfo: CorrectElementInfo?,
   val firstElementAddTime: Long?,
+  val lookupIsShown: Boolean
 ) {
   fun clearFeatures() {
     features = null
@@ -39,6 +40,7 @@ data class Lookup(
       kindsExecutionInfo: List<CompletionKindExecutionInfo>,
       correctElementInfo: CorrectElementInfo?,
       firstElementAddTime: Long?,
+      lookupIsShown: Boolean
     ): Lookup {
       val selectedPosition = suggestions.indexOfFirst { it.text == expectedText }
         .let { if (it < 0) -1 else it }
@@ -47,7 +49,8 @@ data class Lookup(
         text, suggestions, latency, shownLatency, restartLatency, features, selectedPosition, isNew,
         kindsExecutionInfo,
         correctElementInfo,
-        firstElementAddTime
+        firstElementAddTime,
+        lookupIsShown
       )
     }
   }

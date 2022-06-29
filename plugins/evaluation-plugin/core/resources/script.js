@@ -101,6 +101,7 @@ function updatePopup(sessionDiv) {
 
 function addCommonFeatures(sessionDiv, popup) {
     sessionDiv.classList.add("features");
+
     const parts = sessionDiv.id.split(" ");
     const sessionId = parts[0];
     const lookupOrder = parts[1];

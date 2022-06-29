@@ -21,6 +21,8 @@ import com.intellij.openapi.progress.ProgressManager;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class CompletionThreadingBase implements CompletionThreading {
@@ -44,10 +46,13 @@ public abstract class CompletionThreadingBase implements CompletionThreading {
       if (awaitForBatchFlushFinish) {
         awaitForBatchFlushFinish = false;
         try {
-          flushResult.get();
+          flushResult.get(15, TimeUnit.SECONDS);
         }
         catch (ExecutionException | InterruptedException e) {
           LOG.error(e);
+        }
+        catch (TimeoutException e) {
+          LOG.error("CompletionThreading flush stuck: %s", e.getMessage());
         }
       }
     }

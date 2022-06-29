@@ -47,6 +47,7 @@ class MetricsEvaluator private constructor(private val evaluationType: String) {
     registerMetric(UXShowLatencyMetric(UserExperienceThreshold.Fast))
     registerMetric(UXShowLatencyMetric(UserExperienceThreshold.Slow))
     registerMetric(GoodHasKind())
+    registerMetric(LookupWasShown())
   }
 
   fun registerMetric(metric: Metric) {

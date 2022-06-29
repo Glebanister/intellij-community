@@ -14,7 +14,6 @@ class MLCompletionKindsExecutor : CompletionKindsExecutorWithSorter() {
     reorderContirbutorsWithKindsFirst(contributorsUnordered)
 
   override fun executeAll(parameters: CompletionParameters) {
-    CompletionThreadingBase.setAwaitForBatchFlushFinishOnce()
     super.executeAll(parameters)
   }
 }

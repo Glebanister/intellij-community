@@ -20,6 +20,7 @@ data class CompletionMlPerformanceDataset(
 
     val lookup = session.lookups[0]
     val kind = lookup.suggestions.find { it.text == session.expectedText }?.completionContributorKind ?: return
+    // CHANGE IT !!!
     val processedFeatures = computeAdditionalKindOrderingFeatures(session.getFeatures()[0].common.context)
     labels.add(computeKind(kind))
 

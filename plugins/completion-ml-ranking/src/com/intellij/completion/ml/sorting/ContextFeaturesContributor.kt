@@ -43,6 +43,7 @@ class ContextFeaturesContributor : CompletionContributor(), DumbAware {
       ProgressManager.checkCanceled()
       val providerName = provider.name
       val start = System.nanoTime()
+      // CHANGE IT !!!
       val features = provider.calculateFeatures(environment)
       for ((featureName, value) in features) {
         contextFeatures["ml_ctx_${providerName}_$featureName"] = value

@@ -52,7 +52,6 @@ import com.intellij.psi.impl.source.tree.injected.InjectedLanguageUtil;
 import com.intellij.psi.stubs.StubTextInconsistencyException;
 import com.intellij.psi.util.PsiUtilBase;
 import com.intellij.util.concurrency.AppExecutorUtil;
-import com.intellij.util.concurrency.Semaphore;
 import com.intellij.util.indexing.DumbModeAccessType;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -60,11 +59,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.stream.Collectors;
 
 @SuppressWarnings("deprecation")
 public class CodeCompletionHandlerBase {
@@ -160,10 +155,16 @@ public class CodeCompletionHandlerBase {
 
   public final void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers) {
     clearCaretMarkers(editor);
-    invokeCompletion(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret(), () -> {});
+    invokeCompletion(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret(), () -> {
+    });
   }
 
-  private void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret, Runnable indicateFinish) {
+  private void invokeCompletion(@NotNull Project project,
+                                @NotNull Editor editor,
+                                int time,
+                                boolean hasModifiers,
+                                @NotNull Caret caret,
+                                Runnable indicateFinish) {
     markCaretAsProcessed(caret);
 
     if (invokedExplicitly) {
@@ -317,7 +318,9 @@ public class CodeCompletionHandlerBase {
     CompletionServiceImpl.setCompletionPhase(phase);
 
     ReadAction
-      .nonBlocking(() -> CompletionInitializationUtil.insertDummyIdentifier(initContext, indicator))
+      .nonBlocking(() -> {
+        return CompletionInitializationUtil.insertDummyIdentifier(initContext, indicator);
+      })
       .expireWith(phase)
       .withDocumentsCommitted(indicator.getProject())
       .finishOnUiThread(ModalityState.defaultModalityState(), applyPsiChanges -> {
@@ -371,7 +374,6 @@ public class CodeCompletionHandlerBase {
       completionFinished(indicator, hasModifiers);
       return null;
     }
-
     return indicator.getCompletionThreading().startThread(indicator, () -> AsyncCompletion.tryReadOrCancel(indicator, () -> {
       OffsetsInFile finalOffsets = CompletionInitializationUtil.toInjectedIfAny(initContext.getFile(), hostCopyOffsets);
       indicator.registerChildDisposable(finalOffsets::getOffsets);
@@ -381,6 +383,7 @@ public class CodeCompletionHandlerBase {
       indicator.setParameters(parameters);
 
       indicator.runContributors(initContext);
+      indicator.invokeIndicateFinish();
     }));
   }
 
@@ -466,7 +469,8 @@ public class CodeCompletionHandlerBase {
 
       Caret nextCaret = getNextCaretToProcess(indicator.getEditor());
       if (nextCaret != null) {
-        invokeCompletion(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret, () -> {});
+        invokeCompletion(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret, () -> {
+        });
       }
       else {
         indicator.handleEmptyLookup(true);

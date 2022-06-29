@@ -4,10 +4,8 @@ import com.intellij.cce.actions.CodeGolfEmulation
 import com.intellij.cce.actions.UserEmulator
 import com.intellij.cce.actions.selectedWithoutPrefix
 import com.intellij.cce.core.*
-import com.intellij.cce.evaluation.CodeCompletionHandlerFactory
 import com.intellij.codeInsight.completion.BaseCompletionService.*
 import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
-import com.intellij.codeInsight.completion.CompletionProgressIndicator
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler
@@ -17,8 +15,7 @@ import com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_SHOW_TIME
 import com.intellij.codeInsight.lookup.impl.LookupImpl
 import com.intellij.completion.ml.actions.MLCompletionFeaturesUtil
 import com.intellij.completion.ml.util.prefix
-import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.command.impl.UndoManagerImpl
 import com.intellij.openapi.diagnostic.Logger
@@ -37,8 +34,9 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.TestModeFlags
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.io.File
+import java.time.Duration
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -71,105 +69,130 @@ class CompletionInvokerImpl(private val project: Project,
     editor!!.scrollingModel.scrollToCaret(ScrollType.MAKE_VISIBLE)
   }
 
-  override fun callCompletion(expectedText: String, prefix: String?): com.intellij.cce.core.Lookup {
+  override fun callCompletion(expectedText: String, prefix: String?): () -> com.intellij.cce.core.Lookup {
     LOG.info("Call completion. Type: $completionType. ${positionToString(editor!!.caretModel.offset)}")
     //        assert(!dumbService.isDumb) { "Calling completion during indexing." }
 
-    val start = System.currentTimeMillis()
-
     val isNew = LookupManager.getActiveLookup(editor) == null
-    val activeLookup = LookupManager.getActiveLookup(editor) ?: invokeCompletion(expectedText, prefix)
-    val latency = System.currentTimeMillis() - start
-    if (activeLookup == null) {
-      return com.intellij.cce.core.Lookup.fromExpectedText(
-        expectedText,
-        prefix ?: "",
-        emptyList(),
-        latency,
-        latency,
-        null,
-        features = null,
-        isNew = isNew,
-        kindsExecutionInfo = emptyList(),
-        correctElementInfo = null,
-        firstElementAddTime = null,
-      )
+
+    val activeLookupActual = LookupManager.getActiveLookup(editor)
+    val getActiveLookup: () -> LookupEx? = if (activeLookupActual != null) {
+      { activeLookupActual }
     }
+    else invokeCompletion(expectedText, prefix)
 
-    val lookup = activeLookup as LookupImpl
+    return {
+      val start = System.currentTimeMillis()
+      val activeLookup = getActiveLookup()
+      val latency = System.currentTimeMillis() - start
 
-    val features = MLCompletionFeaturesUtil.getCommonFeatures(lookup)
-    val resultFeatures = Features(
-      CommonFeatures(features.context, features.user, features.session),
-      lookup.items.map { MLCompletionFeaturesUtil.getElementFeatures(lookup, it).features }
-    )
-    val suggestions = lookup.items.map { it.asSuggestion(expectedText) }
+      val lookupBuffer = ArrayBlockingQueue<com.intellij.cce.core.Lookup>(1)
+
+      ApplicationManager.getApplication().invokeLater {
+        if (activeLookup == null) {
+          lookupBuffer.put(
+            com.intellij.cce.core.Lookup.fromExpectedText(
+              expectedText,
+              prefix ?: "",
+              emptyList(),
+              latency,
+              latency,
+              null,
+              features = null,
+              isNew = isNew,
+              kindsExecutionInfo = emptyList(),
+              correctElementInfo = null,
+              firstElementAddTime = null,
+              lookupIsShown = false
+            ))
+        }
+        else {
+          val lookup = activeLookup as LookupImpl
+
+          val features = MLCompletionFeaturesUtil.getCommonFeatures(lookup)
+          val resultFeatures = Features(
+            CommonFeatures(features.context, features.user, features.session),
+            lookup.items.map { MLCompletionFeaturesUtil.getElementFeatures(lookup, it).features }
+          )
+          val suggestions = lookup.items.map { it.asSuggestion(expectedText) }
 
 
-    val kindsExecutionInfo: List<CompletionKindExecutionInfo> = lookup.items
-      .mapNotNull { it.extractCompletionKindExecutionInfo(start) }
-      .distinctBy { it.kindName }
-      .toList()
+          val kindsExecutionInfo: List<CompletionKindExecutionInfo> = lookup.items
+            .mapNotNull { it.extractCompletionKindExecutionInfo(start) }
+            .distinctBy { it.kindName }
+            .toList()
 
-    val lookupShownLatency = if (isNew) lookup.shownTimestamp - start else null
+          val lookupShownLatency = if (isNew && lookup.shownTimestamp != 0L) lookup.shownTimestamp - start else null
 
-    val expectedItemIndex = lookup.items.indexOfFirst { it.lookupString == expectedText }
-    val correctElementInfo = if (expectedItemIndex != -1) {
-      val correctElement = lookup.items[expectedItemIndex]
+          val lookupIsShown = lookup.isShown
 
-      val toResultAddTime: Long? = if (isNew)
-        correctElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
-      else null
+          val expectedItemIndex = lookup.items.indexOfFirst { it.lookupString == expectedText }
+          val correctElementInfo = if (expectedItemIndex != -1) {
+            val correctElement = lookup.items[expectedItemIndex]
 
-      val firstAppearanceTime: Long? = if (isNew)
-        correctElement.getUserData(LOOKUP_ELEMENT_SHOW_TIME)!!
-          .toEpochMilli() - start
-      else null
+            val toResultAddTime: Long? = if (isNew)
+              correctElement.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!.toEpochMilli() - start
+            else null
 
-      val correctKindStartTime = if (isNew)
-        correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)
-          ?.executionInfo
-          ?.executionStartTime
-          ?.toEpochMilli()
-          ?.minus(start)
-      else null
+            val firstAppearanceTime: Long? = if (isNew)
+              correctElement.getUserData(LOOKUP_ELEMENT_SHOW_TIME)!!
+                .toEpochMilli() - start
+            else null
 
-      val correctHasKind = correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND) != null
+            val correctKindStartTime = if (isNew)
+              correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND)
+                ?.executionInfo
+                ?.executionStartTime
+                ?.toEpochMilli()
+                ?.minus(start)
+            else null
 
-      CorrectElementInfo(
-        toResultAddTime,
-        toResultAddTime?.let { it < lookupShownLatency!! },
-        firstAppearanceTime?.let { it < lookupShownLatency!! },
-        firstAppearanceTime,
-        correctKindStartTime,
-        correctHasKind
-      )
+            val correctHasKind = correctElement.getUserData(LOOKUP_ELEMENT_COMPLETION_KIND) != null
+
+            CorrectElementInfo(
+              toResultAddTime,
+              toResultAddTime?.let { it < lookupShownLatency!! },
+              firstAppearanceTime?.let { it < lookupShownLatency!! },
+              firstAppearanceTime,
+              correctKindStartTime,
+              correctHasKind
+            )
+          }
+          else null
+
+          val firstElemAddTime: Long? = if (isNew) {
+            lookup.items
+              .mapNotNull { it.getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)?.let { order -> it to order } }
+              .minByOrNull { it.second }
+              ?.first
+              ?.getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)
+              ?.toEpochMilli()?.let {
+                it - start
+              }
+          }
+          else null
+
+          println("invoked: $latency ms, shown: ${lookupShownLatency?.toString() ?: "N/A"}\n")
+
+          lookupBuffer.put(com.intellij.cce.core.Lookup.fromExpectedText(
+            expectedText,
+            lookup.prefix(),
+            suggestions,
+            latency,
+            if (isNew) lookupShownLatency else null,
+            if (!isNew) latency else null,
+            resultFeatures,
+            isNew,
+            kindsExecutionInfo,
+            correctElementInfo,
+            firstElemAddTime,
+            lookupIsShown
+          ))
+        }
+      }
+
+      lookupBuffer.take()
     }
-    else null
-
-    val firstElemAddTime: Long? = if (isNew) {
-      lookup.items
-        .mapNotNull { it.getUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER)?.let { order -> it to order } }
-        .minByOrNull { it.second }!!
-        .first
-        .getUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME)!!
-        .toEpochMilli() - start
-    }
-    else null
-
-    return com.intellij.cce.core.Lookup.fromExpectedText(
-      expectedText,
-      lookup.prefix(),
-      suggestions,
-      latency,
-      if (isNew) lookupShownLatency else null,
-      if (!isNew) latency else null,
-      resultFeatures,
-      isNew,
-      kindsExecutionInfo,
-      correctElementInfo,
-      firstElemAddTime
-    )
   }
 
   override fun finishCompletion(expectedText: String, prefix: String): Boolean {
@@ -254,7 +277,7 @@ class CompletionInvokerImpl(private val project: Project,
     for (ch in currentPrefix) editorImpl.type(ch.toString())
     var order = 0
     while (currentPrefix.length < expectedText.length) {
-      val position = callCompletion(expectedText, currentPrefix)
+      val position = callCompletion(expectedText, currentPrefix)()
         .also { session.addLookup(it) }
         .selectedPosition
 
@@ -280,7 +303,7 @@ class CompletionInvokerImpl(private val project: Project,
     var currentString = ""
 
     while (currentString != expectedLine) {
-      val lookup = callCompletion(expectedLine, null)
+      val lookup = callCompletion(expectedLine, null)()
 
       emulator.pickBestSuggestion(currentString, lookup, session).also {
         printText(it.selectedWithoutPrefix() ?: expectedLine[currentString.length].toString())
@@ -302,40 +325,37 @@ class CompletionInvokerImpl(private val project: Project,
     return "Offset: $offset, Line: ${logicalPosition.line}, Column: ${logicalPosition.column}."
   }
 
-  private fun invokeCompletion(expectedText: String, prefix: String?): LookupEx? {
-    val handlerFactory = CodeCompletionHandlerFactory.findCompletionHandlerFactory(project, language)
-    val handler = handlerFactory?.createHandler(completionType, expectedText, prefix) ?: object : CodeCompletionHandlerBase(completionType,
-                                                                                                                            false, false,
-                                                                                                                            true) {
-      // Guarantees synchronous execution
-      override fun isTestingCompletionQualityMode() = true
-      override fun lookupItemSelected(indicator: CompletionProgressIndicator?,
-                                      item: LookupElement,
-                                      completionChar: Char,
-                                      items: MutableList<LookupElement>?) {
-        afterItemInsertion(indicator, null)
-      }
-    }
+  private fun invokeCompletion(expectedText: String, prefix: String?): () -> LookupEx? {
+    //val handlerFactory = CodeCompletionHandlerFactory.findCompletionHandlerFactory(project, language)
+    val handler = CodeCompletionHandlerBase.createHandler(completionType, false, true, false);
+    //val handler = handlerFactory?.createHandler(completionType, expectedText, prefix) ?: object : CodeCompletionHandlerBase {
+    //  // Guarantees asynchronous execution
+    //  override fun isTestingCompletionQualityMode() = true
+    //  override fun lookupItemSelected(indicator: CompletionProgressIndicator?,
+    //                                  item: LookupElement,
+    //                                  completionChar: Char,
+    //                                  items: MutableList<LookupElement>?) {
+    //    afterItemInsertion(indicator, null)
+    //  }
+    //}
+    val completionFinished = CountDownLatch(2)
     try {
-      handler.invokeCompletion(project, editor)
-      //val ourExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("Completion Preparation", 1)
-      //val latch = CountDownLatch(1)
-      //ReadAction
-      //  .nonBlocking { }
-      //  .finishOnUiThread(ModalityState.current()) {
-      //    handler.invokeCompletionIndicatingFinish(project, editor) {
-      //      //println("Completion finished!")
-      //      latch.countDown()
-      //    }
-      //  }
-      //  .submit(ourExecutor)
-      //println("Waiting for completion to end")
-      //latch.await()
+      handler.invokeCompletionIndicatingFinish(project, editor) {
+        completionFinished.countDown()
+      }
     }
     catch (e: AssertionError) {
       LOG.warn("Completion invocation ended with error", e)
+      completionFinished.countDown()
+      completionFinished.countDown()
     }
-    return LookupManager.getActiveLookup(editor)
+    return {
+      if (!completionFinished.await(10, TimeUnit.SECONDS)) {
+        LOG.warn("Completion stuck:(")
+        null
+      }
+      else LookupManager.getActiveLookup(editor)
+    }
   }
 
   private fun LookupImpl.finish(expectedItemIndex: Int, completionLength: Int): Boolean {

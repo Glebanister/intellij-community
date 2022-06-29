@@ -51,7 +51,8 @@ class ReorderElementsStep(config: Config, project: Project, isHeadless: Boolean)
                 lookup.isNew,
                 lookup.kindsExecutionInfo,
                 lookup.correctElementInfo,
-                lookup.firstElementAddTime
+                lookup.firstElementAddTime,
+                lookup.lookupIsShown
               )
             )
           }

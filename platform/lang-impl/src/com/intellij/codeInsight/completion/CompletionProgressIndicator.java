@@ -130,6 +130,11 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   private final Object myLock = ObjectUtils.sentinel("CompletionProgressIndicator");
 
   private final EmptyCompletionNotifier myEmptyCompletionNotifier;
+
+  public void invokeIndicateFinish() {
+    myIndicateFinish.run();
+  }
+
   private final Runnable myIndicateFinish;
 
   CompletionProgressIndicator(Editor editor, @NotNull Caret caret, int invocationCount,
@@ -382,8 +387,12 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   }
 
   private void updateLookup() {
+    //System.out.printf("? CompletionProgressIndicator.updateLookup (count = %d)\n", myCount);
     ApplicationManager.getApplication().assertIsDispatchThread();
-    if (isOutdated() || !shouldShowLookup()) return;
+    if (isOutdated() || !shouldShowLookup()) {
+      //System.out.printf(" - now shown! outdated: %b, empty: %b\n", isOutdated(), myCount == 0);
+      return;
+    }
 
     while (true) {
       Runnable action = myAdvertiserChanges.poll();
@@ -401,14 +410,17 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     boolean justShown = false;
     if (!myLookup.isShown()) {
       if (hideAutopopupIfMeaningless()) {
+        //System.out.println(" - meaningless!");
         return;
       }
 
-      if (!myLookup.showLookup()) {
+      if (!myLookup.showLookup(myIndicateFinish)) {
+        //System.out.println(" - for some reason the lookup was not shown!");
         return;
       }
       justShown = true;
     }
+    //System.out.println(" + shown!");
     myLookupUpdated = true;
     myLookup.refreshUi(true, justShown);
     hideAutopopupIfMeaningless();
@@ -869,7 +881,6 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
 
     try {
       calculateItems(initContext, weigher, parameters);
-      myIndicateFinish.run();
     }
     catch (ProcessCanceledException ignore) {
       cancel(); // some contributor may just throw PCE; if indicator is not canceled everything will hang
@@ -887,13 +898,19 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
 
       CompletionService completionService = CompletionService.getCompletionService();
 
+      Runnable doShowLookupAction = () -> {
+        ApplicationManager.getApplication().invokeLater(() -> {
+          showLookup();
+        });
+      };
+
       //Path currentFileSystemPath = Path.of(initContext.getFile().getName());
       //PsiFileSystemItem fileParent = initContext.getFile().getParent();
       //while (fileParent != null) {
       //  currentFileSystemPath = Path.of(fileParent.getName()).resolve(currentFileSystemPath);
       //  fileParent = fileParent.getParent();
       //}
-
+      //
       //var currentFilePath = Path.of(Objects.requireNonNull(initContext.getProject().getBasePath()))
       //  .relativize(currentFileSystemPath);
       //var completionPosition = myParameters.getPosition().getTextOffset();
@@ -901,26 +918,20 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       //var idealKindsExecutor = new IdealKindsExecutor(
       //  currentFilePath,
       //  new IdealJavaFileCompletionSuggestions.FilePosition(completionPosition),
-      //  () -> {
-      //    // CHANGE IT
-      //    ApplicationManager.getApplication().invokeLater(() -> {
-      //      showLookup();
-      //    });
-      //  }
+      //  doShowLookupAction
       //);
       //
-      ////boolean hasIdealSuggestion = idealKindsExecutor.hasIdealSuggestion();
+      //System.out.printf("pos: %s, has: %b\n", completionPosition, idealKindsExecutor.hasIdealSuggestion());
       //
-      //completionService.setCompletionKindsExecutor(idealKindsExecutor);
+      //completionService.setCompletionKindsExecutor(
+      //  //idealKindsExecutor.hasIdealSuggestion()
+      //  //? idealKindsExecutor
+      //  new CompletionKindsImmediateExecutor()
+      //);
 
       // CHANGE IT
       CompletionKindsExecutor executor = CompletionKindsExecutor.createInstance();
-      System.out.printf("Current CompletionKindsExecutor: %s\n", executor.getClass().getSimpleName());
-      executor.whenLookupReady(() -> {
-        ApplicationManager.getApplication().invokeLater(() -> {
-          showLookup();
-        });
-      });
+      executor.whenLookupReady(doShowLookupAction);
       completionService.setCompletionKindsExecutor(executor);
       completionService.performCompletion(parameters, weigher);
     });

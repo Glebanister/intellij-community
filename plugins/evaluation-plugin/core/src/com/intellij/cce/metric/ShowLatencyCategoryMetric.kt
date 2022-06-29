@@ -3,6 +3,7 @@ package com.intellij.cce.metric
 
 import com.intellij.cce.core.Session
 import com.intellij.cce.metric.util.Sample
+import com.intellij.util.containers.notNullize
 
 open class ShowLatencyCategoryMetric(override val name: String, private val acceptRange: LongRange) : Metric {
   private val sample = Sample()
@@ -15,12 +16,12 @@ open class ShowLatencyCategoryMetric(override val name: String, private val acce
 
   override fun evaluate(sessions: List<Session>, comparator: SuggestionsComparator): Double {
     val fileSample = Sample()
-    sessions.stream()
-      .flatMap { session -> session.lookups.stream() }
-      .map { it.shownLatency in acceptRange }
+    sessions
+      .flatMap { session -> session.lookups }
+      .map { if (it.shownLatency in acceptRange) 1.0 else 0.0 }
       .forEach {
-        this.sample.add(if (it) 1.0 else 0.0)
-        fileSample.add(if (it) 1.0 else 0.0)
+        this.sample.add(it)
+        fileSample.add(it)
       }
     return fileSample.mean()
   }
