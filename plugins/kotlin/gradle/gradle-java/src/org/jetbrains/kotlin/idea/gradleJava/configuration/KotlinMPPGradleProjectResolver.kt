@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.gradleJava.configuration
 
@@ -13,6 +13,7 @@ import com.intellij.openapi.externalSystem.util.ExternalSystemConstants
 import com.intellij.openapi.externalSystem.util.Order
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.Pair
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.PathUtil
@@ -28,32 +29,31 @@ import org.jetbrains.kotlin.cli.common.arguments.CommonCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.ManualLanguageFeatureSetting
 import org.jetbrains.kotlin.cli.common.arguments.parseCommandLineArguments
 import org.jetbrains.kotlin.config.LanguageFeature
-import org.jetbrains.kotlin.idea.PlatformVersion
+import org.jetbrains.kotlin.idea.base.codeInsight.tooling.IdePlatformKindTooling
+import org.jetbrains.kotlin.idea.base.util.KotlinPlatformUtils
 import org.jetbrains.kotlin.idea.gradle.configuration.*
 import org.jetbrains.kotlin.idea.gradle.configuration.GradlePropertiesFileFacade.Companion.KOTLIN_NOT_IMPORTED_COMMON_SOURCE_SETS_SETTING
 import org.jetbrains.kotlin.idea.gradle.configuration.utils.UnsafeTestSourceSetHeuristicApi
 import org.jetbrains.kotlin.idea.gradle.configuration.utils.predictedProductionSourceSetName
 import org.jetbrains.kotlin.idea.gradle.ui.notifyLegacyIsResolveModulePerSourceSetSettingIfNeeded
-import org.jetbrains.kotlin.idea.gradleJava.configuration.mpp.createKotlinMppPopulateModuleDependenciesContext
+import org.jetbrains.kotlin.idea.gradleJava.configuration.mpp.*
 import org.jetbrains.kotlin.idea.gradleJava.configuration.mpp.getCompilations
 import org.jetbrains.kotlin.idea.gradleJava.configuration.mpp.populateModuleDependenciesByCompilations
 import org.jetbrains.kotlin.idea.gradleJava.configuration.mpp.populateModuleDependenciesBySourceSetVisibilityGraph
 import org.jetbrains.kotlin.idea.gradleJava.configuration.utils.KotlinModuleUtils.calculateRunTasks
-import org.jetbrains.kotlin.idea.gradleJava.configuration.utils.KotlinModuleUtils.getKotlinModuleId
 import org.jetbrains.kotlin.idea.gradleJava.configuration.utils.KotlinModuleUtils.fullName
 import org.jetbrains.kotlin.idea.gradleJava.configuration.utils.KotlinModuleUtils.getGradleModuleQualifiedName
+import org.jetbrains.kotlin.idea.gradleJava.configuration.utils.KotlinModuleUtils.getKotlinModuleId
 import org.jetbrains.kotlin.idea.gradleTooling.*
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModelBuilder
 import org.jetbrains.kotlin.idea.gradleTooling.arguments.CachedExtractedArgsInfo
 import org.jetbrains.kotlin.idea.gradleTooling.arguments.CachedSerializedArgsInfo
-import org.jetbrains.kotlin.idea.platform.IdePlatformKindTooling
 import org.jetbrains.kotlin.idea.projectModel.*
 import org.jetbrains.kotlin.idea.util.NotNullableCopyableDataNodeUserDataProperty
 import org.jetbrains.kotlin.platform.impl.JsIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.JvmIdePlatformKind
 import org.jetbrains.kotlin.platform.impl.NativeIdePlatformKind
 import org.jetbrains.kotlin.util.removeSuffixIfPresent
-import org.jetbrains.kotlin.util.firstNotNullResult
 import org.jetbrains.plugins.gradle.model.*
 import org.jetbrains.plugins.gradle.model.data.BuildScriptClasspathData
 import org.jetbrains.plugins.gradle.model.data.GradleSourceSetData
@@ -112,7 +112,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
         if (mppModel == null) {
             return super.populateModuleContentRoots(gradleModule, ideModule)
         } else {
-            if (!nativeDebugAdvertised && mppModel.kotlinNativeHome.isNotEmpty()) {
+            if (!nativeDebugAdvertised && mppModel.kotlinNativeHome.isNotEmpty() && !SystemInfo.isWindows) {
                 nativeDebugAdvertised = true
                 suggestNativeDebug(resolverCtx.projectPath)
             }
@@ -120,7 +120,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                 kotlinJsInspectionPackAdvertised = true
                 suggestKotlinJsInspectionPackPlugin(resolverCtx.projectPath)
             }
-            if (!resolverCtx.isResolveModulePerSourceSet && !PlatformVersion.isAndroidStudio() && !PlatformUtils.isMobileIde() &&
+            if (!resolverCtx.isResolveModulePerSourceSet && !KotlinPlatformUtils.isAndroidStudio && !PlatformUtils.isMobileIde() &&
                 !PlatformUtils.isAppCode()
             ) {
                 notifyLegacyIsResolveModulePerSourceSetSettingIfNeeded(resolverCtx.projectPath)
@@ -308,8 +308,9 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                     when (val component = it.kotlinComponent) {
                         is KotlinCompilation -> component
                             .declaredSourceSets
-                            .firstNotNullResult { sourceSetToRunTasks[it] }
+                            .firstNotNullOfOrNull { sourceSetToRunTasks[it] }
                             .orEmpty()
+
                         is KotlinSourceSet -> sourceSetToRunTasks[component]
                             .orEmpty()
                         //TODO(chernyshevj) KotlinComponent: interface -> sealed interface
@@ -365,7 +366,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                     val moduleExternalName = getExternalModuleName(gradleModule, compilation)
                     val moduleInternalName = getInternalModuleName(gradleModule, externalProject, compilation, resolverCtx)
 
-                    val compilationData = existingSourceSetDataNode?.data ?: GradleSourceSetData(
+                    val compilationData = existingSourceSetDataNode?.data ?: createGradleSourceSetData(
                         moduleId, moduleExternalName, moduleInternalName, mainModuleFileDirectoryPath, mainModuleConfigPath
                     ).also {
                         it.group = externalProject.group
@@ -436,11 +437,8 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                 val existingSourceSetDataNode = sourceSetMap[moduleId]?.first
                 if (existingSourceSetDataNode?.kotlinSourceSetData != null) continue
 
-                val moduleExternalName = getExternalModuleName(gradleModule, sourceSet)
-                val moduleInternalName = getInternalModuleName(gradleModule, externalProject, sourceSet, resolverCtx)
-
-                val sourceSetData = existingSourceSetDataNode?.data ?: GradleSourceSetData(
-                    moduleId, moduleExternalName, moduleInternalName, mainModuleFileDirectoryPath, mainModuleConfigPath
+                val sourceSetData = existingSourceSetDataNode?.data ?: createGradleSourceSetData(
+                    sourceSet, gradleModule, mainModuleNode, resolverCtx
                 ).also {
                     it.group = externalProject.group
                     it.version = externalProject.version
@@ -491,6 +489,31 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                 }
             }
         }
+
+        private fun createGradleSourceSetData(
+            sourceSet: KotlinSourceSet,
+            gradleModule: IdeaModule,
+            mainModuleNode: DataNode<ModuleData>,
+            resolverCtx: ProjectResolverContext,
+        ): GradleSourceSetData {
+            val moduleId = getKotlinModuleId(gradleModule, sourceSet, resolverCtx)
+            val moduleExternalName = getExternalModuleName(gradleModule, sourceSet)
+            val moduleInternalName = mainModuleNode.data.internalName + "." + sourceSet.fullName()
+            val moduleFileDirectoryPath = mainModuleNode.data.moduleFileDirectoryPath
+            val linkedExternalProjectPath = mainModuleNode.data.linkedExternalProjectPath
+
+            return GradleSourceSetData(moduleId, moduleExternalName, moduleInternalName, moduleFileDirectoryPath, linkedExternalProjectPath)
+        }
+
+        private fun createGradleSourceSetData(
+            moduleId: String,
+            moduleExternalName: String,
+            moduleInternalName: String,
+            mainModuleFileDirectoryPath: String,
+            mainModuleConfigPath: String
+        ) = GradleSourceSetData(
+            moduleId, moduleExternalName, moduleInternalName, mainModuleFileDirectoryPath, mainModuleConfigPath
+        )
 
         private fun initializeModuleData(
             gradleModule: IdeaModule,
@@ -591,7 +614,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
             val compilation: KotlinCompilation,
             val substitutedDependencies: List<ExternalDependency>
         ) {
-            val konanTarget: String?
+            private val konanTarget: String?
                 get() = compilation.nativeExtensions?.konanTarget
 
             val dependencyNames: Map<String, ExternalDependency> by lazy {
@@ -612,6 +635,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                 resolverCtx = resolverCtx
             ) ?: return
             populateModuleDependenciesByCompilations(context)
+            populateModuleDependenciesByPlatformPropagation(context)
             populateModuleDependenciesBySourceSetVisibilityGraph(context)
         }
 
@@ -771,14 +795,14 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
             }
         }
 
-        private val KotlinComponent.sourceType
+        val KotlinComponent.sourceType
             get() = if (isTestComponent) ExternalSystemSourceType.TEST else ExternalSystemSourceType.SOURCE
 
-        private val KotlinComponent.resourceType
+        val KotlinComponent.resourceType
             get() = if (isTestComponent) ExternalSystemSourceType.TEST_RESOURCE else ExternalSystemSourceType.RESOURCE
 
         @OptIn(ExperimentalGradleToolingApi::class)
-        private fun createSourceSetInfo(
+        fun createSourceSetInfo(
             mppModel: KotlinMPPGradleModel,
             sourceSet: KotlinSourceSet,
             gradleModule: IdeaModule,
@@ -874,6 +898,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
                         sourceSetInfo.lazyDependencyClasspath =
                             lazy { restoredArgs.value.dependencyClasspath.map { PathUtil.toSystemIndependentName(it) } }
                     }
+
                     is CachedSerializedArgsInfo -> {
                         val restoredArgs =
                             lazy { CachedArgumentsRestoring.restoreSerializedArgsInfo(cachedArgsInfo, cacheHolder) }
@@ -898,7 +923,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
         /** Checks if our IDE doesn't support such platform */
         private fun KotlinPlatform.isNotSupported() = IdePlatformKindTooling.getToolingIfAny(this) == null
 
-        internal fun KotlinSourceSetInfo.addSourceSets(
+        private fun KotlinSourceSetInfo.addSourceSets(
             sourceSets: Collection<KotlinComponent>,
             selfName: String,
             gradleModule: IdeaModule,
@@ -925,7 +950,7 @@ open class KotlinMPPGradleProjectResolver : AbstractProjectResolverExtension() {
         internal fun shouldDelegateToOtherPlugin(compilation: KotlinCompilation): Boolean =
             compilation.platform == KotlinPlatform.ANDROID
 
-        internal fun shouldDelegateToOtherPlugin(kotlinTarget: KotlinTarget): Boolean =
+        private fun shouldDelegateToOtherPlugin(kotlinTarget: KotlinTarget): Boolean =
             kotlinTarget.platform == KotlinPlatform.ANDROID
 
         internal fun shouldDelegateToOtherPlugin(kotlinSourceSet: KotlinSourceSet): Boolean =

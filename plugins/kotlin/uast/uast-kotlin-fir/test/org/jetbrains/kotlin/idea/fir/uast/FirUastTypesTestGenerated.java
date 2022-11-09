@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.uast;
 
@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -41,6 +41,31 @@ public class FirUastTypesTestGenerated extends AbstractFirUastTypesTest {
     @TestMetadata("classLiteral.kt")
     public void testClassLiteral() throws Exception {
         runTest("testData/type/classLiteral.kt");
+    }
+
+    @TestMetadata("nonNullCompanion.kt")
+    public void testNonNullCompanion() throws Exception {
+        runTest("testData/type/nonNullCompanion.kt");
+    }
+
+    @TestMetadata("nonNullablePair.kt")
+    public void testNonNullablePair() throws Exception {
+        runTest("testData/type/nonNullablePair.kt");
+    }
+
+    @TestMetadata("nullnessInVarargs.kt")
+    public void testNullnessInVarargs() throws Exception {
+        runTest("testData/type/nullnessInVarargs.kt");
+    }
+
+    @TestMetadata("objectLiteral.kt")
+    public void testObjectLiteral() throws Exception {
+        runTest("testData/type/objectLiteral.kt");
+    }
+
+    @TestMetadata("threadSafe.kt")
+    public void testThreadSafe() throws Exception {
+        runTest("testData/type/threadSafe.kt");
     }
 
     @TestMetadata("typeCast.kt")

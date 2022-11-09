@@ -6,7 +6,7 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.patterns.PlatformPatterns.psiElement
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.util.PlatformIcons
+import com.intellij.ui.IconManager
 import com.intellij.util.ProcessingContext
 import com.jetbrains.python.PyNames
 import com.jetbrains.python.codeInsight.dataflow.scope.ScopeUtil
@@ -64,7 +64,7 @@ private class DictLiteralCompletionProvider : CompletionProvider<CompletionParam
       val targetToValue = if (assignment.targets.size == 1) assignment.targets[0] to assignment.assignedValue
       else assignment.targetsToValuesMapping.firstOrNull { it.second == possibleSequenceExpr }?.let { it.first to it.second }
 
-      if (targetToValue != null) {
+      if (targetToValue?.first != null && targetToValue.second != null) {
         val expectedType = typeEvalContext.getType(targetToValue.first as PyTypedElement)
         val actualType = typeEvalContext.getType(targetToValue.second as PyTypedElement)
         addCompletionForTypedDictKeys(expectedType, actualType, result, originalElement !is PyStringLiteralExpression)
@@ -123,7 +123,7 @@ private class DictLiteralCompletionProvider : CompletionProvider<CompletionParam
           LookupElementBuilder
             .create(if (addQuotes) "'$key'" else key)
             .withTypeText("dict key")
-            .withIcon(PlatformIcons.PARAMETER_ICON)
+            .withIcon(IconManager.getInstance().getPlatformIcon(com.intellij.ui.PlatformIcons.Parameter))
         )
       }
     }

@@ -54,6 +54,9 @@
     <extensionPoint qualifiedName="org.jetbrains.uast.generate.uastCodeGenerationPlugin"
                     interface="org.jetbrains.uast.generate.UastCodeGenerationPlugin"
                     dynamic="true"/>
+    <extensionPoint qualifiedName="org.jetbrains.uast.evaluation.uastEvaluatorExtension"
+                    interface="org.jetbrains.uast.evaluation.UEvaluatorExtension"
+                    dynamic="true"/>
     <extensionPoint qualifiedName="com.intellij.jvm.declarationSearcher" beanClass="com.intellij.lang.LanguageExtensionPoint" dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.lang.jvm.source.JvmDeclarationSearcher"/>
     </extensionPoint>
@@ -85,6 +88,7 @@
                     serviceImplementation="com.intellij.lang.jvm.facade.JvmFacadeImpl"/>
     <projectService serviceInterface="com.intellij.psi.JavaPsiFacade"
                     serviceImplementation="com.intellij.psi.impl.JavaPsiFacadeImpl"/>
+    <psi.treeChangePreprocessor implementation="com.intellij.psi.impl.PsiJavaModuleTreeChangePreprocessor"/>
     <projectService serviceImplementation="org.jetbrains.uast.UastContext"/>
 
     <metaLanguage implementation="com.intellij.lang.jvm.JvmMetaLanguage"/>

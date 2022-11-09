@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.profile.codeInspection.ui;
 
 import com.intellij.codeHighlighting.HighlightDisplayLevel;
@@ -8,15 +8,18 @@ import com.intellij.codeInspection.InspectionsBundle;
 import com.intellij.codeInspection.ex.SeverityEditorDialog;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -40,7 +43,7 @@ public abstract class LevelChooserAction extends ComboBoxAction implements DumbA
 
   @NotNull
   @Override
-  public DefaultActionGroup createPopupActionGroup(final JComponent anchor) {
+  public DefaultActionGroup createPopupActionGroup(@NotNull JComponent button, @NotNull DataContext context) {
     final DefaultActionGroup group = new DefaultActionGroup();
     for (final HighlightSeverity severity : getSeverities(mySeverityRegistrar, myIncludeDoNotShow)) {
       final HighlightSeverityAction action = new HighlightSeverityAction(severity);
@@ -54,12 +57,11 @@ public abstract class LevelChooserAction extends ComboBoxAction implements DumbA
       @Override
       public void actionPerformed(@NotNull final AnActionEvent e) {
         Project project = e.getProject();
-        if (project != null) {
-          SeverityEditorDialog.show(project, myChosen, mySeverityRegistrar, true, severity -> {
-            setChosen(severity);
-            onChosen(severity);
-          });
-        }
+        if (project == null) project = ProjectManager.getInstance().getDefaultProject();
+        SeverityEditorDialog.show(project, myChosen, mySeverityRegistrar, true, severity -> {
+          setChosen(severity);
+          onChosen(severity);
+        });
       }
     });
     return group;
@@ -115,5 +117,13 @@ public abstract class LevelChooserAction extends ComboBoxAction implements DumbA
       setChosen(severity);
       onChosen(severity);
     }
+  }
+
+  @Override
+  public @NotNull JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
+    final ComboBoxButton button = createComboBoxButton(presentation);
+    button.setMinimumSize(new Dimension(100, button.getPreferredSize().height));
+    button.setPreferredSize(button.getMinimumSize());
+    return button;
   }
 }

@@ -135,7 +135,7 @@ public class TooBroadThrowsInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement parent = element.getParent();
       if (!(parent instanceof PsiReferenceList)) {
@@ -170,7 +170,7 @@ public class TooBroadThrowsInspection extends BaseInspection {
   private class TooBroadThrowsVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethod(PsiMethod method) {
+    public void visitMethod(@NotNull PsiMethod method) {
       super.visitMethod(method);
       final PsiReferenceList throwsList = method.getThrowsList();
       if (!throwsList.isPhysical()) {

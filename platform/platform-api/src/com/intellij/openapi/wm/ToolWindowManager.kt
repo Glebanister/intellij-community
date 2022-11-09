@@ -90,8 +90,6 @@ abstract class ToolWindowManager {
    * [ToolWindow.getAnchor] is set to [ToolWindowAnchor.BOTTOM] by default.
    * [ToolWindow.setToHideOnEmptyContent] is set to `true` by default.
    */
-  @ApiStatus.Experimental
-  @ApiStatus.Internal
   inline fun registerToolWindow(id: String, builder: RegisterToolWindowTaskBuilder.() -> Unit): ToolWindow {
     val b = RegisterToolWindowTaskBuilder(id)
     b.builder()
@@ -101,7 +99,6 @@ abstract class ToolWindowManager {
   /**
    * does nothing if tool window with specified isn't registered.
    */
-  @Suppress("DeprecatedCallableAddReplaceWith")
   @Deprecated("Use ToolWindowFactory and toolWindow extension point")
   abstract fun unregisterToolWindow(id: String)
 
@@ -144,11 +141,7 @@ abstract class ToolWindowManager {
 
   fun notifyByBalloon(toolWindowId: String, type: MessageType, @NlsContexts.NotificationContent htmlBody: String) {
     @Suppress("SSBasedInspection")
-    notifyByBalloon(ToolWindowBalloonShowOptions(toolWindowId = toolWindowId,
-                                                 type = type,
-                                                 htmlBody = htmlBody,
-                                                 icon = null,
-                                                 listener = null))
+    notifyByBalloon(ToolWindowBalloonShowOptions(toolWindowId, type, htmlBody))
   }
 
   fun notifyByBalloon(toolWindowId: String,
@@ -157,10 +150,9 @@ abstract class ToolWindowManager {
                       icon: Icon?,
                       listener: HyperlinkListener?) {
     @Suppress("SSBasedInspection")
-    notifyByBalloon(ToolWindowBalloonShowOptions(toolWindowId = toolWindowId, type = type, htmlBody = htmlBody, icon = icon, listener = listener))
+    notifyByBalloon(ToolWindowBalloonShowOptions(toolWindowId, type, htmlBody, icon, listener))
   }
 
-  @Suppress("SSBasedInspection")
   abstract fun notifyByBalloon(options: ToolWindowBalloonShowOptions)
 
   abstract fun getToolWindowBalloon(id: String): Balloon?
@@ -176,7 +168,6 @@ abstract class ToolWindowManager {
   open fun getLocationIcon(id: String, fallbackIcon: Icon): Icon = fallbackIcon
 }
 
-@ApiStatus.Internal
 class RegisterToolWindowTaskBuilder @PublishedApi internal constructor(private val id: String) {
   @JvmField
   var anchor = ToolWindowAnchor.BOTTOM
@@ -198,16 +189,17 @@ class RegisterToolWindowTaskBuilder @PublishedApi internal constructor(private v
 
   @PublishedApi
   internal fun build(): RegisterToolWindowTask {
-    val result = RegisterToolWindowTask(
-      id = id,
-      anchor = anchor,
-      stripeTitle = stripeTitle,
-      icon = icon,
-      canCloseContent = canCloseContent,
-      shouldBeAvailable = shouldBeAvailable,
-      sideTool = sideTool,
-      contentFactory = contentFactory,
-    )
+    val result = RegisterToolWindowTask(id = id,
+                                        anchor = anchor,
+                                        component = null,
+                                        sideTool = sideTool,
+                                        canCloseContent = canCloseContent,
+                                        canWorkInDumbMode = true,
+                                        shouldBeAvailable = shouldBeAvailable,
+                                        contentFactory = contentFactory,
+                                        icon = icon,
+                                        stripeTitle = stripeTitle)
+
     result.hideOnEmptyContent = hideOnEmptyContent
     return result
   }

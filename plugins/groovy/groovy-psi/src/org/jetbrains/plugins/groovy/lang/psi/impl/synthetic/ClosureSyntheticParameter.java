@@ -98,11 +98,17 @@ public class ClosureSyntheticParameter extends GrLightParameter implements Navig
   }
 
   @Override
+  public @NotNull PsiElement getDeclarationScope() {
+    GrClosableBlock smartClosure = myClosure.getElement();
+    return smartClosure != null ? smartClosure : super.getDeclarationScope();
+  }
+
+  @Override
   public boolean equals(Object o) {
     if (this == o) return true;
     if (!(o instanceof ClosureSyntheticParameter)) return false;
-    if (!super.equals(o)) return false;
     ClosureSyntheticParameter parameter = (ClosureSyntheticParameter)o;
+    // Closure parameter is uniquely identified by the closure itself
     return Objects.equals(myClosure, parameter.myClosure);
   }
 

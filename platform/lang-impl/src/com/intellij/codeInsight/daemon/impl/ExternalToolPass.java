@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeInsight.daemon.HighlightDisplayKey;
@@ -47,7 +47,6 @@ public class ExternalToolPass extends ProgressableTextEditorHighlightingPass {
   private static final Logger LOG = Logger.getInstance(ExternalToolPass.class);
 
   private final AnnotationHolderImpl myAnnotationHolder;
-  private final ExternalToolPassFactory myExternalToolPassFactory;
   private final boolean myMainHighlightingPass;
   private final List<MyData<?,?>> myAnnotationData = new ArrayList<>();
 
@@ -64,16 +63,7 @@ public class ExternalToolPass extends ProgressableTextEditorHighlightingPass {
     }
   }
 
-  ExternalToolPass(@NotNull ExternalToolPassFactory factory,
-                   @NotNull PsiFile file,
-                   @NotNull Editor editor,
-                   int startOffset,
-                   int endOffset) {
-    this(factory, file, editor.getDocument(), editor, startOffset, endOffset, new DefaultHighlightInfoProcessor(), false);
-  }
-
-  ExternalToolPass(@NotNull ExternalToolPassFactory factory,
-                   @NotNull PsiFile file,
+  ExternalToolPass(@NotNull PsiFile file,
                    @NotNull Document document,
                    @Nullable Editor editor,
                    int startOffset,
@@ -82,7 +72,6 @@ public class ExternalToolPass extends ProgressableTextEditorHighlightingPass {
                    boolean mainHighlightingPass) {
     super(file.getProject(), document, LangBundle.message("pass.external.annotators"), file, editor, new TextRange(startOffset, endOffset), false, processor);
     myAnnotationHolder = new AnnotationHolderImpl(new AnnotationSession(file), false);
-    myExternalToolPassFactory = factory;
     myMainHighlightingPass = mainHighlightingPass;
   }
 
@@ -166,8 +155,10 @@ public class ExternalToolPass extends ProgressableTextEditorHighlightingPass {
     }
     if (myMainHighlightingPass) {
       doAnnotate();
-      doApply();
-      return getHighlights();
+      return ReadAction.compute(() -> {
+        doApply();
+        return getHighlights();
+      });
     }
     return super.getInfos();
   }
@@ -200,7 +191,7 @@ public class ExternalToolPass extends ProgressableTextEditorHighlightingPass {
       }
     };
 
-    myExternalToolPassFactory.scheduleExternalActivity(update);
+    ExternalAnnotatorManager.getInstance().queue(update);
   }
 
   private boolean documentChanged(long modificationStampBefore) {

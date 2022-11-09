@@ -16,6 +16,7 @@
 package com.siyeh.ig.style;
 
 import com.intellij.codeInsight.BlockUtils;
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Pair;
@@ -30,7 +31,7 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-public class ControlFlowStatementWithoutBracesInspection extends BaseInspection {
+public class ControlFlowStatementWithoutBracesInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   @Override
   @NotNull
@@ -69,14 +70,14 @@ public class ControlFlowStatementWithoutBracesInspection extends BaseInspection 
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getStartElement();
       final PsiElement parent = element.getParent();
       final PsiStatement statement;
       if (element instanceof PsiStatement) {
         statement = (PsiStatement)element;
       }
-      else if ((parent instanceof PsiStatement)) {
+      else if (parent instanceof PsiStatement) {
         statement = (PsiStatement)parent;
       }
       else {

@@ -15,6 +15,7 @@
  */
 package com.siyeh.ig.numeric;
 
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
@@ -28,8 +29,7 @@ import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.PsiReplacementUtil;
 import org.jetbrains.annotations.NotNull;
 
-public class LongLiteralsEndingWithLowercaseLInspection
-  extends BaseInspection {
+public class LongLiteralsEndingWithLowercaseLInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   @Override
   @NotNull
@@ -63,7 +63,7 @@ public class LongLiteralsEndingWithLowercaseLInspection
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiExpression literal =
         (PsiExpression)descriptor.getPsiElement();
       final String text = literal.getText();

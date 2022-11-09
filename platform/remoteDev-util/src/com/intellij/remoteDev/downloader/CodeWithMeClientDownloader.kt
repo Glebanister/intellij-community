@@ -6,8 +6,10 @@ import com.intellij.execution.process.ProcessAdapter
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.internal.statistic.StructuredIdeActivity
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -15,12 +17,16 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.io.FileSystemUtil
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.util.registry.Registry
+import com.intellij.remoteDev.RemoteDevSystemSettings
 import com.intellij.remoteDev.RemoteDevUtilBundle
 import com.intellij.remoteDev.connection.CodeWithMeSessionInfoProvider
 import com.intellij.remoteDev.connection.StunTurnServerInfo
 import com.intellij.remoteDev.util.*
+import com.intellij.util.PlatformUtils
 import com.intellij.util.application
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.concurrency.EdtScheduledExecutorService
@@ -28,6 +34,8 @@ import com.intellij.util.io.*
 import com.intellij.util.io.HttpRequests.HttpStatusException
 import com.intellij.util.system.CpuArch
 import com.intellij.util.text.VersionComparatorUtil
+import com.intellij.util.withFragment
+import com.intellij.util.withQuery
 import com.jetbrains.infra.pgpVerifier.JetBrainsPgpConstants
 import com.jetbrains.infra.pgpVerifier.JetBrainsPgpConstants.JETBRAINS_DOWNLOADS_PGP_MASTER_PUBLIC_KEY
 import com.jetbrains.infra.pgpVerifier.PgpSignaturesVerifier
@@ -44,12 +52,13 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.net.URI
-import java.nio.file.Files
-import java.nio.file.Path
+import java.nio.file.*
 import java.nio.file.attribute.FileTime
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.io.path.*
 import kotlin.math.min
 
@@ -58,33 +67,72 @@ object CodeWithMeClientDownloader {
 
   private val LOG = logger<CodeWithMeClientDownloader>()
 
-  private const val extractDirSuffix = "-ide"
+  private const val extractDirSuffix = ".ide.d"
 
   private val config get () = service<JetBrainsClientDownloaderConfigurationProvider>()
 
   private fun isJbrSymlink(file: Path): Boolean = file.name == "jbr" && isSymlink(file)
   private fun isSymlink(file: Path): Boolean = FileSystemUtil.getAttributes(file.toFile())?.isSymLink == true
 
-  val cwmGuestManifestFilter: (Path) -> Boolean = { !isJbrSymlink(it) && (!it.isDirectory() || isSymlink(it)) }
   val cwmJbrManifestFilter: (Path) -> Boolean = { !it.isDirectory() || isSymlink(it) }
 
-  private data class DownloadableFileData(
-    val fileName: String,
+  fun getJetBrainsClientManifestFilter(clientBuildNumber: String): (Path) -> Boolean {
+    if (isClientWithBundledJre(clientBuildNumber)) {
+      return { !it.isDirectory() || isSymlink(it) }
+    } else {
+      return { !isJbrSymlink(it) && (!it.isDirectory() || isSymlink(it)) }
+    }
+  }
+
+  private const val minimumClientBuildWithBundledJre = "223.4374"
+  fun isClientWithBundledJre(clientBuildNumber: String) = VersionComparatorUtil.compare(clientBuildNumber, minimumClientBuildWithBundledJre) >= 0
+
+  @ApiStatus.Internal
+  class DownloadableFileData(
+    val fileCaption: String,
     val url: URI,
     val archivePath: Path,
     val targetPath: Path,
     val includeInManifest: (Path) -> Boolean,
     val downloadFuture: CompletableFuture<Boolean> = CompletableFuture(),
-    var status: DownloadableFileState = DownloadableFileState.Downloading
-  )
+    val status: AtomicReference<DownloadableFileState> = AtomicReference(DownloadableFileState.Downloading),
+  ) {
+    companion object {
+      private val prohibitedFileNameChars = Regex("[^._\\-a-zA-Z0-9]")
 
-  private enum class DownloadableFileState {
-    Downloading,
-    Extracting,
-    Done
+      private fun sanitizeFileName(fileName: String) = prohibitedFileNameChars.replace(fileName, "_")
+
+      fun build(url: URI, tempDir: Path, cachesDir: Path, includeInManifest: (Path) -> Boolean): DownloadableFileData {
+        val urlWithoutFragment = url.withFragment(null)
+        val bareUrl = urlWithoutFragment.withQuery(null)
+
+        val fileNameFromUrl = sanitizeFileName(bareUrl.path.toString().substringAfterLast('/'))
+        val fileName = fileNameFromUrl.take(100) +
+                       "-" +
+                       DigestUtil.sha256Hex(urlWithoutFragment.toString().toByteArray()).substring(0, 10)
+        return DownloadableFileData(
+          fileCaption = fileNameFromUrl,
+          url = url,
+          archivePath = tempDir.resolve(fileName),
+          targetPath = cachesDir / (fileName + extractDirSuffix),
+          includeInManifest = includeInManifest,
+        )
+      }
+    }
+
+    override fun toString(): String {
+      return "DownloadableFileData(fileCaption='$fileCaption', url=$url, archivePath=$archivePath, targetPath=$targetPath)"
+    }
+
+    enum class DownloadableFileState {
+      Downloading,
+      Extracting,
+      Done,
+    }
   }
 
-  val buildNumberRegex = Regex("""[0-9]{3}\.(([0-9]+(\.[0-9]+)?)|SNAPSHOT)""")
+  private const val buildNumberPattern = """[0-9]{3}\.(([0-9]+(\.[0-9]+)?)|SNAPSHOT)"""
+  val buildNumberRegex = Regex(buildNumberPattern)
 
   private fun getClientDistributionName(clientBuildVersion: String) = when {
     VersionComparatorUtil.compare(clientBuildVersion, "211.6167") < 0 -> "IntelliJClient"
@@ -92,83 +140,138 @@ object CodeWithMeClientDownloader {
     else -> "JetBrainsClient"
   }
 
-  fun createSessionInfo(clientBuildVersion: String, jreBuild: String, unattendedMode: Boolean): CodeWithMeSessionInfoProvider {
-    if ("SNAPSHOT" in clientBuildVersion) {
-      LOG.warn(
-        "Thin client download from sources may result in failure due to different sources on host and client, don't forget to update your locally built archive")
+  fun createSessionInfo(clientBuildVersion: String, jreBuild: String?, unattendedMode: Boolean): CodeWithMeSessionInfoProvider {
+    val isSnapshot = "SNAPSHOT" in clientBuildVersion
+    if (isSnapshot) {
+      LOG.warn("Thin client download from sources may result in failure due to different sources on host and client, " +
+               "don't forget to update your locally built archive")
+    }
+
+    val bundledJre = isClientWithBundledJre(clientBuildVersion)
+    val jreBuildToDownload = if (bundledJre) {
+      null
+    }
+    else {
+      jreBuild ?: error("JRE build number must be passed for client build number < $clientBuildVersion")
     }
 
     val hostBuildNumber = buildNumberRegex.find(clientBuildVersion)!!.value
-    val platformSuffix = when {
-      SystemInfo.isLinux -> "-no-jbr.tar.gz"
-      SystemInfo.isWindows -> ".win.zip"
+
+    val platformSuffix = if (jreBuildToDownload != null) when {
+      SystemInfo.isLinux && CpuArch.isIntel64() -> "-no-jbr.tar.gz"
+      SystemInfo.isLinux && CpuArch.isArm64() -> "-no-jbr-aarch64.tar.gz"
+      SystemInfo.isWindows && CpuArch.isIntel64() -> ".win.zip"
+      SystemInfo.isWindows && CpuArch.isArm64() -> "-aarch64.win.zip"
       SystemInfo.isMac && CpuArch.isIntel64() -> "-no-jdk.sit"
       SystemInfo.isMac && CpuArch.isArm64() -> "-no-jdk-aarch64.sit"
-      else -> error("Current platform is not supported")
-    }
+      else -> null
+    } else when {
+      SystemInfo.isLinux && CpuArch.isIntel64() -> ".tar.gz"
+      SystemInfo.isLinux && CpuArch.isArm64() -> "-aarch64.tar.gz"
+      SystemInfo.isWindows && CpuArch.isIntel64() -> ".jbr.win.zip"
+      SystemInfo.isWindows && CpuArch.isArm64() -> "-aarch64.jbr.win.zip"
+      SystemInfo.isMac && CpuArch.isIntel64() -> ".sit"
+      SystemInfo.isMac && CpuArch.isArm64() -> "-aarch64.sit"
+      else -> null
+    } ?: error("Current platform is not supported: OS ${SystemInfo.OS_NAME} ARCH ${SystemInfo.OS_ARCH}")
 
     val clientDistributionName = getClientDistributionName(clientBuildVersion)
 
-    val clientDownloadUrl = "${config.clientDownloadLocation}$clientDistributionName-$hostBuildNumber$platformSuffix"
+    val clientBuildNumber = if (isSnapshot && config.downloadLatestBuildFromCDNForSnapshotHost) getLatestBuild(hostBuildNumber) else hostBuildNumber
+    val clientDownloadUrl = "${config.clientDownloadUrl.toString().trimEnd('/')}/$clientDistributionName-$clientBuildNumber$platformSuffix"
 
-    val platformString = when {
-      SystemInfo.isLinux -> "linux-x64"
-      SystemInfo.isWindows -> "windows-x64"
-      SystemInfo.isMac && CpuArch.isIntel64() -> "osx-x64"
-      SystemInfo.isMac && CpuArch.isArm64() -> "osx-aarch64"
-      else -> error("Current platform is not supported")
-    }
+    val jreDownloadUrl = if (jreBuildToDownload != null) {
+      val platformString = when {
+        SystemInfo.isLinux && CpuArch.isIntel64() -> "linux-x64"
+        SystemInfo.isLinux && CpuArch.isArm64() -> "linux-aarch64"
+        SystemInfo.isWindows && CpuArch.isIntel64() -> "windows-x64"
+        SystemInfo.isWindows && CpuArch.isArm64() -> "windows-aarch64"
+        SystemInfo.isMac && CpuArch.isIntel64() -> "osx-x64"
+        SystemInfo.isMac && CpuArch.isArm64() -> "osx-aarch64"
+        else -> error("Current platform is not supported")
+      }
 
-    val jreBuildParts = jreBuild.split("b")
-    require(jreBuildParts.size == 2) { "jreBuild format should be like 12_3_45b6789.0" }
-    require(jreBuildParts[0].matches(Regex("^[0-9_]+$"))) { "jreBuild format should be like 12_3_45b6789.0" }
-    require(jreBuildParts[1].matches(Regex("^[0-9.]+$"))) { "jreBuild format should be like 12_3_45b6789.0" }
+      val jreBuildParts = jreBuildToDownload.split("b")
+      require(jreBuildParts.size == 2) { "jreBuild format should be like 12_3_45b6789.0: ${jreBuildToDownload}" }
+      require(jreBuildParts[0].matches(Regex("^[0-9_.]+$"))) { "jreBuild format should be like 12_3_45b6789.0: ${jreBuildToDownload}" }
+      require(jreBuildParts[1].matches(Regex("^[0-9.]+$"))) { "jreBuild format should be like 12_3_45b6789.0: ${jreBuildToDownload}" }
 
-    val jdkVersion = jreBuildParts[0]
-    val jdkBuild = jreBuildParts[1]
-    val jreDownloadUrl = "${config.jreDownloadLocation}jbr_jcef-$jdkVersion-$platformString-b${jdkBuild}.tar.gz"
+      /**
+       * After upgrade to JRE 17 Jetbrains Runtime Team made a couple of incompatible changes:
+       * 1. Java version began to contain dots in its version
+       * 2. Root directory was renamed from 'jbr' to 'jbr_jcef_12.3.4b1235'
+       *
+       * We decided to maintain backward compatibility with old IDEs and
+       * rename archives and root directories back to old format.
+       */
+      val jdkVersion = jreBuildParts[0].replace(".", "_")
+      val jdkBuild = jreBuildParts[1]
+      val jreDownloadUrl = "${config.jreDownloadUrl.toString().trimEnd('/')}/jbr_jcef-$jdkVersion-$platformString-b${jdkBuild}.tar.gz"
 
-    val clientName = "$clientDistributionName-$hostBuildNumber"
-    val jreName = jreDownloadUrl.substringAfterLast('/').removeSuffix(".tar.gz")
+      jreDownloadUrl
+    } else null
+
+    val pgpPublicKeyUrl = if (unattendedMode) {
+      RemoteDevSystemSettings.getPgpPublicKeyUrl().value
+    } else null
 
     val sessionInfo = object : CodeWithMeSessionInfoProvider {
       override val hostBuildNumber = hostBuildNumber
-      override val compatibleClientName = clientName
       override val compatibleClientUrl = clientDownloadUrl
-      override val compatibleJreName = jreName
       override val isUnattendedMode = unattendedMode
       override val compatibleJreUrl = jreDownloadUrl
       override val hostFeaturesToEnable: Set<String>? = null
       override val stunTurnServers: List<StunTurnServerInfo>? = null
-      override val downloadPgpPublicKeyUrl: String? = null
+      override val downloadPgpPublicKeyUrl: String? = pgpPublicKeyUrl
     }
 
     LOG.info("Generated session info: $sessionInfo")
     return sessionInfo
   }
 
+  private fun getLatestBuild(hostBuildNumber: String): String {
+    val majorVersion = hostBuildNumber.substringBefore('.')
+    val latestBuildTxtFileName = "$majorVersion-LAST-BUILD.txt"
+    val latestBuildTxtUri = "${config.clientDownloadUrl.toASCIIString().trimEnd('/')}/$latestBuildTxtFileName"
+
+    val tempFile = Files.createTempFile(latestBuildTxtFileName, "")
+    return try {
+      downloadWithRetries(URI(latestBuildTxtUri), tempFile, EmptyProgressIndicator()).let {
+        tempFile.readText().trim()
+      }
+    }
+    finally {
+      Files.delete(tempFile)
+    }
+  }
+
   private val currentlyDownloading = ConcurrentHashMap<Path, CompletableFuture<Boolean>>()
 
   @ApiStatus.Experimental
   fun downloadClientAndJdk(clientBuildVersion: String,
-                           progressIndicator: ProgressIndicator): Pair<Path, Path>? {
+                           progressIndicator: ProgressIndicator): ExtractedJetBrainsClientData? {
     require(application.isUnitTestMode || !application.isDispatchThread) { "This method should not be called on UI thread" }
 
-    LOG.info("Downloading Thin Client jdk-build.txt")
-    val jdkBuildProgressIndicator = progressIndicator.createSubProgress(0.1)
-    jdkBuildProgressIndicator.text = RemoteDevUtilBundle.message("thinClientDownloader.checking")
+    val jdkBuild = if (isClientWithBundledJre(clientBuildVersion)) null else {
+      // Obsolete since 2022.3. Now the client has JRE bundled in
 
-    val clientDistributionName = getClientDistributionName(clientBuildVersion)
-    val clientJdkDownloadUrl = "${config.clientDownloadLocation}$clientDistributionName-$clientBuildVersion-jdk-build.txt"
-    LOG.info("Downloading from $clientJdkDownloadUrl")
+      LOG.info("Downloading Thin Client jdk-build.txt")
+      val jdkBuildProgressIndicator = progressIndicator.createSubProgress(0.1)
+      jdkBuildProgressIndicator.text = RemoteDevUtilBundle.message("thinClientDownloader.checking")
 
-    val tempFile = Files.createTempFile("jdk-build", "txt")
-    val jdkBuild = try {
-      downloadWithRetries(URI(clientJdkDownloadUrl), tempFile, EmptyProgressIndicator()).let {
-        tempFile.readText()
+      val clientDistributionName = getClientDistributionName(clientBuildVersion)
+      val clientJdkDownloadUrl = "${config.clientDownloadUrl}$clientDistributionName-$clientBuildVersion-jdk-build.txt"
+      LOG.info("Downloading from $clientJdkDownloadUrl")
+
+      val tempFile = Files.createTempFile("jdk-build", "txt")
+      try {
+        downloadWithRetries(URI(clientJdkDownloadUrl), tempFile, EmptyProgressIndicator()).let {
+          tempFile.readText()
+        }
       }
-    } finally {
-      Files.delete(tempFile)
+      finally {
+        Files.delete(tempFile)
+      }
     }
 
     val sessionInfo = createSessionInfo(clientBuildVersion, jdkBuild, true)
@@ -182,12 +285,11 @@ object CodeWithMeClientDownloader {
    * @returns Pair(path/to/thin/client, path/to/jre)
    *
    * Update this method (any jdk-related stuff) together with:
-   *  `setupJdk.gradle`
    *  `org/jetbrains/intellij/build/impl/BundledJreManager.groovy`
    */
   fun downloadClientAndJdk(clientBuildVersion: String,
-                           jreBuild: String,
-                           progressIndicator: ProgressIndicator): Pair<Path, Path>? {
+                           jreBuild: String?,
+                           progressIndicator: ProgressIndicator): ExtractedJetBrainsClientData? {
     require(application.isUnitTestMode || !application.isDispatchThread) { "This method should not be called on UI thread" }
 
     val sessionInfo = createSessionInfo(clientBuildVersion, jreBuild, true)
@@ -198,48 +300,40 @@ object CodeWithMeClientDownloader {
    * @returns Pair(path/to/thin/client, path/to/jre)
    */
   fun downloadClientAndJdk(sessionInfoResponse: CodeWithMeSessionInfoProvider,
-                           progressIndicator: ProgressIndicator): Pair<Path, Path>? {
+                           progressIndicator: ProgressIndicator): ExtractedJetBrainsClientData? {
     require(application.isUnitTestMode || !application.isDispatchThread) { "This method should not be called on UI thread" }
 
     val tempDir = FileUtil.createTempDirectory("jb-cwm-dl", null).toPath()
     LOG.info("Downloading Thin Client in $tempDir...")
 
-    fun archiveExtensionFromUrl(url: String) = when {
-      url.endsWith(".zip") -> "zip"
-      url.endsWith(".sit") -> "sit"
-      url.endsWith(".tar.gz") -> "tar.gz"
-      else -> error("Don't know how to extract archive downloaded from url $url")
+    val clientUrl = URI(sessionInfoResponse.compatibleClientUrl)
+    val guestData = DownloadableFileData.build(
+      url = clientUrl,
+      tempDir = tempDir,
+      cachesDir = config.clientCachesDir,
+      includeInManifest = getJetBrainsClientManifestFilter(sessionInfoResponse.hostBuildNumber),
+    )
+
+    val jdkUrl = sessionInfoResponse.compatibleJreUrl?.let { URI(it) }
+    val jdkData = if (jdkUrl != null) {
+      DownloadableFileData.build(
+        url = jdkUrl,
+        tempDir = tempDir,
+        cachesDir = config.clientCachesDir,
+        includeInManifest = cwmJbrManifestFilter,
+      )
     }
+    else null
 
-    val guestName = sessionInfoResponse.compatibleClientName
-    val guestFileName = "$guestName.${archiveExtensionFromUrl(sessionInfoResponse.compatibleClientUrl)}"
-    val guestData = DownloadableFileData(
-      fileName = guestFileName,
-      url = URI(sessionInfoResponse.compatibleClientUrl),
-      archivePath = tempDir.resolve(guestFileName),
-      targetPath = config.clientCachesDir / (guestName + extractDirSuffix),
-      includeInManifest = cwmGuestManifestFilter
-    )
-
-    val jdkFullName = sessionInfoResponse.compatibleJreName
-    val jdkFileName = "$jdkFullName.${archiveExtensionFromUrl(sessionInfoResponse.compatibleJreUrl)}"
-    val jdkData = DownloadableFileData(
-      fileName = jdkFileName,
-      url = URI(sessionInfoResponse.compatibleJreUrl),
-      archivePath = tempDir.resolve(jdkFileName),
-      targetPath = config.clientCachesDir / (jdkFullName + extractDirSuffix),
-      includeInManifest = cwmJbrManifestFilter
-    )
-
-    val dataList = arrayOf(jdkData, guestData)
+    val dataList = listOfNotNull(jdkData, guestData)
 
     val activity: StructuredIdeActivity? =
       if (dataList.isNotEmpty()) RemoteDevStatisticsCollector.onGuestDownloadStarted()
       else null
 
     fun updateStateText() {
-      val downloadList = dataList.filter { it.status == DownloadableFileState.Downloading }.joinToString(", ") { it.fileName }
-      val extractList = dataList.filter { it.status == DownloadableFileState.Extracting }.joinToString(", ") { it.fileName }
+      val downloadList = dataList.filter { it.status.get() == DownloadableFileData.DownloadableFileState.Downloading }.joinToString(", ") { it.fileCaption }
+      val extractList = dataList.filter { it.status.get() == DownloadableFileData.DownloadableFileState.Extracting }.joinToString(", ") { it.fileCaption }
       progressIndicator.text =
         if (downloadList.isNotBlank() && extractList.isNotBlank()) RemoteDevUtilBundle.message("thinClientDownloader.downloading.and.extracting", downloadList, extractList)
         else if (downloadList.isNotBlank()) RemoteDevUtilBundle.message("thinClientDownloader.downloading", downloadList)
@@ -284,8 +378,8 @@ object CodeWithMeClientDownloader {
           }
 
           if (isAlreadyDownloaded(data)) {
-            LOG.info("Already downloaded and extracted ${data.fileName} to ${data.targetPath}")
-            data.status = DownloadableFileState.Done
+            LOG.info("Already downloaded and extracted ${data.fileCaption} to ${data.targetPath}")
+            data.status.set(DownloadableFileData.DownloadableFileState.Done)
             dataProgressIndicator.fraction = 1.0
             updateStateText()
             future.complete(true)
@@ -331,14 +425,14 @@ object CodeWithMeClientDownloader {
             }
           }
           catch (ex: IOException) {
-            future.complete(false)
+            future.completeExceptionally(ex)
             LOG.warn(ex)
             return@execute
           }
 
           // extract
           dataProgressIndicator.fraction = 0.75
-          data.status = DownloadableFileState.Extracting
+          data.status.set(DownloadableFileData.DownloadableFileState.Extracting)
           updateStateText()
 
           // downloading a .zip file will get a VirtualFile with a path of `jar://C:/Users/ivan.pashchenko/AppData/Local/Temp/CodeWithMeGuest-212.2033-windows-x64.zip!/`
@@ -356,14 +450,14 @@ object CodeWithMeClientDownloader {
           }
 
           dataProgressIndicator.fraction = 1.0
-          data.status = DownloadableFileState.Done
+          data.status.set(DownloadableFileData.DownloadableFileState.Done)
           updateStateText()
 
           Files.delete(archivePath)
           future.complete(true)
         }
         catch (e: Throwable) {
-          future.complete(false)
+          future.completeExceptionally(e)
           LOG.warn(e)
         }
         finally {
@@ -376,26 +470,24 @@ object CodeWithMeClientDownloader {
 
     try {
       val guestSucceeded = guestData.downloadFuture.get()
-      val jdkSucceeded = jdkData.downloadFuture.get()
+      val jdkSucceeded = jdkData?.downloadFuture?.get() ?: true
 
-      if (guestSucceeded && jdkSucceeded) {
-        RemoteDevStatisticsCollector.onGuestDownloadFinished(activity, isSucceeded = true)
-        LOG.info("Download of guest and jdk succeeded")
-        return guestData.targetPath to jdkData.targetPath
-      }
-      else {
-        LOG.warn("Some of downloads failed: guestSucceeded=$guestSucceeded, jdkSucceeded=$jdkSucceeded")
-        RemoteDevStatisticsCollector.onGuestDownloadFinished(activity, isSucceeded = false)
-        return null
-      }
+      if (!guestSucceeded || !jdkSucceeded) error("Guest or jdk was not downloaded")
+
+      LOG.info("Download of guest and jdk succeeded")
+      return ExtractedJetBrainsClientData(clientDir = guestData.targetPath, jreDir = jdkData?.targetPath, version = sessionInfoResponse.hostBuildNumber)
     }
     catch(e: ProcessCanceledException) {
       LOG.info("Download was canceled")
       return null
     }
     catch (e: Throwable) {
+      RemoteDevStatisticsCollector.onGuestDownloadFinished(activity, isSucceeded = false)
       LOG.warn(e)
-      return null
+      if (e is ExecutionException) {
+        e.cause?.let { throw it }
+      }
+      throw e
     }
   }
 
@@ -407,7 +499,10 @@ object CodeWithMeClientDownloader {
   private fun downloadWithRetries(url: URI, path: Path, progressIndicator: ProgressIndicator) {
     require(application.isUnitTestMode || !application.isDispatchThread) { "This method should not be called on UI thread" }
 
+    @Suppress("LocalVariableName")
     val MAX_ATTEMPTS = 5
+
+    @Suppress("LocalVariableName")
     val BACKOFF_INITIAL_DELAY_MS = 500L
 
     var delayMs = BACKOFF_INITIAL_DELAY_MS
@@ -416,7 +511,17 @@ object CodeWithMeClientDownloader {
       try {
         LOG.info("Downloading from $url to ${path.absolutePathString()}, attempt $i of $MAX_ATTEMPTS")
 
-        HttpRequests.request(url.toString()).saveToFile(path, progressIndicator)
+        when (url.scheme) {
+          "http", "https" -> {
+            HttpRequests.request(url.toString()).saveToFile(path, progressIndicator)
+          }
+          "file" -> {
+            Files.copy(url.toPath(), path, StandardCopyOption.REPLACE_EXISTING)
+          }
+          else -> {
+            error("scheme ${url.scheme} is not supported")
+          }
+        }
 
         LOG.info("Download from $url to ${path.absolutePathString()} succeeded on attempt $i of $MAX_ATTEMPTS")
         return
@@ -444,7 +549,7 @@ object CodeWithMeClientDownloader {
   }
 
   private fun findCwmGuestHome(guestRoot: Path): Path {
-    // maxDepth 2 for Mac OS's .app/Contents
+    // maxDepth 2 for macOS's .app/Contents
     Files.walk(guestRoot, 2).use {
       for (dir in it) {
         if (dir.resolve("bin").exists() && dir.resolve("lib").exists()) {
@@ -469,7 +574,7 @@ object CodeWithMeClientDownloader {
   }
 
   private fun findLauncher(guestRoot: Path, launcherName: Path): Path? {
-    // maxDepth 2 for Mac OS's .app/Contents
+    // maxDepth 2 for macOS's .app/Contents
     Files.walk(guestRoot, 2).use {
       for (dir in it) {
         val candidate = dir.resolve(launcherName)
@@ -485,15 +590,20 @@ object CodeWithMeClientDownloader {
   private fun findLauncherUnderCwmGuestRoot(guestRoot: Path): Pair<Path, List<String>> {
     when {
       SystemInfo.isWindows -> {
-        val launcherNames = listOf("jetbrains_client64.exe", "cwm_guest64.exe", "intellij_client64.exe", "intellij_client.bat")
-        return findLauncher(guestRoot, launcherNames)
+        val batchLaunchers = listOf("intellij_client.bat", "jetbrains_client.bat")
+        val exeLaunchers = listOf("jetbrains_client64.exe", "cwm_guest64.exe", "intellij_client64.exe")
+        val eligibleLaunchers = if (Registry.`is`("com.jetbrains.gateway.client.use.batch.launcher", false))
+          batchLaunchers
+        else
+          exeLaunchers + batchLaunchers
+        return findLauncher(guestRoot, eligibleLaunchers)
       }
 
       SystemInfo.isUnix -> {
         if (SystemInfo.isMac) {
           val app = guestRoot.toFile().listFiles { file -> file.name.endsWith(".app") && file.isDirectory }!!.singleOrNull()
           if (app != null) {
-            return app.toPath() to listOf("open", "-n", "-a", app.toString(), "--args")
+            return app.toPath() to listOf("open", "-n", "-W", "-a", app.toString(), "--args")
           }
         }
 
@@ -505,37 +615,47 @@ object CodeWithMeClientDownloader {
     }
   }
 
+  private val remoteDevYouTrackFlag = "-Dapplication.info.youtrack.url=https://youtrack.jetbrains.com/newissue?project=GTW&amp;clearDraft=true&amp;description=\$DESCR"
+
   /**
    * Launches client and returns process's lifetime (which will be terminated on process exit)
    */
-  fun runCwmGuestProcessFromDownload(lifetime: Lifetime,
-                                     url: String,
-                                     guestRoot: Path,
-                                     jdkRoot: Path): Lifetime {
-    val (executable, fullLauncherCmd) = findLauncherUnderCwmGuestRoot(guestRoot)
-    val guestHome = findCwmGuestHome(guestRoot)
+  fun runCwmGuestProcessFromDownload(
+    lifetime: Lifetime,
+    url: String,
+    extractedJetBrainsClientData: ExtractedJetBrainsClientData
+  ): Lifetime {
+    val (executable, fullLauncherCmd) = findLauncherUnderCwmGuestRoot(extractedJetBrainsClientData.clientDir)
 
-    val linkTarget = if (SystemInfo.isMac) jdkRoot / "jbr" else detectTrueJdkRoot(jdkRoot)
-    createSymlink(guestHome / "jbr", linkTarget)
+    if (extractedJetBrainsClientData.jreDir != null) {
+      createSymlinkToJdkFromGuest(extractedJetBrainsClientData.clientDir, extractedJetBrainsClientData.jreDir)
+    }
 
     // Update mtime on JRE & CWM Guest roots. The cleanup process will use it later.
-    listOf(guestRoot, jdkRoot).forEach { path ->
+    listOfNotNull(extractedJetBrainsClientData.clientDir, extractedJetBrainsClientData.jreDir).forEach { path ->
       Files.setLastModifiedTime(path, FileTime.fromMillis(System.currentTimeMillis()))
     }
 
-    val parameters = listOf("thinClient", url)
+    val parameters = if (CodeWithMeGuestLauncher.isUnattendedModeUri(URI(url))) listOf("thinClient", url, remoteDevYouTrackFlag) else listOf("thinClient", url)
     val processLifetimeDef = lifetime.createNested()
 
-    val vmOptionsFile = executable.resolveSibling("jetbrains_client64.vmoptions")
+    val vmOptionsFile = if (SystemInfoRt.isMac) {
+      // macOS stores vmoptions file inside .app file – we can't edit it
+      Paths.get(
+        PathManager.getDefaultConfigPathFor(PlatformUtils.JETBRAINS_CLIENT_PREFIX + extractedJetBrainsClientData.version),
+        "jetbrains_client.vmoptions"
+      )
+    } else executable.resolveSibling("jetbrains_client64.vmoptions")
     service<JetBrainsClientDownloaderConfigurationProvider>().patchVmOptions(vmOptionsFile)
 
     if (SystemInfo.isWindows) {
       val hProcess = WindowsFileUtil.windowsShellExecute(
         executable = executable,
-        workingDirectory = guestRoot,
+        workingDirectory = extractedJetBrainsClientData.clientDir,
         parameters = parameters
       )
 
+      @Suppress("LocalVariableName")
       val STILL_ACTIVE = 259
 
       application.executeOnPooledThread {
@@ -590,16 +710,22 @@ object CodeWithMeClientDownloader {
             super.processTerminated(event)
             LOG.info("Guest process terminated, exit code " + event.exitCode)
 
-            // if process exited abnormally but took longer than 10 seconds, it's likely to be an issue with connection instead of Mac-specific bug
-            if (event.exitCode != 0 && (System.currentTimeMillis() - lastProcessStartTime) < 10_000) {
-              if (attemptCount > 0) {
-                LOG.info("Previous attempt to start guest process failed, will try again in one second")
-                EdtScheduledExecutorService.getInstance().schedule({ doRunProcess() }, ModalityState.any(), 1, TimeUnit.SECONDS)
+            if (event.exitCode == 0) {
+              application.invokeLater {
+                processLifetimeDef.terminate()
               }
-              else {
-                LOG.warn("Running client process failed after specified number of attempts")
-                application.invokeLater {
-                  processLifetimeDef.terminate()
+            } else {
+              // if process exited abnormally but took longer than 10 seconds, it's likely to be an issue with connection instead of Mac-specific bug
+              if ((System.currentTimeMillis() - lastProcessStartTime) < 10_000 ) {
+                if (attemptCount > 0) {
+                  LOG.info("Previous attempt to start guest process failed, will try again in one second")
+                  EdtScheduledExecutorService.getInstance().schedule({ doRunProcess() }, ModalityState.any(), 1, TimeUnit.SECONDS)
+                }
+                else {
+                  LOG.warn("Running client process failed after specified number of attempts")
+                  application.invokeLater {
+                    processLifetimeDef.terminate()
+                  }
                 }
               }
             }
@@ -624,19 +750,27 @@ object CodeWithMeClientDownloader {
     return processLifetimeDef.lifetime
   }
 
-  fun createSymlinkToJdkFromGuest(guestRoot: Path, jdkRoot: Path) {
-    val linkTarget = if (SystemInfo.isMac) jdkRoot / "jbr" else detectTrueJdkRoot(jdkRoot)
+  fun createSymlinkToJdkFromGuest(guestRoot: Path, jdkRoot: Path): Path {
+    val linkTarget = getJbrDirectory(jdkRoot)
+
     val guestHome = findCwmGuestHome(guestRoot)
-    createSymlink(guestHome / "jbr", linkTarget)
+    val link = guestHome / "jbr"
+    createSymlink(link, linkTarget)
+    return link
   }
 
   private fun createSymlink(link: Path, target: Path) {
     val targetRealPath = target.toRealPath()
-    if (link.exists() && link.toRealPath() == targetRealPath) {
+    val linkExists = true
+    val linkRealPath = if (link.exists(LinkOption.NOFOLLOW_LINKS)) link.toRealPath() else null
+    val isSymlink = FileSystemUtil.getAttributes(link.toFile())?.isSymLink == true
+
+    LOG.info("$link: exists=$linkExists, realPath=$linkRealPath, isSymlink=$isSymlink")
+    if (linkExists && isSymlink && linkRealPath == targetRealPath) {
       LOG.info("Symlink/junction '$link' is UP-TO-DATE and points to '$target'")
     }
     else {
-      Files.deleteIfExists(link)
+      FileUtil.deleteWithRenamingIfExists(link)
 
       LOG.info("Creating symlink/junction '$link' -> '$target'")
 
@@ -657,9 +791,9 @@ object CodeWithMeClientDownloader {
         }
       }
       try {
-        val linkRealPath = link.toRealPath()
-        if (linkRealPath != targetRealPath) {
-          LOG.error("Symlink/junction '$link' should point to '$targetRealPath', but points to '$linkRealPath' instead")
+        val linkRealPath2 = link.toRealPath()
+        if (linkRealPath2 != targetRealPath) {
+          LOG.error("Symlink/junction '$link' should point to '$targetRealPath', but points to '$linkRealPath2' instead")
         }
       }
       catch (e: Throwable) {
@@ -669,14 +803,29 @@ object CodeWithMeClientDownloader {
     }
   }
 
-  private fun detectTrueJdkRoot(jdkDownload: Path): Path {
-    jdkDownload.toFile().walk(FileWalkDirection.TOP_DOWN).forEach {
-      if (File(it, "bin").isDirectory && File(it, "lib").isDirectory) {
-        return it.toPath()
+  private fun getJbrDirectory(root: Path): Path =
+    tryGetMacOsJbrDirectory(root) ?: tryGetJdkRoot(root) ?: error("Unable to detect jdk content directory in path: '$root'")
+
+
+  private fun tryGetJdkRoot(jdkDownload: Path): Path? {
+    jdkDownload.toFile().walk(FileWalkDirection.TOP_DOWN).forEach { file ->
+      if (File(file, "bin").isDirectory && File(file, "lib").isDirectory) {
+        return file.toPath()
       }
     }
 
-    error("JDK root (bin/lib directories) was not found under $jdkDownload")
+    return null
+  }
+
+  private fun tryGetMacOsJbrDirectory(root: Path): Path? {
+    if (!SystemInfo.isMac) {
+      return null
+    }
+
+    val jbrDirectory = root.listDirectoryEntries().find { it.nameWithoutExtension.startsWith("jbr") }
+
+    LOG.debug { "JBR directory: $jbrDirectory" }
+    return jbrDirectory
   }
 
   fun versionsMatch(hostBuildNumberString: String, localBuildNumberString: String): Boolean {

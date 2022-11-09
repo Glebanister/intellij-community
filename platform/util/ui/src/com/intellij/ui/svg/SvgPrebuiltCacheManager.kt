@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.svg
 
 import com.intellij.diagnostic.StartUpMeasurer
@@ -37,14 +37,14 @@ class SvgPrebuiltCacheManager(private val dbDir: Path) {
     private fun getSynchronized(): Ikv.SizeUnawareIkv<Int> {
       var store = store
       if (store == null) {
-        store = Ikv.loadSizeUnawareIkv(dbDir.resolve("icons-v1-$scale$classifier.db"), intKeyHash)
+        store = Ikv.loadSizeUnawareIkv(dbDir.resolve("icons-v2-$scale$classifier.db"), intKeyHash)
         this.store = store
       }
       return store
     }
   }
 
-  fun loadFromCache(key: Int, scale: Float, isDark: Boolean, docSize: ImageLoader.Dimension2DDouble): Image? {
+  fun loadFromCache(key: Int, scale: Float, isDark: Boolean, docSize: ImageLoader.Dimension2DDouble? = null): Image? {
     val start = StartUpMeasurer.getCurrentTimeIfEnabled()
     val list = if (isDark) darkStores else lightStores
     // not supported scale
@@ -57,6 +57,8 @@ class SvgPrebuiltCacheManager(private val dbDir: Path) {
       else -> return null
     }
     val data = store.getUnboundedValue(key) ?: return null
+    val storedKey = readVar(data)
+    if (storedKey != key) return null
 
     val actualWidth: Int
     val actualHeight: Int
@@ -74,7 +76,7 @@ class SvgPrebuiltCacheManager(private val dbDir: Path) {
       actualHeight = readVar(data)
     }
 
-    docSize.setSize((actualWidth / scale).toDouble(), (actualHeight / scale).toDouble())
+    docSize?.setSize((actualWidth / scale).toDouble(), (actualHeight / scale).toDouble())
 
     val image = SvgCacheManager.readImage(data, actualWidth, actualHeight)
     IconLoadMeasurer.svgPreBuiltLoad.end(start)

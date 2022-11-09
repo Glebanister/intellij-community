@@ -3,7 +3,6 @@ package git4idea
 
 import com.google.common.collect.HashMultiset
 import com.intellij.dvcs.branch.DvcsSyncSettings.Value
-import com.intellij.internal.statistic.StructuredIdeActivity
 import com.intellij.internal.statistic.beans.MetricEvent
 import com.intellij.internal.statistic.beans.addBoolIfDiffers
 import com.intellij.internal.statistic.beans.addIfDiffers
@@ -13,6 +12,7 @@ import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.internal.statistic.eventLog.events.VarargEventId
 import com.intellij.internal.statistic.service.fus.collectors.ProjectUsagesCollector
 import com.intellij.openapi.components.service
+import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.vcs.VcsException
@@ -106,7 +106,7 @@ class GitStatisticsCollector : ProjectUsagesCollector() {
   }
 
   private fun addGitLogMetrics(project: Project, metrics: MutableSet<MetricEvent>) {
-    val projectLog = VcsProjectLog.getInstance(project) ?: return
+    val projectLog = project.serviceIfCreated<VcsProjectLog>() ?: return
     val ui = projectLog.mainLogUi ?: return
 
     addPropertyMetricIfDiffers(metrics, ui, SHOW_GIT_BRANCHES_LOG_PROPERTY, SHOW_GIT_BRANCHES_IN_LOG)
@@ -128,7 +128,7 @@ class GitStatisticsCollector : ProjectUsagesCollector() {
   }
 
   companion object {
-    private val GROUP = EventLogGroup("git.configuration", 9)
+    private val GROUP = EventLogGroup("git.configuration", 10)
 
     private val REPO_SYNC_VALUE: EnumEventField<Value> = EventFields.Enum("value", Value::class.java) { it.name.lowercase() }
     private val REPO_SYNC: VarargEventId = GROUP.registerVarargEvent("repo.sync", REPO_SYNC_VALUE)
@@ -189,26 +189,6 @@ class GitStatisticsCollector : ProjectUsagesCollector() {
       if (remote.urls.any { it.contains("bitbucket") }) return "bitbucket_custom"
 
       return null
-    }
-
-    private val IS_FULL_REFRESH_FIELD = EventFields.Boolean("is_full_refresh")
-    private val STATUS_REFRESH = GROUP.registerIdeActivity(activityName = "status.refresh",
-                                                           startEventAdditionalFields = arrayOf(IS_FULL_REFRESH_FIELD))
-    private val UNTRACKED_REFRESH = GROUP.registerIdeActivity(activityName = "untracked.refresh",
-                                                              startEventAdditionalFields = arrayOf(IS_FULL_REFRESH_FIELD))
-
-    @JvmStatic
-    fun logStatusRefresh(project: Project, everythingDirty: Boolean): StructuredIdeActivity {
-      return STATUS_REFRESH.started(project) {
-        listOf(IS_FULL_REFRESH_FIELD.with(everythingDirty))
-      }
-    }
-
-    @JvmStatic
-    fun logUntrackedRefresh(project: Project, everythingDirty: Boolean): StructuredIdeActivity {
-      return UNTRACKED_REFRESH.started(project) {
-        listOf(IS_FULL_REFRESH_FIELD.with(everythingDirty))
-      }
     }
   }
 }

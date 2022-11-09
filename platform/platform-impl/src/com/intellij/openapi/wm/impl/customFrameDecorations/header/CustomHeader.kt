@@ -101,6 +101,7 @@ internal abstract class CustomHeader(private val window: Window) : JPanel(), Dis
 
   init {
     isOpaque = true
+    background = getHeaderBackground()
 
     fun onClose() {
       Disposer.dispose(this)
@@ -133,12 +134,7 @@ internal abstract class CustomHeader(private val window: Window) : JPanel(), Dis
     setCustomFrameTopBorder()
   }
 
-  override fun getBackground(): Color {
-    val active = SwingUtilities.getWindowAncestor(this)?.isActive ?: true
-    return getHeaderBackground(active)
-  }
-
-  open protected fun getHeaderBackground(active: Boolean = true) = JBUI.CurrentTheme.CustomFrameDecorations.titlePaneBackground(active)
+  protected open fun getHeaderBackground(active: Boolean = true) = JBUI.CurrentTheme.CustomFrameDecorations.titlePaneBackground(active)
 
   protected fun setCustomFrameTopBorder(isTopNeeded: () -> Boolean = { true }, isBottomNeeded: () -> Boolean = { false }) {
     customFrameTopBorder = CustomFrameTopBorder(isTopNeeded, isBottomNeeded)
@@ -152,7 +148,7 @@ internal abstract class CustomHeader(private val window: Window) : JPanel(), Dis
     updateCustomDecorationHitTestSpots()
   }
 
-  private var added = false
+  protected var added = false
 
   override fun addNotify() {
     super.addNotify()
@@ -197,14 +193,14 @@ internal abstract class CustomHeader(private val window: Window) : JPanel(), Dis
       if (height == 0) return
       val toList = getHitTestSpots().map { java.util.Map.entry(it.first.getRectangleOn(window), it.second) }.toList()
       decor.setCustomDecorationHitTestSpots(window, toList)
-      decor.setCustomDecorationTitleBarHeight(window, height)
+      decor.setCustomDecorationTitleBarHeight(window, height + window.insets.top)
     }
   }
 
   /**
    * Pairs of rectangles and integer constants from {@link com.jetbrains.CustomWindowDecoration} describing type of the spot
    */
-  abstract fun getHitTestSpots(): List<Pair<RelativeRectangle, Int>>
+  abstract fun getHitTestSpots(): Sequence<Pair<RelativeRectangle, Int>>
 
   private fun setActive(value: Boolean) {
     myActive = value

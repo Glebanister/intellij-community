@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.kotlin.idea.fir.uast
 
 import com.intellij.openapi.project.Project
@@ -14,9 +14,10 @@ import org.junit.runner.RunWith
 @RunWith(JUnit38ClassRunner::class)
 class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), UastResolveApiFixtureTestBase {
     override val isFirUastPlugin: Boolean = true
+    override fun isFirPlugin(): Boolean = true
 
     override fun getProjectDescriptor(): LightProjectDescriptor =
-        KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
+        KotlinWithJdkAndRuntimeLightProjectDescriptor.getInstance()
 
     private val whitelist : Set<String> = setOf(
         // TODO: multiResolve, getArgumentForParameter
@@ -25,8 +26,6 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         "MultiResolveJava",
         // TODO: multiResolve, getArgumentForParameter, return type for ambiguous call
         "MultiResolveJavaAmbiguous",
-        // TODO: resolve to setter, not getter
-        "ResolveFromBaseJava",
         // TODO: multiResolve
         "MultiResolveInClass",
         // TODO: multiResolve, return type for ambiguous call
@@ -35,8 +34,6 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         "MultiInvokableObjectResolve",
         // TODO: multiResolve
         "MultiResolveJvmOverloads",
-        // TODO: local resolution
-        "LocalResolve",
         // TODO: resolve annotation param to annotation ctor ??
         "ResolveCompiledAnnotation",
     )
@@ -95,6 +92,10 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         doCheck("MultiResolveInClass", ::checkMultiResolveInClass)
     }
 
+    fun testResolveToFacade() {
+        doCheck("ResolveToFacade", ::checkResolveToFacade)
+    }
+
     fun testMultiConstructorResolve() {
         doCheck("MultiConstructorResolve", ::checkMultiConstructorResolve)
     }
@@ -111,19 +112,88 @@ class FirUastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         doCheck("LocalResolve", ::checkLocalResolve)
     }
 
+    fun testResolveLocalDefaultConstructor() {
+        doCheck("ResolveLocalDefaultConstructor", ::checkResolveLocalDefaultConstructor)
+    }
+
+    fun testResolveJavaClassAsAnonymousObjectSuperType() {
+        doCheck("ResolveJavaClassAsAnonymousObjectSuperType", ::checkResolveJavaClassAsAnonymousObjectSuperType)
+    }
+
     fun testResolveCompiledAnnotation() {
         doCheck("ResolveCompiledAnnotation", ::checkResolveCompiledAnnotation)
     }
 
-    fun testAssigningArrayElementType() {
-        doCheck("AssigningArrayElementType", ::checkAssigningArrayElementType)
+    fun testResolveExplicitLambdaParameter() {
+        doCheck("ResolveExplicitLambdaParameter", ::checkResolveExplicitLambdaParameter)
     }
 
-    fun testDivByZero() {
-        doCheck("DivByZero", ::checkDivByZero)
+    fun testResolveImplicitLambdaParameter() {
+        doCheck("ResolveImplicitLambdaParameter", ::checkResolveImplicitLambdaParameter)
     }
 
-    fun testDetailsOfDeprecatedHidden() {
-        doCheck("DetailsOfDeprecatedHidden", ::checkDetailsOfDeprecatedHidden)
+    fun testResolveSyntheticMethod() {
+        doCheck("ResolveSyntheticMethod", ::checkResolveSyntheticMethod)
     }
+
+    fun testMapFunctions() {
+        doCheck("MapFunctions", ::checkMapFunctions)
+    }
+
+    fun testListIterator() {
+        doCheck("ListIterator", ::checkListIterator)
+    }
+
+    fun testStringJVM() {
+        doCheck("StringJVM", ::checkStringJVM)
+    }
+
+    fun testArgumentMappingDefaultValue() {
+        doCheck("ArgumentMappingDefaultValue", ::checkArgumentMappingDefaultValue)
+    }
+
+    fun testArgumentMappingExtensionFunction() {
+        doCheck("ArgumentMappingExtensionFunction", ::checkArgumentMappingExtensionFunction)
+    }
+
+    fun testArgumentMappingVararg() {
+        doCheck("ArgumentMappingVararg", ::checkArgumentMappingVararg)
+    }
+
+    fun testArgumentMappingOOBE() {
+        doCheck("ArgumentMappingOOBE", ::checkArgumentMappingOOBE)
+    }
+
+    fun testSyntheticEnumMethods() {
+        doCheck("SyntheticEnumMethods", ::checkSyntheticEnumMethods)
+    }
+
+    fun testArrayAccessOverloads() {
+        doCheck("ArrayAccessOverloads", ::checkArrayAccessOverloads)
+    }
+
+    fun testOperatorOverloads() {
+        doCheck("OperatorOverloads", ::checkOperatorOverloads)
+    }
+
+    fun testResolveSyntheticJavaPropertyAccessor() {
+        doCheck("ResolveSyntheticJavaPropertyAccessor", ::checkResolveSyntheticJavaPropertyAccessor)
+    }
+
+    fun testResolveKotlinPropertyAccessor() {
+        doCheck("ResolveKotlinPropertyAccessor", ::checkResolveKotlinPropertyAccessor)
+    }
+
+    fun testResolveToSubstituteOverride() {
+        doCheck("ResolveToSubstituteOverride", ::checkResolveToSubstituteOverride)
+    }
+
+    fun testResolveEnumEntrySuperType() {
+        doCheck("TypeReferenceFromEnumEntry", ::checkResolveEnumEntrySuperType)
+    }
+
+    fun testResolveLambdaInvoke() {
+        doCheck("LambdaInvoke", ::checkLambdaInvoke)
+    }
+
 }

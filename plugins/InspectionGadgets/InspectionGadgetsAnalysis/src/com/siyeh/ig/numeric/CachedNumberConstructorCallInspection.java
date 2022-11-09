@@ -15,6 +15,7 @@
  */
 package com.siyeh.ig.numeric;
 
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
@@ -36,7 +37,7 @@ import javax.swing.*;
 import java.util.HashSet;
 import java.util.Set;
 
-public class CachedNumberConstructorCallInspection extends BaseInspection {
+public class CachedNumberConstructorCallInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   static final Set<String> cachedNumberTypes = new HashSet<>();
 
@@ -109,7 +110,7 @@ public class CachedNumberConstructorCallInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiNewExpression expression = PsiTreeUtil.getParentOfType(descriptor.getPsiElement(), PsiNewExpression.class, false);
       assert expression != null;
       final PsiExpressionList argList = expression.getArgumentList();

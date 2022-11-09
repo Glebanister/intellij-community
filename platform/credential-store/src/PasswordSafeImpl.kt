@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("PackageDirectoryMismatch")
 package com.intellij.ide.passwordSafe.impl
 
@@ -7,7 +7,6 @@ import com.intellij.credentialStore.*
 import com.intellij.credentialStore.kdbx.IncorrectMasterPasswordException
 import com.intellij.credentialStore.keePass.*
 import com.intellij.ide.passwordSafe.PasswordSafe
-import com.intellij.ide.passwordSafe.PasswordStorage
 import com.intellij.notification.NotificationAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -17,16 +16,17 @@ import com.intellij.openapi.util.ShutDownTracker
 import com.intellij.serviceContainer.NonInjectable
 import com.intellij.util.SingleAlarm
 import com.intellij.util.concurrency.SynchronizedClearableLazy
-import org.jetbrains.annotations.ApiStatus
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.future.asCompletableFuture
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.concurrency.Promise
-import org.jetbrains.concurrency.runAsync
+import org.jetbrains.concurrency.asPromise
 import java.io.Closeable
 import java.nio.file.Path
 import java.nio.file.Paths
 
 open class BasePasswordSafe @NonInjectable constructor(val settings: PasswordSafeSettings, provider: CredentialStore? = null /* TestOnly */) : PasswordSafe() {
-  @Suppress("unused")
   constructor() : this(service<PasswordSafeSettings>(), null)
 
   override var isRememberPasswordByDefault: Boolean
@@ -76,7 +76,7 @@ open class BasePasswordSafe @NonInjectable constructor(val settings: PasswordSaf
     }
 
   // it is helper storage to support set password as memory-only (see setPassword memoryOnly flag)
-  protected val memoryHelperProvider: Lazy<CredentialStore> = lazy { InMemoryCredentialStore() }
+  private val memoryHelperProvider: Lazy<CredentialStore> = lazy { InMemoryCredentialStore() }
 
   override val isMemoryOnly: Boolean
     get() = settings.providerType == ProviderType.MEMORY_ONLY
@@ -120,8 +120,12 @@ open class BasePasswordSafe @NonInjectable constructor(val settings: PasswordSaf
     }
   }
 
-  // maybe in the future we will use native async, so, this method added here instead "if need, just use runAsync in your code"
-  override fun getAsync(attributes: CredentialAttributes): Promise<Credentials?> = runAsync { get(attributes) }
+  // maybe in the future we will use native async, so, this method added here instead "if needed, just use runAsync in your code"
+  override fun getAsync(attributes: CredentialAttributes): Promise<Credentials?> {
+    return ApplicationManager.getApplication().coroutineScope.async(Dispatchers.IO) {
+      get(attributes)
+    }.asCompletableFuture().asPromise()
+  }
 
   open suspend fun save() {
     val keePassCredentialStore = currentProviderIfComputed as? KeePassCredentialStore ?: return
@@ -158,16 +162,9 @@ class PasswordSafeImpl : BasePasswordSafe(), SettingsSavingComponent {
       saveAlarm.request()
     }
   }
-
-  @Suppress("unused", "DeprecatedCallableAddReplaceWith")
-  @get:Deprecated("Do not use it")
-  @get:ApiStatus.ScheduledForRemoval
-  // public - backward compatibility
-  val memoryProvider: PasswordStorage
-    get() = memoryHelperProvider.value as PasswordStorage
 }
 
-fun getDefaultKeePassDbFile() = getDefaultKeePassBaseDirectory().resolve(DB_FILE_NAME)
+fun getDefaultKeePassDbFile(): Path = getDefaultKeePassBaseDirectory().resolve(DB_FILE_NAME)
 
 private fun computeProvider(settings: PasswordSafeSettings): CredentialStore {
   if (settings.providerType == ProviderType.MEMORY_ONLY || (ApplicationManager.getApplication()?.isUnitTestMode == true)) {
@@ -175,47 +172,57 @@ private fun computeProvider(settings: PasswordSafeSettings): CredentialStore {
   }
 
   fun showError(@NlsContexts.NotificationTitle title: String) {
-    CredentialStoreUiService.getInstance().notify(title,
-                                                  CredentialStoreBundle.message("notification.content.in.memory.storage"), null,
-                                                  NotificationAction.createExpiring(CredentialStoreBundle.message("notification.content.password.settings.action"))
-                                                  { e, _ -> CredentialStoreUiService.getInstance().openSettings(e.project) })
+    @Suppress("HardCodedStringLiteral")
+    CredentialStoreUiService.getInstance().notify(
+      title = title,
+      content = CredentialStoreBundle.message("notification.content.in.memory.storage"),
+      project = null,
+      action = NotificationAction.createExpiring(CredentialStoreBundle.message("notification.content.password.settings.action"))
+      { e, _ -> CredentialStoreUiService.getInstance().openSettings(e.project) }
+    )
   }
 
-  if (settings.providerType == ProviderType.KEEPASS) {
-    try {
-      val dbFile = settings.keepassDb?.let { Paths.get(it) } ?: getDefaultKeePassDbFile()
-      return KeePassCredentialStore(dbFile, getDefaultMasterPasswordFile())
+  if (CredentialStoreManager.getInstance().isSupported(settings.providerType)) {
+    if (settings.providerType == ProviderType.KEEPASS) {
+      try {
+        val dbFile = settings.keepassDb?.let { Paths.get(it) } ?: getDefaultKeePassDbFile()
+        return KeePassCredentialStore(dbFile, getDefaultMasterPasswordFile())
+      }
+      catch (e: IncorrectMasterPasswordException) {
+        LOG.warn(e)
+        showError(if (e.isFileMissed) CredentialStoreBundle.message("notification.title.password.missing")
+                  else CredentialStoreBundle.message("notification.title.password.incorrect"))
+      }
+      catch (e: ProcessCanceledException) {
+        throw e
+      }
+      catch (e: Throwable) {
+        LOG.error(e)
+        showError(CredentialStoreBundle.message("notification.title.database.error"))
+      }
     }
-    catch (e: IncorrectMasterPasswordException) {
-      LOG.warn(e)
-      showError(if (e.isFileMissed) CredentialStoreBundle.message("notification.title.password.missing")
-                else CredentialStoreBundle.message("notification.title.password.incorrect"))
-    }
-    catch (e: ProcessCanceledException) {
-      throw e
-    }
-    catch (e: Throwable) {
-      LOG.error(e)
-      showError(CredentialStoreBundle.message("notification.title.database.error"))
+    else {
+      try {
+        val store = createPersistentCredentialStore()
+        if (store == null) {
+          showError(CredentialStoreBundle.message("notification.title.keychain.not.available"))
+        }
+        else {
+          return store
+        }
+      }
+      catch (e: ProcessCanceledException) {
+        throw e
+      }
+      catch (e: Throwable) {
+        LOG.error(e)
+        showError(CredentialStoreBundle.message("notification.title.cannot.use.keychain"))
+      }
     }
   }
   else {
-    try {
-      val store = createPersistentCredentialStore()
-      if (store == null) {
-        showError(CredentialStoreBundle.message("notification.title.keychain.not.available"))
-      }
-      else {
-        return store
-      }
-    }
-    catch (e: ProcessCanceledException) {
-      throw e
-    }
-    catch (e: Throwable) {
-      LOG.error(e)
-      showError(CredentialStoreBundle.message("notification.title.cannot.use.keychain"))
-    }
+    LOG.error("Provider ${settings.providerType} is not supported in this environment")
+    showError(CredentialStoreBundle.message("notification.title.cannot.use.provider", settings.providerType))
   }
 
   settings.providerType = ProviderType.MEMORY_ONLY

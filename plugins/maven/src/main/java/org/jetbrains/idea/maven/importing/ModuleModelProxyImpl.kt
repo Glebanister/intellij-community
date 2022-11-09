@@ -1,6 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.importing
 
+import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.module.ModifiableModuleModel
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.module.ModuleWithNameAlreadyExists
@@ -11,12 +12,13 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.util.PathUtil
 import com.intellij.util.containers.map2Array
 import com.intellij.workspaceModel.ide.impl.JpsEntitySourceFactory
-import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl.Companion.findModuleByEntity
-import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl.Companion.findModuleEntity
 import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl.Companion.getInstance
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.findModule
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.findModuleEntity
 import com.intellij.workspaceModel.ide.legacyBridge.ModuleBridge
+import com.intellij.workspaceModel.storage.MutableEntityStorage
 import com.intellij.workspaceModel.storage.VersionedEntityStorage
-import com.intellij.workspaceModel.storage.WorkspaceEntityStorageBuilder
+import com.intellij.workspaceModel.storage.bridgeEntities.addModuleGroupPathEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.*
 import com.intellij.workspaceModel.storage.impl.VersionedEntityStorageOnBuilder
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
@@ -57,7 +59,7 @@ class ModuleModelProxyWrapper(val delegate: ModifiableModuleModel) : ModuleModel
 
 }
 
-class ModuleModelProxyImpl(private val diff: WorkspaceEntityStorageBuilder,
+class ModuleModelProxyImpl(private val diff: MutableEntityStorage,
                            private val project: Project) : ModuleModelProxy {
   private val virtualFileManager: VirtualFileUrlManager = project.getService(VirtualFileUrlManager::class.java)
   private val versionedStorage: VersionedEntityStorage
@@ -69,7 +71,7 @@ class ModuleModelProxyImpl(private val diff: WorkspaceEntityStorageBuilder,
       return
     }
     if (module !is ModuleBridge) return
-    val moduleEntity: ModuleEntity = diff.findModuleEntity(module) ?: return //MavenProjectImporterImpl.LOG.error("Could not find module entity to remove by $module");
+    val moduleEntity: ModuleEntity = module.findModuleEntity(diff) ?: return //MavenProjectImporterImpl.LOG.error("Could not find module entity to remove by $module");
 
     moduleEntity.dependencies
       .asSequence()
@@ -85,15 +87,14 @@ class ModuleModelProxyImpl(private val diff: WorkspaceEntityStorageBuilder,
 
   override val modules: Array<Module>
     get() = diff.entities(ModuleEntity::class.java)
-      .map { diff.findModuleByEntity(it) }
+      .map { moduleEntity -> moduleEntity.findModule(diff) }
       .filterNotNull()
       .toList()
       .map2Array { it }
 
 
   override fun findModuleByName(name: String): Module? {
-    val entity = diff.resolve(ModuleId(name)) ?: return null
-    return diff.findModuleByEntity(entity)
+    return diff.resolve(ModuleId(name))?.findModule(diff)
   }
 
   override fun newModule(path: String, moduleTypeId: String): Module {
@@ -105,13 +106,19 @@ class ModuleModelProxyImpl(private val diff: WorkspaceEntityStorageBuilder,
                                                                       PathUtil.getParentPath(
                                                                         systemIndependentPath)), ExternalProjectSystemRegistry.getInstance().getSourceById(
       ExternalProjectSystemRegistry.MAVEN_EXTERNAL_SOURCE_ID))
-    val moduleEntity = diff.addEntity(ModifiableModuleEntity::class.java, source) {
-      this.name = name
+    val moduleEntity = ModuleEntity(name, listOf(ModuleDependencyItem.ModuleSourceDependency), source) {
       type = moduleTypeId
-      dependencies = listOf(ModuleDependencyItem.ModuleSourceDependency)
     }
+    diff.addEntity(moduleEntity)
     val moduleManager = getInstance(project)
-    val module = moduleManager.createModuleInstance(moduleEntity, versionedStorage, diff, true, null)
+    val plugins = PluginManagerCore.getPluginSet().getEnabledModules()
+    val module = moduleManager.createModuleInstance(moduleEntity = moduleEntity,
+                                                    versionedStorage = versionedStorage,
+                                                    diff = diff,
+                                                    isNew = true,
+                                                    precomputedExtensionModel = null,
+                                                    plugins = plugins,
+                                                    corePlugin = plugins.firstOrNull { it.pluginId == PluginManagerCore.CORE_ID })
     diff.getMutableExternalMapping<Module>("intellij.modules.bridge").addMapping(moduleEntity, module)
     return module
   }
@@ -119,9 +126,9 @@ class ModuleModelProxyImpl(private val diff: WorkspaceEntityStorageBuilder,
   override fun setModuleGroupPath(module: Module, groupPath: Array<String>?) {
     if (module !is ModuleBridge) return
 
-    val moduleEntity = diff.findModuleEntity(module) ?: error("Could not resolve module entity for $module")
+    val moduleEntity = module.findModuleEntity(diff) ?: error("Could not resolve module entity for $module")
     val moduleGroupEntity = moduleEntity.groupPath
-    val groupPathList = groupPath?.toList()
+    val groupPathList = groupPath?.toMutableList()
 
     if (moduleGroupEntity?.path != groupPathList) {
       when {
@@ -133,7 +140,7 @@ class ModuleModelProxyImpl(private val diff: WorkspaceEntityStorageBuilder,
 
         moduleGroupEntity == null && groupPathList == null -> Unit
         moduleGroupEntity != null && groupPathList == null -> diff.removeEntity(moduleGroupEntity)
-        moduleGroupEntity != null && groupPathList != null -> diff.modifyEntity(ModifiableModuleGroupPathEntity::class.java,
+        moduleGroupEntity != null && groupPathList != null -> diff.modifyEntity(ModuleGroupPathEntity.Builder::class.java,
                                                                                 moduleGroupEntity) {
           path = groupPathList
         }

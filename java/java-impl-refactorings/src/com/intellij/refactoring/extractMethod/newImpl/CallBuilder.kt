@@ -1,20 +1,21 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.refactoring.extractMethod.newImpl
 
-import com.intellij.openapi.project.Project
 import com.intellij.psi.*
+import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.impl.source.resolve.JavaResolveUtil
 import com.intellij.psi.util.PsiUtil
 import com.intellij.refactoring.extractMethod.newImpl.ExtractMethodHelper.createDeclaration
 import com.intellij.refactoring.extractMethod.newImpl.structures.DataOutput
 import com.intellij.refactoring.extractMethod.newImpl.structures.DataOutput.*
+import com.intellij.refactoring.extractMethod.newImpl.structures.ExtractOptions
 import com.intellij.refactoring.extractMethod.newImpl.structures.FlowOutput
 import com.intellij.refactoring.extractMethod.newImpl.structures.FlowOutput.*
 import com.intellij.refactoring.util.RefactoringChangeUtil
 
-class CallBuilder(project: Project, private val context: PsiElement) {
+class CallBuilder(private val context: PsiElement) {
 
-  private val factory: PsiElementFactory = PsiElementFactory.getInstance(project)
+  private val factory: PsiElementFactory = PsiElementFactory.getInstance(context.project)
 
   private fun expressionOf(expression: String) = factory.createExpressionFromText(expression, context)
 
@@ -84,25 +85,31 @@ class CallBuilder(project: Project, private val context: PsiElement) {
     }
   }
 
-  fun buildCall(methodCall: String, flowOutput: FlowOutput, dataOutput: DataOutput, exposedDeclarations: List<PsiVariable>): List<PsiStatement> {
+  private fun buildCall(methodCall: String, flowOutput: FlowOutput, dataOutput: DataOutput, exposedDeclarations: List<PsiVariable>): List<PsiStatement> {
     val variableDeclaration = if (flowOutput !is ConditionalFlow && dataOutput is ExpressionOutput) emptyList() else variableDeclaration(methodCall, dataOutput)
     return variableDeclaration + createFlowStatements(methodCall, flowOutput, dataOutput) + exposedDeclarations.map { createDeclaration(it) }
   }
 
-  fun buildExpressionCall(methodCall: String, dataOutput: DataOutput): List<PsiElement> {
+  private fun buildExpressionCall(methodCall: String, dataOutput: DataOutput): List<PsiElement> {
     require(dataOutput is ExpressionOutput)
     val expression = if (dataOutput.name != null) "${dataOutput.name} = $methodCall" else methodCall
     return listOf(factory.createExpressionFromText(expression, context))
   }
 
-  fun createMethodCall(method: PsiMethod, parameters: List<PsiExpression>): PsiMethodCallExpression {
+  private fun createMethodCall(method: PsiMethod, parameters: List<PsiExpression>): PsiMethodCallExpression {
     val name = if (method.isConstructor) "this" else method.name
     val callText = name + "(" + parameters.joinToString { it.text } + ")"
     val factory = PsiElementFactory.getInstance(method.project)
     val callElement = factory.createExpressionFromText(callText, context) as PsiMethodCallExpression
     val methodClass = findParentClass(method)!!
-    if (methodClass != findParentClass(context) && callElement.resolveMethod() != null && callElement.resolveMethod() != method && !method.isConstructor) {
-      val ref = if (method.hasModifierProperty(PsiModifier.STATIC)) factory.createReferenceExpression(methodClass) else RefactoringChangeUtil.createThisExpression(PsiManager.getInstance(method.project), methodClass)
+    if (methodClass != findParentClass(
+        context) && callElement.resolveMethod() != null && callElement.resolveMethod() != method && !method.isConstructor) {
+      val ref = if (method.hasModifierProperty(PsiModifier.STATIC)) {
+        factory.createReferenceExpression(methodClass)
+      }
+      else {
+        RefactoringChangeUtil.createThisExpression(PsiManager.getInstance(method.project), methodClass)
+      }
       callElement.methodExpression.qualifierExpression = ref
     }
     return callElement
@@ -110,5 +117,21 @@ class CallBuilder(project: Project, private val context: PsiElement) {
 
   private fun findParentClass(context: PsiElement): PsiClass? {
     return JavaResolveUtil.findParentContextOfClass(context, PsiClass::class.java, false) as? PsiClass
+  }
+
+  fun createCall(method: PsiMethod, dependencies: ExtractOptions): List<PsiElement> {
+    val parameters = dependencies.inputParameters.map { it.references.first() }
+
+    val methodCall = createMethodCall(method, parameters).text
+    val expressionElement = (dependencies.elements.singleOrNull() as? PsiExpression)
+    val callElements = if (expressionElement != null) {
+      buildExpressionCall(methodCall, dependencies.dataOutput)
+    }
+    else {
+      buildCall(methodCall, dependencies.flowOutput, dependencies.dataOutput, dependencies.exposedLocalVariables)
+    }
+
+    val styleManager = CodeStyleManager.getInstance(dependencies.project)
+    return callElements.map(styleManager::reformat)
   }
 }

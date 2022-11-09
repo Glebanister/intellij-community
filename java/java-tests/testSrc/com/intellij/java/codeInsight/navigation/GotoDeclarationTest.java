@@ -25,11 +25,41 @@ public class GotoDeclarationTest extends LightJavaCodeInsightTestCase {
   }
 
   public void testContinue() { doTest(); }
+
   public void testContinueLabel() { doTest(); }
-  public void testBreak() {  doTest(); }
-  public void testBreak1() {  doTest(); }
-  public void testBreakLabel() {  doTest(); }
-  public void testAnonymous() {  doTest(); }
+
+  public void testBreak() { doTest(); }
+
+  public void testBreak1() { doTest(); }
+
+  public void testBreakLabel() { doTest(); }
+
+  public void testAnonymous() { doTest(); }
+
+  public void testFromGuardToDestructuringVariable() { doGotoTest(); }
+
+  public void testFromGuardToDestructuringPattern() { doGotoTest(); }
+
+  public void testFromArrowToDestructuringVariable() { doGotoTest(); }
+
+  public void testFromArrowToDestructuringPattern() { doGotoTest(); }
+
+  public void testFromStatementToDestructuringVariable() { doGotoTest(); }
+
+  public void testFromStatementToDestructuringPattern() { doGotoTest(); }
+
+  public void testFromIfToDestructuringVariable() { doGotoTest(); }
+
+  public void testFromIfToDestructuringPattern() { doGotoTest(); }
+
+  public void testToGuardedTypeTest() { doGotoTest(); }
+
+  private void doGotoTest() {
+    String name = getTestName(false);
+    configureByFile("/codeInsight/gotoDeclaration/" + name + ".java");
+    performAction();
+    checkResultByFile("/codeInsight/gotoDeclaration/" + name + "_after.java");
+  }
 
   private void performAction() {
     PsiElement element = GotoDeclarationAction.findTargetElement(getProject(), getEditor(), getEditor().getCaretModel().getOffset());
@@ -87,14 +117,15 @@ public class GotoDeclarationTest extends LightJavaCodeInsightTestCase {
   }
 
   public void testToStringInAnonymous() {
-    configureFromFileText("A.java", "class A {{" +
-                                    "       final Object o = new Object() {\n" +
-                                    "            @Override\n" +
-                                    "            public String toString() {\n" +
-                                    "                return super.toString();\n" +
-                                    "            }\n" +
-                                    "        };\n" +
-                                    "        o.to<caret>String();\n }}");
+    configureFromFileText("A.java", """
+      class A {{       final Object o = new Object() {
+                  @Override
+                  public String toString() {
+                      return super.toString();
+                  }
+              };
+              o.to<caret>String();
+       }}""");
     PsiElement element = GotoDeclarationAction.findTargetElement(getProject(), getEditor(), getEditor().getCaretModel().getOffset());
     assertInstanceOf(element, PsiMethod.class);
     PsiClass containingClass = ((PsiMethod)element).getContainingClass();
@@ -102,15 +133,16 @@ public class GotoDeclarationTest extends LightJavaCodeInsightTestCase {
   }
 
   public void testToFieldFromQualifierInNew() {
-    configureFromFileText("A.java", "class A {Util myContext;\n" +
-                                    "    private class Util {\n" +
-                                    "        public class Filter {\n" +
-                                    "            public Filter() {\n" +
-                                    "            }\n" +
-                                    "        }}\n" +
-                                    "    private void method() {\n" +
-                                    "        Util.Filter filter = my<caret>Context.new Filter();\n" +
-                                    "    }}");
+    configureFromFileText("A.java", """
+      class A {Util myContext;
+          private class Util {
+              public class Filter {
+                  public Filter() {
+                  }
+              }}
+          private void method() {
+              Util.Filter filter = my<caret>Context.new Filter();
+          }}""");
     PsiElement element = GotoDeclarationAction.findTargetElement(getProject(), getEditor(), getEditor().getCaretModel().getOffset());
     assertInstanceOf(element, PsiField.class);
   }

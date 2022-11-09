@@ -20,6 +20,7 @@ import org.jetbrains.idea.maven.model.MavenArtifact;
 import org.jetbrains.idea.maven.model.MavenConstants;
 import org.jetbrains.idea.maven.project.MavenProject;
 import org.jetbrains.idea.maven.project.MavenProjectsManager;
+import org.jetbrains.idea.maven.statistics.MavenImportCollector;
 import org.jetbrains.idea.maven.utils.MavenUtil;
 import org.jetbrains.idea.maven.utils.Path;
 import org.jetbrains.idea.maven.utils.Url;
@@ -73,7 +74,7 @@ public class MavenRootModelAdapterLegacyImpl implements MavenRootModelAdapterInt
   private void initContentRoots() {
     Url url = toUrl(myMavenProject.getDirectory());
     if (getContentRootFor(url) != null) return;
-    myRootModel.addContentEntry(url.getUrl());
+    myRootModel.addContentEntry(url.getUrl(), getMavenExternalSource());
   }
 
   private ContentEntry getContentRootFor(Url url) {
@@ -94,10 +95,16 @@ public class MavenRootModelAdapterLegacyImpl implements MavenRootModelAdapterInt
 
       if (e instanceof LibraryOrderEntry) {
         if (Registry.is("maven.always.remove.bad.entries")) {
-          if (!isMavenLibrary((LibraryOrderEntry)e)) continue;
+          if (!isMavenLibrary((LibraryOrderEntry)e)) {
+            MavenImportCollector.HAS_USER_ADDED_LIBRARY_DEP.log(myRootModel.getProject());
+            continue;
+          }
         }
         else {
-          if (!isMavenLibrary(((LibraryOrderEntry)e).getLibrary())) continue;
+          if (!isMavenLibrary(((LibraryOrderEntry)e).getLibrary())) {
+            MavenImportCollector.HAS_USER_ADDED_LIBRARY_DEP.log(myRootModel.getProject());
+            continue;
+          }
         }
       }
       if (e instanceof ModuleOrderEntry) {
@@ -105,6 +112,7 @@ public class MavenRootModelAdapterLegacyImpl implements MavenRootModelAdapterInt
         if (m != null &&
             !MavenProjectsManager.getInstance(myRootModel.getProject()).isMavenizedModule(m) &&
             ExternalSystemModulePropertyManager.getInstance(m).getExternalSystemId() == null) {
+          MavenImportCollector.HAS_USER_ADDED_MODULE_DEP.log(myRootModel.getProject());
           continue;
         }
       }
@@ -201,7 +209,7 @@ public class MavenRootModelAdapterLegacyImpl implements MavenRootModelAdapterInt
     ContentEntry e = getContentRootFor(url);
     if (e == null) return;
     if (e.getUrl().equals(url.getUrl())) return;
-    e.addExcludeFolder(url.getUrl());
+    e.addExcludeFolder(url.getUrl(), getMavenExternalSource());
   }
 
   @Override

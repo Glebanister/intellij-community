@@ -14,14 +14,8 @@ import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.components.JBTextField
-import com.intellij.ui.dsl.builder.RightGap
-import com.intellij.ui.dsl.builder.Row
-import com.intellij.ui.dsl.builder.RowLayout
-import com.intellij.ui.dsl.builder.columns
-import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
-import com.intellij.ui.dsl.gridLayout.VerticalAlign
-import com.intellij.ui.layout.*
+import com.intellij.ui.dsl.builder.*
+import com.intellij.ui.layout.selected
 import com.maddyhome.idea.copyright.CopyrightUpdaters
 import com.maddyhome.idea.copyright.DEFAULT_COPYRIGHT_NOTICE
 import com.maddyhome.idea.copyright.options.LanguageOptions
@@ -146,7 +140,7 @@ class TemplateCommentPanel(_fileType: FileType?,
           }
         }
       }.resizableColumn()
-        .verticalAlign(VerticalAlign.TOP)
+        .align(AlignY.TOP)
         .gap(RightGap.COLUMNS)
 
       panel {
@@ -193,7 +187,7 @@ class TemplateCommentPanel(_fileType: FileType?,
           }
         }
       }.resizableColumn()
-        .verticalAlign(VerticalAlign.TOP)
+        .align(AlignY.TOP)
     }
 
     if (locations.isNotEmpty()) {
@@ -210,8 +204,7 @@ class TemplateCommentPanel(_fileType: FileType?,
 
     row {
       preview = textArea()
-        .horizontalAlign(HorizontalAlign.FILL)
-        .verticalAlign(VerticalAlign.FILL)
+        .align(Align.FILL)
         .applyToComponent {
           isEditable = false
           font = EditorFontType.getGlobalPlainFont()
@@ -285,7 +278,7 @@ class TemplateCommentPanel(_fileType: FileType?,
       lineComment.isSelected = true
     }
 
-    prefixLines.isSelected = !allowBlock || options.isPrefixLines
+    prefixLines.isSelected = options.isPrefixLines
     separatorAfter.isSelected = options.isSeparateAfter
     separatorBefore.isSelected = options.isSeparateBefore
     lengthBefore.text = options.getLenBefore().toString()
@@ -320,7 +313,7 @@ class TemplateCommentPanel(_fileType: FileType?,
     // of a block comment. If there are any blank lines the replacement logic will fall apart.
     val result = LanguageOptions()
     result.isBlock = blockComment.isSelected
-    result.isPrefixLines = !allowBlock || prefixLines.isSelected
+    result.isPrefixLines = prefixLines.isSelected
     result.isSeparateAfter = separatorAfter.isSelected
     result.isSeparateBefore = separatorBefore.isSelected
     try {
@@ -414,7 +407,7 @@ class TemplateCommentPanel(_fileType: FileType?,
       borderGroup.enabled(true)
       blockComment.isEnabled = true
       lineComment.isEnabled = true
-      prefixLines.isEnabled = allowBlock
+      prefixLines.isEnabled = allowBlock && blockComment.isSelected
       separatorBefore.isEnabled = true
       separatorAfter.isEnabled = true
       lengthBefore.isEnabled = separatorBefore.isSelected

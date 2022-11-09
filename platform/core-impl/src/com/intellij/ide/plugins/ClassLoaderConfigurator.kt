@@ -1,5 +1,5 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
-@file:Suppress("ReplaceNegatedIsEmptyWithIsNotEmpty", "ReplaceGetOrSet", "ReplacePutWithAssignment")
+@file:Suppress("ReplaceGetOrSet")
 package com.intellij.ide.plugins
 
 import com.intellij.diagnostic.PluginException
@@ -11,6 +11,7 @@ import com.intellij.util.lang.ClassPath
 import com.intellij.util.lang.ResourceFile
 import com.intellij.util.lang.UrlClassLoader
 import org.jetbrains.annotations.ApiStatus
+import org.jetbrains.annotations.VisibleForTesting
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
 import java.nio.file.Files
@@ -65,30 +66,25 @@ class ClassLoaderConfigurator(
   fun configureDependency(
     mainDescriptor: IdeaPluginDescriptorImpl,
     moduleDescriptor: IdeaPluginDescriptorImpl,
-  ) {
-    assert(mainDescriptor != moduleDescriptor)
+  ): Boolean {
+    assert(mainDescriptor != moduleDescriptor) { "$mainDescriptor != $moduleDescriptor" }
 
     val pluginId = mainDescriptor.pluginId
-    assert(pluginId == moduleDescriptor.pluginId)
+    assert(pluginId == moduleDescriptor.pluginId) { "pluginId '$pluginId' != moduleDescriptor.pluginId '${moduleDescriptor.pluginId}'"}
 
     val mainClassLoader = mainDescriptor.pluginClassLoader as PluginClassLoader
     mainToClassPath[pluginId] = MainInfo(mainClassLoader)
 
-    if (mainDescriptor.packagePrefix == null) {
-      moduleDescriptor.pluginClassLoader = mainClassLoader
-    }
-    else {
-      configureModule(moduleDescriptor)
-    }
+    return configureModule(moduleDescriptor)
   }
 
   fun configure() {
-    for (module in pluginSet.getRawListOfEnabledModules()) {
+    for (module in pluginSet.getEnabledModules()) {
       configureModule(module)
     }
   }
 
-  fun configureModule(module: IdeaPluginDescriptorImpl) {
+  fun configureModule(module: IdeaPluginDescriptorImpl): Boolean {
     checkPackagePrefixUniqueness(module)
 
     val isMain = module.moduleName == null
@@ -98,7 +94,7 @@ class ClassLoaderConfigurator(
     if (isMain) {
       if (module.useCoreClassLoader || module.pluginId == PluginManagerCore.CORE_ID) {
         setPluginClassLoaderForModuleAndOldSubDescriptors(module, coreLoader)
-        return
+        return true
       }
 
       var files = module.jarFiles
@@ -139,16 +135,14 @@ class ClassLoaderConfigurator(
       }
 
       assert(module.pluginDependencies.isEmpty()) { "Module $module shouldn't have plugin dependencies: ${module.pluginDependencies}" }
-      for (dependency in dependencies) {
-        // if the module depends on an unavailable plugin, it will not be loaded
-        if (dependency.pluginClassLoader == null) {
-          return
-        }
+      // if the module depends on an unavailable plugin, it will not be loaded
+      if (dependencies.any { it.pluginClassLoader == null }) {
+        return false
       }
 
       if (module.useCoreClassLoader) {
         module.pluginClassLoader = coreLoader
-        return
+        return true
       }
 
       val mainInfo = mainToClassPath.get(module.pluginId)
@@ -173,6 +167,8 @@ class ClassLoaderConfigurator(
         )
       }
     }
+
+    return true
   }
 
   private fun configureDependenciesInOldFormat(module: IdeaPluginDescriptorImpl, mainDependentClassLoader: ClassLoader) {
@@ -210,7 +206,6 @@ class ClassLoaderConfigurator(
     val coreUrlClassLoader = coreLoader as? UrlClassLoader
     if (coreUrlClassLoader == null) {
       if (!java.lang.Boolean.getBoolean("idea.use.core.classloader.for.plugin.path")) {
-        @Suppress("SpellCheckingInspection")
         log.error("You must run JVM with -Djava.system.class.loader=com.intellij.util.lang.PathClassLoader")
       }
       setPluginClassLoaderForModuleAndOldSubDescriptors(module, coreLoader)
@@ -347,7 +342,7 @@ private fun createPluginDependencyAndContentBasedScope(descriptor: IdeaPluginDes
 
     for (prefix in contentPackagePrefixes) {
       if (name.startsWith(prefix)) {
-        return@ResolveScopeManager "Class $name must be not requested from main classloader of $pluginId plugin"
+        return@ResolveScopeManager "Class $name must not be requested from main classloader of $pluginId plugin"
       }
     }
 
@@ -431,6 +426,7 @@ private fun configureUsingIdeaClassloader(classPath: List<Path>, descriptor: Ide
   }
 }
 
+@VisibleForTesting
 fun sortDependenciesInPlace(dependencies: Array<IdeaPluginDescriptorImpl>) {
   if (dependencies.size <= 1) return
 

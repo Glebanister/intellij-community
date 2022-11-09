@@ -15,8 +15,8 @@
  */
 package com.siyeh.ig.redundancy;
 
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.ProblemDescriptor;
-import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.siyeh.InspectionGadgetsBundle;
@@ -27,7 +27,7 @@ import com.siyeh.ig.PsiReplacementUtil;
 import com.siyeh.ig.psiutils.CommentTracker;
 import org.jetbrains.annotations.NotNull;
 
-public class UnusedLabelInspection extends BaseInspection {
+public class UnusedLabelInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   @Override
   public boolean isEnabledByDefault() {
@@ -61,7 +61,7 @@ public class UnusedLabelInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement label = descriptor.getPsiElement();
       final PsiElement parent = label.getParent();
       if (!(parent instanceof PsiLabeledStatement)) {
@@ -81,12 +81,12 @@ public class UnusedLabelInspection extends BaseInspection {
   private static class UnusedLabelVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitLabeledStatement(PsiLabeledStatement statement) {
+    public void visitLabeledStatement(@NotNull PsiLabeledStatement statement) {
       if (containsBreakOrContinueForLabel(statement)) {
         return;
       }
       final PsiIdentifier labelIdentifier = statement.getLabelIdentifier();
-      registerError(labelIdentifier, ProblemHighlightType.LIKE_UNUSED_SYMBOL);
+      registerError(labelIdentifier);
     }
 
     private static boolean containsBreakOrContinueForLabel(PsiLabeledStatement statement) {

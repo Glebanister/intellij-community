@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.wm.impl.status;
 
 import com.intellij.featureStatistics.FeatureUsageTracker;
@@ -16,6 +16,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.TaskInfo;
 import com.intellij.openapi.progress.impl.ProgressSuspender;
 import com.intellij.openapi.progress.util.AbstractProgressIndicatorExBase;
+import com.intellij.openapi.progress.util.TitledIndicator;
 import com.intellij.openapi.ui.MessageType;
 import com.intellij.openapi.ui.panel.ProgressPanel;
 import com.intellij.openapi.ui.panel.ProgressPanelBuilder;
@@ -37,6 +38,7 @@ import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.util.Alarm;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.*;
@@ -56,7 +58,17 @@ import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.*;
 
-public final class InfoAndProgressPanel extends JPanel implements CustomStatusBarWidget, UISettingsListener {
+public final class InfoAndProgressPanel extends JPanel implements CustomStatusBarWidget, UISettingsListener, Disposable {
+  @ApiStatus.Internal
+  public enum AutoscrollLimit {
+    NOT_ALLOWED, ALLOW_ONCE, UNLIMITED
+  }
+
+  @ApiStatus.Internal
+  public interface ScrollableToSelected {
+    void updateAutoscrollLimit(AutoscrollLimit limit);
+  }
+
   public static final Object FAKE_BALLOON = new Object();
 
   private final ProcessPopup myPopup;
@@ -83,6 +95,8 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     icon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
     icon.setBorder(JBUI.CurrentTheme.StatusBar.Widget.border());
     icon.setToolTipText(ActionsBundle.message("action.ShowProcessWindow.double.click"));
+    Disposer.register(this, icon);
+
     return icon;
   });
 
@@ -103,7 +117,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
   private boolean myDisposed;
   private WeakReference<Balloon> myLastShownBalloon;
   private JComponent myCentralComponent;
-  private boolean myShowNavBar;
+  private boolean myShowNavBar;  // see also: `VfsRefreshIndicatorWidgetFactory#myAvailable`
 
   private final Set<InlineProgressIndicator> myDirtyIndicators = new ReferenceOpenHashSet<>();
   private final Update myUpdateIndicators = new Update("UpdateIndicators", false, 1) {
@@ -127,7 +141,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     myRefreshAndInfoPanel.setLayout(new BorderLayout());
     myRefreshAndInfoPanel.setOpaque(false);
 
-    myShowNavBar = ExperimentalUI.isNewUI() && uiSettings.getShowNavigationBar();
+    myShowNavBar = ExperimentalUI.isNewUI() && uiSettings.getShowNavigationBarInBottom();
 
     myRefreshIcon = new JLabel(new AnimatedIcon.FS());
     myRefreshIcon.setVisible(false);
@@ -142,7 +156,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     myUpdateQueue = new MergingUpdateQueue("Progress indicator", 50, true, MergingUpdateQueue.ANY_COMPONENT);
     myPopup = new ProcessPopup(this);
 
-    setRefreshVisible(false);
+    setRefreshHidden();
 
     setLayout(new InlineLayout());
     add(myRefreshAndInfoPanel);
@@ -205,7 +219,6 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
         myRefreshAndInfoPanel.remove(c);
         myCentralComponent = null;
       }
-
       if (component != null) {
         myRefreshAndInfoPanel.add(component, BorderLayout.CENTER);
       }
@@ -215,7 +228,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
 
   @Override
   public void dispose() {
-    setRefreshVisible(false);
+    setRefreshHidden();
     synchronized (myOriginals) {
       restoreEmptyStatus();
       for (InlineProgressIndicator indicator : myInlineToOriginal.keySet()) {
@@ -236,8 +249,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     return this;
   }
 
-  @NotNull
-  List<Pair<TaskInfo, ProgressIndicator>> getBackgroundProcesses() {
+  @NotNull List<Pair<TaskInfo, ProgressIndicator>> getBackgroundProcesses() {
     synchronized (myOriginals) {
       if (myOriginals.isEmpty()) return Collections.emptyList();
 
@@ -250,10 +262,20 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     }
   }
 
+  private void updateNavBarAutoscrollToSelectedLimit(AutoscrollLimit autoscrollLimit) {
+    if (myCentralComponent instanceof ScrollableToSelected) {
+      ((ScrollableToSelected)myCentralComponent).updateAutoscrollLimit(autoscrollLimit);
+    }
+  }
+
   void addProgress(@NotNull ProgressIndicatorEx original, @NotNull TaskInfo info) {
-    ApplicationManager.getApplication().assertIsDispatchThread(); // openProcessPopup may require dispatch thread
+    ApplicationManager.getApplication().assertIsDispatchThread(); // `openProcessPopup` may require the dispatch thread
 
     synchronized (myOriginals) {
+      if (myOriginals.isEmpty()) {
+        updateNavBarAutoscrollToSelectedLimit(AutoscrollLimit.ALLOW_ONCE);
+      }
+
       myOriginals.add(original);
       myInfos.add(info);
 
@@ -265,11 +287,11 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
 
       updateProgressIcon();
 
-      if (myOriginals.size() == 1) {
+      if (myInlinePanel.myIndicator == null) {
         myInlinePanel.updateState(compact);
       }
       else {
-        myInlinePanel.updateState();
+        setInlineProgressByWeight();
       }
       if (myInfos.size() > 1 && Registry.is("ide.windowSystem.autoShowProcessPopup")) {
         openProcessPopup(false);
@@ -312,13 +334,17 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
       }
 
       if (last) {
+        updateNavBarAutoscrollToSelectedLimit(AutoscrollLimit.UNLIMITED);
         myInlinePanel.updateState(null);
         if (myShouldClosePopupAndOnProcessFinish) {
           hideProcessPopup();
         }
       }
+      else if (myInlinePanel.myIndicator != null && myInlinePanel.myIndicator.getInfo() == progress.getInfo()) {
+        setInlineProgressByWeight();
+      }
       else {
-        myInlinePanel.updateState(createInlineDelegate(myInfos.get(0), myOriginals.get(0), true));
+        myInlinePanel.updateState();
       }
 
       runQuery();
@@ -354,6 +380,32 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     return original;
   }
 
+  private void setInlineProgressByWeight() {
+    synchronized (myInfos) {
+      int size = myInfos.size();
+      Integer[] indexes = new Integer[size];
+      for (int i = 0; i < size; i++) {
+        indexes[i] = i;
+      }
+
+      ContainerUtil.sort(indexes, (index1, index2) -> myInfos.get(index1).getStatusBarIndicatorWeight() -
+                                                      myInfos.get(index2).getStatusBarIndicatorWeight());
+
+      int index = -1;
+
+      for (int i = 0; i < size; i++) {
+        ProgressSuspender suspender = ProgressSuspender.getSuspender(myOriginals.get(indexes[i]));
+        if (suspender == null || !suspender.isSuspended()) {
+          index = i;
+          break;
+        }
+      }
+
+      int resultIndex = indexes[index == -1 ? 0 : index];
+      myInlinePanel.updateState(createInlineDelegate(myInfos.get(resultIndex), myOriginals.get(resultIndex), true));
+    }
+  }
+
   private void openProcessPopup(boolean requestFocus) {
     synchronized (myOriginals) {
       if (myPopup.isShowing()) return;
@@ -371,9 +423,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     }
   }
 
-  @Nullable
-  @NlsContexts.StatusBarText
-  public String setText(@Nullable @NlsContexts.StatusBarText String text, @Nullable String requestor) {
+  public @Nullable @NlsContexts.StatusBarText String setText(@Nullable @NlsContexts.StatusBarText String text, @Nullable String requestor) {
     if (myShowNavBar) return text;
 
     if (Strings.isEmpty(text) &&!Objects.equals(requestor, myCurrentRequestor) && !EventLog.LOG_REQUESTOR.equals(requestor)) {
@@ -385,15 +435,30 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     return text;
   }
 
-  void setRefreshVisible(boolean visible) {
+  void setRefreshVisible(@NlsContexts.Tooltip String tooltip) {
     UIUtil.invokeLaterIfNeeded(() -> {
-      if (!myShowNavBar) myRefreshIcon.setVisible(visible);
+      if (!myShowNavBar) {
+        myRefreshIcon.setVisible(true);
+        myRefreshIcon.setToolTipText(tooltip);
+      }
+      else {
+        var statusBar = UIUtil.getParentOfType(StatusBar.class, this);
+        if (statusBar != null) {
+          VfsRefreshIndicatorWidgetFactory.start(statusBar, tooltip);
+        }
+      }
     });
   }
 
-  void setRefreshToolTipText(@NlsContexts.Tooltip String tooltip) {
+  void setRefreshHidden() {
     if (!myShowNavBar) {
-      myRefreshIcon.setToolTipText(tooltip);
+      myRefreshIcon.setVisible(false);
+    }
+    else {
+      var statusBar = UIUtil.getParentOfType(StatusBar.class, this);
+      if (statusBar != null) {
+        VfsRefreshIndicatorWidgetFactory.stop(statusBar);
+      }
     }
   }
 
@@ -401,11 +466,14 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
                                         @NotNull @PopupContent String htmlBody,
                                         @Nullable Icon icon,
                                         @Nullable HyperlinkListener listener) {
-    Balloon balloon = JBPopupFactory.getInstance().createHtmlTextBalloonBuilder(
-      htmlBody.replace("\n", "<br>"),
-      icon != null ? icon : type.getDefaultIcon(),
-      type.getPopupBackground(),
-      listener).createBalloon();
+    Balloon balloon = JBPopupFactory.getInstance()
+      .createHtmlTextBalloonBuilder(htmlBody.replace("\n", "<br>"),
+                                    icon != null ? icon : type.getDefaultIcon(),
+                                    type.getTitleForeground(),
+                                    type.getPopupBackground(),
+                                    listener)
+      .setBorderColor(type.getBorderColor())
+      .createBalloon();
 
     SwingUtilities.invokeLater(() -> {
       Balloon oldBalloon = SoftReference.dereference(myLastShownBalloon);
@@ -437,9 +505,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     return () -> SwingUtilities.invokeLater(balloon::hide);
   }
 
-  private @NotNull MyInlineProgressIndicator createInlineDelegate(@NotNull TaskInfo info,
-                                                                  @NotNull ProgressIndicatorEx original,
-                                                                  boolean compact) {
+  private MyInlineProgressIndicator createInlineDelegate(TaskInfo info, ProgressIndicatorEx original, boolean compact) {
     Set<MyInlineProgressIndicator> inlines = myOriginalToInlines.computeIfAbsent(original, __ -> new HashSet<>());
     if (!inlines.isEmpty()) {
       for (MyInlineProgressIndicator eachInline : inlines) {
@@ -449,8 +515,8 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
       }
     }
 
-    MyInlineProgressIndicator inline = compact ? new MyInlineProgressIndicator(info, original) :
-                                       new ProgressPanelProgressIndicator(info, original);
+    MyInlineProgressIndicator inline =
+      compact ? new MyInlineProgressIndicator(info, original) : new ProgressPanelProgressIndicator(info, original);
     myInlineToOriginal.put(inline, original);
     inlines.add(inline);
 
@@ -520,23 +586,21 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
 
   @Override
   public void uiSettingsChanged(@NotNull UISettings uiSettings) {
-    myShowNavBar = ExperimentalUI.isNewUI() && uiSettings.getShowNavigationBar();
+    myShowNavBar = ExperimentalUI.isNewUI() && uiSettings.getShowNavigationBarInBottom();
 
     BorderLayout layout = (BorderLayout)myRefreshAndInfoPanel.getLayout();
     Component c = layout.getLayoutComponent(BorderLayout.CENTER);
-    if (c != null) {
-      myRefreshAndInfoPanel.remove(c);
-    }
+    if (c != null) myRefreshAndInfoPanel.remove(c);
 
     c = layout.getLayoutComponent(BorderLayout.WEST);
-    if (c != null) {
-      myRefreshAndInfoPanel.remove(c);
-    }
+    if (c != null) myRefreshAndInfoPanel.remove(c);
 
     if (myShowNavBar) {
       if (myCentralComponent != null) {
-        myRefreshAndInfoPanel.add(myCentralComponent, BorderLayout.CENTER);
-        myCentralComponent.updateUI();
+        ApplicationManager.getApplication().invokeLater(() -> {
+          myRefreshAndInfoPanel.add(myCentralComponent, BorderLayout.CENTER);
+          myCentralComponent.updateUI();
+        });
       }
     }
     else {
@@ -642,7 +706,7 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
     }
   }
 
-  class MyInlineProgressIndicator extends InlineProgressIndicator {
+  class MyInlineProgressIndicator extends InlineProgressIndicator implements TitledIndicator {
     private ProgressIndicatorEx myOriginal;
     PresentationModeProgressPanel myPresentationModeProgressPanel;
     Balloon myPresentationModeBalloon;
@@ -698,21 +762,18 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
       cancel.setVisible(painting || !suspend.isVisible());
     }
 
-    @NotNull
-    JBIterable<ProgressButton> createPresentationButtons() {
+    @NotNull JBIterable<ProgressButton> createPresentationButtons() {
       ProgressButton suspend = createSuspendButton();
       ProgressButton cancel = createCancelButton();
       return JBIterable.of(suspend).append(new ProgressButton(cancel.button, () -> updateCancelButton(suspend.button, cancel.button)));
     }
 
-    @NotNull
     private ProgressButton createSuspendButton() {
       InplaceButton suspendButton = new InplaceButton("", AllIcons.Actions.Pause, e -> createSuspendRunnable().run()).setFillBg(false);
       return new ProgressButton(suspendButton, createSuspendUpdateRunnable(suspendButton));
     }
 
-    @NotNull
-    protected Runnable createSuspendRunnable() {
+    protected @NotNull Runnable createSuspendRunnable() {
       return () -> {
         ProgressSuspender suspender = getSuspender();
         if (suspender == null) {
@@ -724,12 +785,12 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
         else {
           suspender.suspendProcess(null);
         }
+        setInlineProgressByWeight();
         (suspender.isSuspended() ? UIEventLogger.ProgressPaused : UIEventLogger.ProgressResumed).log();
       };
     }
 
-    @NotNull
-    protected Runnable createSuspendUpdateRunnable(@NotNull InplaceButton suspendButton) {
+    protected @NotNull Runnable createSuspendUpdateRunnable(@NotNull InplaceButton suspendButton) {
       suspendButton.setVisible(false);
 
       return () -> {
@@ -830,6 +891,11 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
 
     public boolean showInPresentationMode() {
       return !isProcessWindowOpen();
+    }
+
+    @Override
+    public void setTitle(@NotNull @NlsContexts.ProgressTitle String title) {
+      setProcessNameValue(title);
     }
   }
 
@@ -941,17 +1007,17 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
                 setBounds(myProcessIconComponent, 0, centerY, iconSize, false);
               }
               else {
-                boolean minisWidth = true;
+                boolean miniWidth = true;
 
                 if (myMultiProcessLink.isVisible()) {
                   rightX = setBounds(myMultiProcessLink, rightX, centerY, null, true) - gap;
                 }
                 else if (width < 60) {
                   rightX = 0;
-                  minisWidth = false;
+                  miniWidth = false;
                 }
 
-                setBounds(myProcessIconComponent, rightX, centerY, iconSize, minisWidth);
+                setBounds(myProcessIconComponent, rightX, centerY, iconSize, miniWidth);
               }
 
               myProcessIconComponent.setVisible(true);
@@ -991,11 +1057,11 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
       myMultiProcessLink.setVisible(false);
     }
 
-    private int getGap() {
+    private static int getGap() {
       return JBUI.scale(10);
     }
 
-    private int setBounds(@NotNull JComponent component, int x, int centerY, @Nullable Dimension size, boolean minusWidth) {
+    private static int setBounds(JComponent component, int x, int centerY, @Nullable Dimension size, boolean minusWidth) {
       if (size == null) {
         size = component.getPreferredSize();
       }
@@ -1023,6 +1089,10 @@ public final class InfoAndProgressPanel extends JPanel implements CustomStatusBa
         return; // e.g. project frame is closed
       }
       if (myIndicator != null) {
+        if (myIndicator == indicator) {
+          updateState();
+          return;
+        }
         remove(myIndicator.getComponent());
       }
 

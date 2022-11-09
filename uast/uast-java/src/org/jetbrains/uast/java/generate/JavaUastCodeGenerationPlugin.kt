@@ -1,7 +1,8 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.uast.java.generate
 
 import com.intellij.codeInsight.BlockUtils
+import com.intellij.codeInsight.intention.impl.AddOnDemandStaticImportAction
 import com.intellij.lang.Language
 import com.intellij.lang.java.JavaLanguage
 import com.intellij.lang.jvm.JvmModifier
@@ -14,11 +15,8 @@ import com.intellij.psi.impl.PsiDiamondTypeUtil
 import com.intellij.psi.impl.source.tree.CompositeElement
 import com.intellij.psi.impl.source.tree.ElementType
 import com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl
-import com.intellij.psi.util.PsiTypesUtil
-import com.intellij.psi.util.PsiUtil
-import com.intellij.psi.util.elementType
-import com.intellij.psi.util.siblings
-import com.intellij.util.castSafelyTo
+import com.intellij.psi.util.*
+import com.intellij.util.asSafely
 import com.siyeh.ig.psiutils.ParenthesesUtils
 import org.jetbrains.uast.*
 import org.jetbrains.uast.generate.UParameterInfo
@@ -85,10 +83,53 @@ internal class JavaUastCodeGenerationPlugin : UastCodeGenerationPlugin {
     return when (val replaced = updOldPsi.replace(updNewPsi)) {
       is PsiExpressionStatement -> replaced.expression.toUElementOfExpectedTypes(elementType)
       is PsiMethodCallExpression -> cleanupMethodCall(replaced).toUElementOfExpectedTypes(elementType)
-      is PsiMethodReferenceExpression -> {
+      is PsiReferenceExpression -> {
         JavaCodeStyleManager.getInstance(replaced.project).shortenClassReferences(replaced).toUElementOfExpectedTypes(elementType)
       }
       else -> replaced.toUElementOfExpectedTypes(elementType)
+    }
+  }
+
+  override fun bindToElement(reference: UReferenceExpression, element: PsiElement): PsiElement? {
+    val sourceReference = reference.sourcePsi ?: return null
+    if (sourceReference !is PsiReference) return null
+    return sourceReference.bindToElement(element)
+  }
+
+  override fun shortenReference(reference: UReferenceExpression): UReferenceExpression? {
+    val sourceReference = reference.sourcePsi ?: return null
+    val styleManager = JavaCodeStyleManager.getInstance(sourceReference.project)
+    return styleManager.shortenClassReferences(sourceReference).toUElementOfType()
+  }
+
+  override fun importMemberOnDemand(reference: UQualifiedReferenceExpression): UExpression? {
+    val source = reference.sourcePsi ?: return null
+    val (qualifier, selector) = when (source) {
+      is PsiMethodCallExpression -> source.methodExpression.qualifierExpression to source.methodExpression
+      is PsiReferenceExpression -> source.qualifier to source.referenceNameElement
+      else -> return null
+    }
+    if (qualifier == null || selector == null) return null
+    val ptr = SmartPointerManager.createPointer(selector)
+    val qualifierIdentifier = qualifier.childrenOfType<PsiIdentifier>().firstOrNull() ?: return null
+    AddOnDemandStaticImportAction.invoke(source.project, source.containingFile, null, qualifierIdentifier)
+    return ptr.element?.parent.toUElementOfType()
+  }
+
+  override fun initializeField(uField: UField, uParameter: UParameter) {
+    val uMethod = uParameter.getParentOfType(UMethod::class.java, false) ?: return
+    val psiMethod = uMethod.sourcePsi as? PsiMethod ?: return
+    val body = psiMethod.body ?: return
+
+    val elementFactory = JavaPsiFacade.getInstance(psiMethod.project).elementFactory
+    val prefix = if (uField.name == uParameter.name) "this." else ""
+    val statement = elementFactory.createStatementFromText("$prefix${uField.name} = ${uParameter.name};", psiMethod)
+    val lastBodyElement = body.lastBodyElement
+    if (lastBodyElement is PsiWhiteSpace) {
+      lastBodyElement.replace(statement)
+    }
+    else {
+      body.add(statement)
     }
   }
 }
@@ -104,7 +145,7 @@ class JavaUastElementFactory(private val project: Project) : UastElementFactory 
 
   override fun createQualifiedReference(qualifiedName: String, context: PsiElement?): UQualifiedReferenceExpression? {
     return psiFactory.createExpressionFromText(qualifiedName, context)
-      .castSafelyTo<PsiReferenceExpression>()
+      .asSafely<PsiReferenceExpression>()
       ?.let { JavaUQualifiedReferenceExpression(it, null) }
   }
 
@@ -217,8 +258,8 @@ class JavaUastElementFactory(private val project: Project) : UastElementFactory 
     }
 
     private fun tryPickUpTypeParameters(): PsiMethodCallExpression? {
-      val expectedTypeTypeParameters = expectedReturnType.castSafelyTo<PsiClassType>()?.parameters ?: return null
-      val resultTypeTypeParameters = resultType.castSafelyTo<PsiClassType>()?.parameters ?: return null
+      val expectedTypeTypeParameters = expectedReturnType.asSafely<PsiClassType>()?.parameters ?: return null
+      val resultTypeTypeParameters = resultType.asSafely<PsiClassType>()?.parameters ?: return null
       val notEqualTypeParametersIndices = expectedTypeTypeParameters
         .zip(resultTypeTypeParameters)
         .withIndex()
@@ -226,7 +267,7 @@ class JavaUastElementFactory(private val project: Project) : UastElementFactory 
         .map { (i, _) -> i }
 
       val resolvedMethod = methodCall.resolveMethod() ?: return null
-      val methodReturnTypeTypeParameters = (resolvedMethod.returnType.castSafelyTo<PsiClassType>())?.parameters ?: return null
+      val methodReturnTypeTypeParameters = (resolvedMethod.returnType.asSafely<PsiClassType>())?.parameters ?: return null
       val methodDefinitionTypeParameters = resolvedMethod.typeParameters
       val methodDefinitionToReturnTypeParametersMapping = methodDefinitionTypeParameters.map {
         it to methodReturnTypeTypeParameters.indexOfFirst { param -> it.name == param.canonicalText }
@@ -274,8 +315,8 @@ class JavaUastElementFactory(private val project: Project) : UastElementFactory 
     }
 
     infix fun PsiType.eqResolved(other: PsiType): Boolean {
-      val resolvedThis = this.castSafelyTo<PsiClassType>()?.resolve() ?: return false
-      val resolvedOther = other.castSafelyTo<PsiClassType>()?.resolve() ?: return false
+      val resolvedThis = this.asSafely<PsiClassType>()?.resolve() ?: return false
+      val resolvedOther = other.asSafely<PsiClassType>()?.resolve() ?: return false
 
       return PsiManager.getInstance(project).areElementsEquivalent(resolvedThis, resolvedOther)
     }

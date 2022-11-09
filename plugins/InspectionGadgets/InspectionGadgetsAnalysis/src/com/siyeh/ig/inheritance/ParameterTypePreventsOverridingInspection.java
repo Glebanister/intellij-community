@@ -58,7 +58,7 @@ public class ParameterTypePreventsOverridingInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiTypeElement)) {
         return;
@@ -78,7 +78,7 @@ public class ParameterTypePreventsOverridingInspection extends BaseInspection {
   private static class ParameterTypePreventsOverridingVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethod(PsiMethod method) {
+    public void visitMethod(@NotNull PsiMethod method) {
       super.visitMethod(method);
       if (method.hasModifierProperty(PsiModifier.STATIC)) {
         return;

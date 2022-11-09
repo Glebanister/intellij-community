@@ -1,17 +1,17 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.kotlin.idea.highlighter
 
 import com.intellij.openapi.util.io.FileUtil
 import org.jetbrains.kotlin.analyzer.AnalysisResult
+import org.jetbrains.kotlin.idea.base.util.module
 import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
+import org.jetbrains.kotlin.idea.base.projectStructure.withLanguageVersionSettings
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeWithAllCompilerChecks
 import org.jetbrains.kotlin.idea.highlighter.formatHtml.formatHtml
-import org.jetbrains.kotlin.idea.project.withLanguageVersionSettings
 import org.jetbrains.kotlin.idea.test.*
-import org.jetbrains.kotlin.idea.util.projectStructure.module
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm
 import org.jetbrains.kotlin.test.InTextDirectivesUtils
@@ -24,7 +24,7 @@ abstract class AbstractDiagnosticMessageTest : KotlinLightCodeInsightFixtureTest
         TEXT("TEXT", "txt"), HTML("HTML", "html");
     }
 
-    override fun getProjectDescriptor() = KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
+    override fun getProjectDescriptor() = KotlinWithJdkAndRuntimeLightProjectDescriptor.getInstance()
 
     override val testDataDirectory: File
         get() = File(IDEA_TEST_DATA_DIR, "diagnosticMessage")

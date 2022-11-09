@@ -20,7 +20,7 @@ class QuickPopupsLesson(private val sample: LessonSample) :
     task("QuickJavaDoc") {
       text(LessonsBundle.message("quick.popups.show.documentation", action(it)))
       triggerOnQuickDocumentationPopup()
-      restoreIfModifiedOrMoved()
+      restoreIfModifiedOrMoved(sample)
       test { actions(it) }
     }
 
@@ -51,8 +51,6 @@ class QuickPopupsLesson(private val sample: LessonSample) :
     val activeDocComponent = QuickDocUtil.getActiveDocComponent(project)
     return activeDocComponent == null || !activeDocComponent.isShowing
   }
-
-  override val suitableTips = listOf("CtrlShiftIForLookup", "CtrlShiftI", "QuickJavaDoc")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(LessonsBundle.message("quick.popups.help.link"),

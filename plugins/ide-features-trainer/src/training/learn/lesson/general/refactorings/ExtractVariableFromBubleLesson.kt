@@ -20,7 +20,7 @@ class ExtractVariableFromBubbleLesson(private val sample: LessonSample)
       task("IntroduceVariable") {
         text(LessonsBundle.message("extract.variable.start.refactoring", action(it), code("i + 1")))
         triggerStart("IntroduceVariable")
-        restoreIfModifiedOrMoved()
+        restoreIfModifiedOrMoved(sample)
         test {
           actions(it)
         }
@@ -60,8 +60,6 @@ class ExtractVariableFromBubbleLesson(private val sample: LessonSample)
 
       restoreRefactoringOptionsInformer()
     }
-
-  override val suitableTips = listOf("IntroduceVariable")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(LessonsBundle.message("extract.variable.help.link"),

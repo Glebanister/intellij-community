@@ -14,10 +14,7 @@ import com.intellij.openapi.util.Pair
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.util.registry.RegistryValue
 import com.intellij.openapi.util.registry.RegistryValueListener
-import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowAnchor
-import com.intellij.openapi.wm.ToolWindowType
-import com.intellij.openapi.wm.WindowInfo
+import com.intellij.openapi.wm.*
 import com.intellij.openapi.wm.ex.ToolWindowEx
 import com.intellij.openapi.wm.impl.AbstractDroppableStripe
 import com.intellij.openapi.wm.impl.ToolWindowImpl
@@ -26,7 +23,9 @@ import com.intellij.openapi.wm.impl.ToolWindowManagerImpl.Companion.getAdjustedR
 import com.intellij.openapi.wm.impl.ToolWindowManagerImpl.Companion.getRegisteredMutableInfoOrLogError
 import com.intellij.openapi.wm.impl.WindowInfoImpl
 import com.intellij.reference.SoftReference
+import com.intellij.ui.JBColor
 import com.intellij.ui.OnePixelSplitter
+import com.intellij.ui.awt.DevicePoint
 import com.intellij.ui.components.JBLayeredPane
 import com.intellij.ui.paint.PaintUtil
 import com.intellij.ui.scale.JBUIScale
@@ -52,29 +51,30 @@ private val LOG = logger<ToolWindowPane>()
 /**
  * This panel contains all tool stripes and JLayeredPane at the center area. All tool windows are
  * located inside this layered pane.
- *
- * @author Anton Katilin
- * @author Vladimir Kondratyev
  */
 class ToolWindowPane internal constructor(frame: JFrame,
                                           parentDisposable: Disposable,
+                                          val paneId: String,
                                           @field:JvmField internal val buttonManager: ToolWindowButtonManager) : JBLayeredPane(), UISettingsListener {
   companion object {
     const val TEMPORARY_ADDED = "TEMPORARY_ADDED"
 
-    //The size of topmost 'resize' area when toolwindow caption is used for both resize and drag
+    // the size of topmost 'resize' area when toolwindow caption is used for both resize and drag
     internal val headerResizeArea: Int
       get() = JBUI.scale(Registry.intValue("ide.new.tool.window.resize.area.height", 14, 1, 26))
 
     private fun normalizeWeight(weight: Float): Float {
-      if (weight <= 0) return WindowInfoImpl.DEFAULT_WEIGHT
+      if (weight <= 0) {
+        return WindowInfoImpl.DEFAULT_WEIGHT
+      }
       return if (weight >= 1) 1 - WindowInfoImpl.DEFAULT_WEIGHT else weight
     }
   }
 
   private var isLookAndFeelUpdated = false
-  private val frame: JFrame
   private var state = ToolWindowPaneState()
+
+  internal val frame: JFrame
 
   /**
    * This panel is the layered pane where all sliding tool windows are located. The DEFAULT
@@ -83,7 +83,7 @@ class ToolWindowPane internal constructor(frame: JFrame,
   private val layeredPane: MyLayeredPane
 
   /*
-   * Splitters.
+   * Splitters
    */
   private val verticalSplitter: ThreeComponentsSplitter
   private val horizontalSplitter: ThreeComponentsSplitter
@@ -95,6 +95,8 @@ class ToolWindowPane internal constructor(frame: JFrame,
     isOpaque = false
     this.frame = frame
 
+    name = paneId
+
     // splitters
     verticalSplitter = ThreeComponentsSplitter(true, parentDisposable)
     val registryValue = Registry.get("ide.mainSplitter.min.size")
@@ -105,11 +107,11 @@ class ToolWindowPane internal constructor(frame: JFrame,
     }, parentDisposable)
     verticalSplitter.dividerWidth = 0
     verticalSplitter.setDividerMouseZoneSize(Registry.intValue("ide.splitter.mouseZone"))
-    verticalSplitter.background = Color.gray
+    verticalSplitter.background = JBColor.GRAY
     horizontalSplitter = ThreeComponentsSplitter(false, parentDisposable)
     horizontalSplitter.dividerWidth = 0
     horizontalSplitter.setDividerMouseZoneSize(Registry.intValue("ide.splitter.mouseZone"))
-    horizontalSplitter.background = Color.gray
+    horizontalSplitter.background = JBColor.GRAY
     updateInnerMinSize(registryValue)
     val uiSettings = UISettings.getInstance()
     isWideScreen = uiSettings.wideScreenSupport
@@ -138,6 +140,11 @@ class ToolWindowPane internal constructor(frame: JFrame,
     }
     val app = ApplicationManager.getApplication()
     app.messageBus.connect(parentDisposable).subscribe(LafManagerListener.TOPIC, LafManagerListener { isLookAndFeelUpdated = true })
+
+    if (frame is IdeFrame && frame.project != null) {
+      val toolWindowManagerImpl = ToolWindowManager.getInstance(frame.project!!) as ToolWindowManagerImpl
+      toolWindowManagerImpl.addToolWindowPane(this, parentDisposable)
+    }
   }
 
   private fun updateInnerMinSize(value: RegistryValue) {
@@ -163,7 +170,7 @@ class ToolWindowPane internal constructor(frame: JFrame,
     if (info.isDocked) {
       val side = !info.isSplit
       val anchor = info.anchor
-      val sideInfo = manager.getDockedInfoAt(anchor, side)
+      val sideInfo = manager.getDockedInfoAt(paneId, anchor, side)
       if (sideInfo == null) {
         setComponent(decorator, anchor, normalizeWeight(info.weight))
         if (!dirtyMode) {
@@ -191,7 +198,7 @@ class ToolWindowPane internal constructor(frame: JFrame,
     }
     else if (component != null && component.isShowing) {
       val anchor = info.anchor
-      val sideInfo = manager.getDockedInfoAt(anchor, !info.isSplit)
+      val sideInfo = manager.getDockedInfoAt(paneId, anchor, !info.isSplit)
       if (sideInfo == null) {
         setComponent(null, anchor, 0f)
       }
@@ -223,22 +230,46 @@ class ToolWindowPane internal constructor(frame: JFrame,
   }
 
   private fun setComponent(component: JComponent?, anchor: ToolWindowAnchor, weight: Float) {
-    val size = rootPane.size
     when (anchor) {
       ToolWindowAnchor.TOP -> {
         verticalSplitter.firstComponent = component
-        verticalSplitter.firstSize = (size.getHeight() * weight).toInt()
       }
       ToolWindowAnchor.LEFT -> {
         horizontalSplitter.firstComponent = component
-        horizontalSplitter.firstSize = (size.getWidth() * weight).toInt()
       }
       ToolWindowAnchor.BOTTOM -> {
         verticalSplitter.lastComponent = component
-        verticalSplitter.lastSize = (size.getHeight() * weight).toInt()
       }
       ToolWindowAnchor.RIGHT -> {
         horizontalSplitter.lastComponent = component
+      }
+      else -> {
+        LOG.error("unknown anchor: $anchor")
+      }
+    }
+    setWeight(anchor, weight)
+  }
+
+  fun setWeight(window: ToolWindow, weight: Float) {
+    if (window.type != ToolWindowType.DOCKED) {
+      return
+    }
+    setWeight(window.anchor, normalizeWeight(weight))
+  }
+
+  private fun setWeight(anchor: ToolWindowAnchor, weight: Float) {
+    val size = rootPane.size
+    when (anchor) {
+      ToolWindowAnchor.TOP -> {
+        verticalSplitter.firstSize = (size.getHeight() * weight).toInt()
+      }
+      ToolWindowAnchor.LEFT -> {
+        horizontalSplitter.firstSize = (size.getWidth() * weight).toInt()
+      }
+      ToolWindowAnchor.BOTTOM -> {
+        verticalSplitter.lastSize = (size.getHeight() * weight).toInt()
+      }
+      ToolWindowAnchor.RIGHT -> {
         horizontalSplitter.lastSize = (size.getWidth() * weight).toInt()
       }
       else -> {
@@ -277,8 +308,8 @@ class ToolWindowPane internal constructor(frame: JFrame,
   val isBottomSideToolWindowsVisible: Boolean
     get() = getComponentAt(ToolWindowAnchor.BOTTOM) != null
 
-  internal fun getStripeFor(screenPoint: Point, preferred: AbstractDroppableStripe): AbstractDroppableStripe? {
-    return buttonManager.getStripeFor(screenPoint, preferred, this)
+  internal fun getStripeFor(devicePoint: DevicePoint, preferred: AbstractDroppableStripe): AbstractDroppableStripe? {
+    return buttonManager.getStripeFor(devicePoint, preferred, this)
   }
 
   fun stretchWidth(window: ToolWindow, value: Int) {
@@ -516,7 +547,7 @@ class ToolWindowPane internal constructor(frame: JFrame,
     // if all components are hidden for anchor we should find the second component to put in a splitter
     // otherwise we add empty splitter
     if (c == null) {
-      val toolWindows = manager.getToolWindowsOn(anchor, info.id!!)
+      val toolWindows = manager.getToolWindowsOn(paneId, anchor, info.id!!)
       toolWindows.removeIf { window: ToolWindowEx? -> window == null || window.isSplitMode == info.isSplit || !window.isVisible }
       if (!toolWindows.isEmpty()) {
         c = (toolWindows[0] as ToolWindowImpl).decoratorComponent
@@ -811,7 +842,7 @@ private class Surface(private val myTopImage: Image,
       }
       val onePaintTime = timeSpent.toDouble() / count
       var iterations = ((desiredTimeToComplete - timeSpent) / onePaintTime).toInt()
-      iterations = Math.max(1, iterations)
+      iterations = 1.coerceAtLeast(iterations)
       offset += (distance - offset) / iterations
     }
   }

@@ -127,7 +127,7 @@ public class IfCanBeSwitchInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement().getParent();
       if (!(element instanceof PsiIfStatement)) {
         return;
@@ -535,7 +535,7 @@ public class IfCanBeSwitchInspection extends BaseInspection {
   private class IfCanBeSwitchVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitIfStatement(PsiIfStatement statement) {
+    public void visitIfStatement(@NotNull PsiIfStatement statement) {
       super.visitIfStatement(statement);
       final PsiElement parent = statement.getParent();
       if (parent instanceof PsiIfStatement) {

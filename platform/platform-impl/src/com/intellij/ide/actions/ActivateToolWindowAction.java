@@ -16,6 +16,7 @@ import com.intellij.openapi.wm.impl.ToolWindowManagerImpl;
 import com.intellij.toolWindow.ToolWindowEventSource;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.SizedIcon;
+import com.intellij.ui.scale.JBUIScale;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 
@@ -65,6 +66,11 @@ public class ActivateToolWindowAction extends DumbAwareAction {
   }
 
   @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.EDT;
+  }
+
+  @Override
   public void update(@NotNull AnActionEvent e) {
     Project project = getEventProject(e);
     Presentation presentation = e.getPresentation();
@@ -97,7 +103,7 @@ public class ActivateToolWindowAction extends DumbAwareAction {
       icon = AllIcons.Ide.Notification.InfoEvents;
     }
     if (icon instanceof ScalableIcon && ExperimentalUI.isNewUI()) {
-      icon = ((ScalableIcon)icon).scale(16f / icon.getIconWidth());
+      icon = ((ScalableIcon)icon).scale(JBUIScale.scale(16f) / icon.getIconWidth());
       presentation.setIcon(icon);
       return;
     }

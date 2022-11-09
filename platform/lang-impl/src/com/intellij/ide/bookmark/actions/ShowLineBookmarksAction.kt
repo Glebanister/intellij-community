@@ -3,6 +3,7 @@ package com.intellij.ide.bookmark.actions
 
 import com.intellij.ide.bookmark.BookmarkBundle
 import com.intellij.ide.bookmark.ui.BookmarksView
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.project.DumbAwareAction
@@ -20,6 +21,10 @@ internal class ShowLineBookmarksAction : DumbAwareAction(BookmarkBundle.messageP
       true -> BookmarkBundle.message("show.line.bookmarks.action.text")
       else -> BookmarkBundle.message("show.bookmarks.action.text")
     }
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.BGT
   }
 
   override fun actionPerformed(event: AnActionEvent) {
@@ -42,7 +47,7 @@ internal class ShowLineBookmarksAction : DumbAwareAction(BookmarkBundle.messageP
       .setRequestFocus(true)
       .setMovable(true)
       .setResizable(true)
-      .setCancelOnOtherWindowOpen(true)
+      .setNormalWindowLevel(true)
       .createPopup()
 
     Disposer.register(popup, panel)

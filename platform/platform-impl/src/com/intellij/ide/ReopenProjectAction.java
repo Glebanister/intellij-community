@@ -3,20 +3,24 @@ package com.intellij.ide;
 
 import com.intellij.CommonBundle;
 import com.intellij.ide.impl.OpenProjectTask;
+import com.intellij.ide.impl.OpenProjectTaskKt;
 import com.intellij.ide.lightEdit.LightEdit;
 import com.intellij.ide.lightEdit.LightEditCompatible;
 import com.intellij.openapi.actionSystem.ActionPlaces;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.NlsActions;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.openapi.wm.impl.welcomeScreen.ProjectDetector;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.wm.impl.welcomeScreen.recentProjects.RecentProjectItem;
 import com.intellij.util.BitUtil;
+import kotlin.Unit;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.SystemIndependent;
@@ -26,12 +30,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-@SuppressWarnings("ComponentNotRegistered")
 public class ReopenProjectAction extends AnAction implements DumbAware, LightEditCompatible {
   private final String myProjectPath;
   private final String myProjectName;
   private boolean myIsRemoved = false;
-  @Nullable private ProjectGroup myProjectGroup;
+  private @Nullable ProjectGroup myProjectGroup;
 
   public ReopenProjectAction(@NotNull @SystemIndependent String projectPath, @NlsSafe String projectName, @NlsSafe String displayName) {
     myProjectPath = projectPath;
@@ -41,6 +44,10 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
     String text = projectPath.equals(displayName) ? FileUtil.getLocationRelativeToUserHome(projectPath) : displayName;
     presentation.setText(text, false);
     presentation.setDescription(FileUtil.toSystemDependentName(projectPath));
+    if (StringUtil.isEmpty(text)) {
+      Logger.getInstance(ReopenProjectAction.class).error(
+        String.format("Empty action text for projectName='%s' displayName='%s' path='%s'", projectName, displayName, projectPath));
+    }
   }
 
   @Override
@@ -61,21 +68,20 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
     }
 
 
-    int modifiers = e.getModifiers();
-    boolean forceOpenInNewFrame = BitUtil.isSet(modifiers, InputEvent.CTRL_MASK)
-                                  || BitUtil.isSet(modifiers, InputEvent.SHIFT_MASK)
-                                  || e.getPlace() == ActionPlaces.WELCOME_SCREEN
-                                  || LightEdit.owns(project);
-    OpenProjectTask options =
-      OpenProjectTask.build().withProjectToClose(project).withForceOpenInNewFrame(forceOpenInNewFrame).withRunConfigurators();
-    RecentProjectsManagerBase.getInstanceEx().openProject(file, options);
-    for (ProjectDetector extension : ProjectDetector.EXTENSION_POINT_NAME.getExtensions()) {
-      extension.logRecentProjectOpened(myProjectGroup);
-    }
+    OpenProjectTask options = OpenProjectTaskKt.OpenProjectTask(builder -> {
+      builder.setProjectToClose(project);
+      int modifiers = e.getModifiers();
+      builder.setForceOpenInNewFrame(BitUtil.isSet(modifiers, InputEvent.CTRL_MASK)
+                                       || BitUtil.isSet(modifiers, InputEvent.SHIFT_MASK)
+                                       || ActionPlaces.WELCOME_SCREEN.equals(e.getPlace())
+                                       || LightEdit.owns(project));
+      builder.setRunConfigurators(true);
+      return Unit.INSTANCE;
+    });
+    RecentProjectItem.Companion.openProjectAndLogRecent(file, options, myProjectGroup);
   }
 
-  @SystemIndependent
-  public String getProjectPath() {
+  public @SystemIndependent String getProjectPath() {
     return myProjectPath;
   }
 
@@ -83,8 +89,7 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
     return myIsRemoved;
   }
 
-  @NlsSafe
-  public String getProjectName() {
+  public @NlsSafe String getProjectName() {
     final RecentProjectsManager mgr = RecentProjectsManager.getInstance();
     if (mgr instanceof RecentProjectsManagerBase) {
       return ((RecentProjectsManagerBase)mgr).getProjectName(myProjectPath);
@@ -92,9 +97,7 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
     return myProjectName;
   }
 
-  @NlsSafe
-  @Nullable
-  public String getProjectNameToDisplay() {
+  public @NlsSafe @Nullable String getProjectNameToDisplay() {
     final RecentProjectsManager mgr = RecentProjectsManager.getInstance();
     String displayName = mgr instanceof RecentProjectsManagerBase
                          ? ((RecentProjectsManagerBase)mgr).getDisplayName(myProjectPath)
@@ -102,10 +105,8 @@ public class ReopenProjectAction extends AnAction implements DumbAware, LightEdi
     return displayName != null ? displayName : getProjectName();
   }
 
-  @NlsActions.ActionText
-  @Nullable
   @Override
-  public String getTemplateText() {
+  public @NlsActions.ActionText @Nullable String getTemplateText() {
     return IdeBundle.message("action.ReopenProject.reopen.project.text");
   }
 

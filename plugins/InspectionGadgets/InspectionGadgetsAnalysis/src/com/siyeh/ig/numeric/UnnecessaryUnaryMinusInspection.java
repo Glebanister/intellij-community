@@ -1,7 +1,7 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.siyeh.ig.numeric;
 
-import com.intellij.codeInspection.*;
+import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
@@ -55,7 +55,7 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiPrefixExpression prefixExpression = (PsiPrefixExpression)element.getParent();
       final PsiExpression operand = prefixExpression.getOperand();
@@ -122,7 +122,7 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiPrefixExpression prefixExpr = ObjectUtils.tryCast(descriptor.getPsiElement().getParent(), PsiPrefixExpression.class);
       if (prefixExpr == null) {
         return;
@@ -156,7 +156,7 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
 
   private static class UnnecessaryUnaryMinusVisitor extends BaseInspectionVisitor {
     @Override
-    public void visitPrefixExpression(PsiPrefixExpression prefixExpr) {
+    public void visitPrefixExpression(@NotNull PsiPrefixExpression prefixExpr) {
       super.visitPrefixExpression(prefixExpr);
       if (!ConvertDoubleUnaryToPrefixOperationFix.isDesiredPrefixExpression(prefixExpr, false)) {
         return;
@@ -172,7 +172,7 @@ public final class UnnecessaryUnaryMinusInspection extends BaseInspection {
         ContainerUtil.addIfNotNull(fixes, createRemoveDoubleUnaryMinusFix(prefixExpr));
       }
       if (!fixes.isEmpty()) {
-        registerError(prefixExpr.getOperationSign(), ProblemHighlightType.LIKE_UNUSED_SYMBOL,
+        registerError(prefixExpr.getOperationSign(),
                       (Object)fixes.toArray(InspectionGadgetsFix.EMPTY_ARRAY));
       }
     }

@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.task.impl;
 
 import com.intellij.compiler.impl.CompileDriver;
@@ -111,12 +111,14 @@ public final class JpsProjectTaskRunner extends ProjectTaskRunner {
                                            @NotNull MyNotificationCollector notificationCollector,
                                            @NotNull Map<Class<? extends ProjectTask>, List<ProjectTask>> tasksMap) {
     Collection<? extends ProjectTask> buildTasks = tasksMap.get(ModuleBuildTask.class);
-    if (ContainerUtil.isEmpty(buildTasks)) return;
+    if (ContainerUtil.isEmpty(buildTasks)) {
+      return;
+    }
 
     ModulesBuildSettings buildSettings = assembleModulesBuildSettings(buildTasks);
     CompilerManager compilerManager = CompilerManager.getInstance(project);
 
-    if (buildSettings.isRebuild()){
+    if (buildSettings.isRebuild()) {
       compilerManager.rebuild(new MyCompileStatusNotification(notificationCollector));
     }
     else {
@@ -136,7 +138,9 @@ public final class JpsProjectTaskRunner extends ProjectTaskRunner {
                                         @NotNull MyNotificationCollector notificationCollector,
                                         @NotNull Map<Class<? extends ProjectTask>, List<ProjectTask>> tasksMap) {
     Collection<? extends ProjectTask> buildTasks = tasksMap.get(EmptyCompileScopeBuildTask.class);
-    if (ContainerUtil.isEmpty(buildTasks)) return;
+    if (ContainerUtil.isEmpty(buildTasks)) {
+      return;
+    }
 
     CompilerManager compilerManager = CompilerManager.getInstance(project);
     CompileScope scope = createScope(compilerManager, context, Collections.emptySet(), false, false, true);
@@ -351,20 +355,26 @@ public final class JpsProjectTaskRunner extends ProjectTaskRunner {
 
     @Override
     synchronized public void close() {
-      myCollectingStopped = true;
+      if (!myCollectingStopped) {
+        myCollectingStopped = true;
+        notifyFinished();
+      }
     }
 
-    synchronized private void notifyFinished() {
-      if (myTaskNotification != null) {
-        myTaskNotification.finished(new ProjectTaskResult(myAborted, myErrors, myWarnings));
+    private void notifyFinished() {
+      if (myCollectingStopped && myNotifications.isEmpty()) {
+        if (myTaskNotification != null) {
+          myTaskNotification.finished(new ProjectTaskResult(myAborted, myErrors, myWarnings));
+        }
+        myOnFinished.run();
       }
-      myOnFinished.run();
     }
 
     synchronized private void appendJpsBuildResult(boolean aborted, int errors, int warnings,
                                                    @NotNull CompileContext compileContext,
                                                    @NotNull MyCompileStatusNotification notification) {
-      if (!myNotifications.remove(notification)) {
+      final boolean notificationRemoved = myNotifications.remove(notification);
+      if (!notificationRemoved) {
         LOG.error("Multiple invocation of the same callback");
       }
       myErrors += errors;
@@ -373,7 +383,7 @@ public final class JpsProjectTaskRunner extends ProjectTaskRunner {
       MyJpsBuildData jpsBuildData = (MyJpsBuildData)JPS_BUILD_DATA_KEY.get(myContext);
       jpsBuildData.add(compileContext);
 
-      if (myCollectingStopped && myNotifications.isEmpty()) {
+      if (notificationRemoved) {
         notifyFinished();
       }
     }

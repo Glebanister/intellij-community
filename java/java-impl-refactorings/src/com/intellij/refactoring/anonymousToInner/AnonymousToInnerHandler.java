@@ -2,6 +2,7 @@
 package com.intellij.refactoring.anonymousToInner;
 
 import com.intellij.codeInsight.ChangeContextUtil;
+import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo;
 import com.intellij.codeInspection.RemoveRedundantTypeArgumentsUtil;
 import com.intellij.java.refactoring.JavaRefactoringBundle;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
@@ -22,10 +23,11 @@ import com.intellij.psi.util.FileTypeUtils;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.refactoring.HelpID;
-import com.intellij.refactoring.RefactoringActionHandler;
+import com.intellij.refactoring.RefactoringActionHandlerOnPsiElement;
 import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.refactoring.util.CommonRefactoringUtil;
 import com.intellij.refactoring.util.RefactoringChangeUtil;
+import com.intellij.refactoring.util.VariableData;
 import com.intellij.refactoring.util.classMembers.ElementNeedsThis;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.CommonJavaRefactoringUtil;
@@ -36,7 +38,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class AnonymousToInnerHandler implements RefactoringActionHandler {
+public class AnonymousToInnerHandler implements RefactoringActionHandlerOnPsiElement<PsiAnonymousClass> {
   private static final Logger LOG = Logger.getInstance(AnonymousToInnerHandler.class);
 
   private Project myProject;
@@ -80,6 +82,7 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
     CommonRefactoringUtil.showErrorHint(myProject, editor, message, getRefactoringName(), HelpID.ANONYMOUS_TO_INNER);
   }
 
+  @Override
   public void invoke(final Project project, Editor editor, final PsiAnonymousClass anonymousClass) {
     myProject = project;
 
@@ -116,17 +119,9 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
     collectUsedVariables(variableInfoMap, myAnonClass);
     final VariableInfo[] infos = variableInfoMap.values().toArray(new VariableInfo[0]);
     myVariableInfos = infos;
-    Arrays.sort(myVariableInfos, (o1, o2) -> {
-      final PsiType type1 = o1.variable.getType();
-      final PsiType type2 = o2.variable.getType();
-      if (type1 instanceof PsiEllipsisType) {
-        return 1;
-      }
-      if (type2 instanceof PsiEllipsisType) {
-        return -1;
-      }
-      return ArrayUtil.find(infos, o1) > ArrayUtil.find(infos, o2) ? 1 : -1;
-    });
+    Arrays.sort(myVariableInfos,
+                Comparator.comparing((VariableInfo vi) -> vi.variable.getType() instanceof PsiEllipsisType)
+                  .thenComparing(vi -> ArrayUtil.find(infos, vi)));
     if (!showRefactoringDialog()) return;
 
     CommandProcessor.getInstance().executeCommand(
@@ -153,7 +148,7 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
       myProject,
       myAnonClass,
       myVariableInfos,
-      needsThis || anInterface);
+      !needsThis && !anInterface);
     if (!dialog.showAndGet()) {
       return false;
     }
@@ -239,7 +234,7 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
   private void collectUsedVariables(final Map<PsiVariable, VariableInfo> variableInfoMap,
                                     PsiElement scope) {
     scope.accept(new JavaRecursiveElementWalkingVisitor() {
-      @Override public void visitReferenceExpression(PsiReferenceExpression expression) {
+      @Override public void visitReferenceExpression(@NotNull PsiReferenceExpression expression) {
         if (expression.getQualifierExpression() == null) {
           PsiElement refElement = expression.resolve();
           if (refElement instanceof PsiVariable && !(refElement instanceof PsiField)) {
@@ -264,10 +259,10 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
       myAnonClass.accept(memberNeedsThis);
       class HasExplicitThis extends JavaRecursiveElementWalkingVisitor {
         boolean hasExplicitThis;
-        @Override public void visitReferenceExpression(PsiReferenceExpression expression) {
+        @Override public void visitReferenceExpression(@NotNull PsiReferenceExpression expression) {
         }
 
-        @Override public void visitThisExpression(PsiThisExpression expression) {
+        @Override public void visitThisExpression(@NotNull PsiThisExpression expression) {
           hasExplicitThis = true;
         }
       }
@@ -555,7 +550,7 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
     }
 
     class SupersConvertor extends JavaRecursiveElementVisitor {
-      @Override public void visitThisExpression(PsiThisExpression expression) {
+      @Override public void visitThisExpression(@NotNull PsiThisExpression expression) {
         try {
           final PsiThisExpression qualifiedThis =
                   (PsiThisExpression) factory.createExpressionFromText("A.this", null);
@@ -569,7 +564,7 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
         }
       }
 
-      @Override public void visitReferenceExpression(PsiReferenceExpression expression) {
+      @Override public void visitReferenceExpression(@NotNull PsiReferenceExpression expression) {
       }
     }
 
@@ -579,7 +574,7 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
 
   private void calculateTypeParametersToCreate () {
     myAnonClass.accept(new JavaRecursiveElementWalkingVisitor() {
-      @Override public void visitReferenceElement(PsiJavaCodeReferenceElement reference) {
+      @Override public void visitReferenceElement(@NotNull PsiJavaCodeReferenceElement reference) {
         super.visitReferenceElement(reference);
         final PsiElement resolved = reference.resolve();
         if (resolved instanceof PsiTypeParameter) {
@@ -595,5 +590,32 @@ public class AnonymousToInnerHandler implements RefactoringActionHandler {
 
   static @NlsContexts.DialogTitle String getRefactoringName() {
     return JavaRefactoringBundle.message("anonymousToInner.refactoring.name");
+  }
+
+  @Override
+  public @NotNull IntentionPreviewInfo generatePreview(@NotNull Project project, @NotNull PsiElement element) {
+    if (element instanceof PsiAnonymousClass anonymousClass) {
+      myProject = project;
+      myManager = PsiManager.getInstance(myProject);
+      myAnonClass = anonymousClass;
+      myNewClassName = AnonymousToInnerDialog.suggestNewClassNames(anonymousClass)[0];
+      PsiElement targetContainer = findTargetContainer(myAnonClass);
+      if (targetContainer instanceof PsiClass) {
+        myTargetClass = (PsiClass)targetContainer;
+      }
+      else {
+        return IntentionPreviewInfo.EMPTY;
+      }
+      myMakeStatic = !needsThis() && !myTargetClass.isInterface();
+      Map<PsiVariable,VariableInfo> variableInfoMap = new LinkedHashMap<>();
+      collectUsedVariables(variableInfoMap, myAnonClass);
+      myVariableInfos = variableInfoMap.values().toArray(new VariableInfo[0]);
+      VariableData [] variableData = new VariableData[myVariableInfos.length];
+      AnonymousToInnerDialog.fillVariableData(myProject, myVariableInfos, variableData);
+      AnonymousToInnerDialog.getVariableInfos(myProject, variableData, variableInfoMap);
+      doRefactoring();
+      return IntentionPreviewInfo.DIFF;
+    }
+    return IntentionPreviewInfo.EMPTY;
   }
 }

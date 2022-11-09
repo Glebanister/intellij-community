@@ -10,6 +10,7 @@ import com.intellij.find.impl.FindManagerImpl
 import com.intellij.icons.AllIcons.Actions
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
@@ -29,8 +30,10 @@ import com.intellij.util.*
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.asJava.unwrapped
-import org.jetbrains.kotlin.idea.KotlinBundle
+import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.asJava.toLightMethods
+import org.jetbrains.kotlin.idea.base.psi.KotlinPsiHeuristics
+import org.jetbrains.kotlin.idea.base.util.excludeKotlinSources
 import org.jetbrains.kotlin.idea.findUsages.*
 import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesSupport.Companion.getTopMostOverriddenElementsToHighlight
 import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesSupport.Companion.isDataClassComponentFunction
@@ -40,15 +43,12 @@ import org.jetbrains.kotlin.idea.search.KotlinSearchUsagesSupport.Companion.filt
 import org.jetbrains.kotlin.idea.search.KotlinSearchUsagesSupport.Companion.isOverridable
 import org.jetbrains.kotlin.idea.search.declarationsSearch.HierarchySearchRequest
 import org.jetbrains.kotlin.idea.search.declarationsSearch.searchOverriders
-import org.jetbrains.kotlin.idea.search.excludeKotlinSources
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReadWriteAccessDetector
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOptions
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchParameters
 import org.jetbrains.kotlin.idea.search.isImportUsage
 import org.jetbrains.kotlin.idea.search.isOnlyKotlinSearch
-import org.jetbrains.kotlin.idea.search.isPotentiallyOperator
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
-import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.parameterIndex
 import javax.swing.event.HyperlinkEvent
@@ -260,11 +260,12 @@ abstract class KotlinFindMemberUsagesHandler<T : KtNamedDeclaration> protected c
 
             if (options.isUsages) {
                 val baseKotlinSearchOptions = createKotlinReferencesSearchOptions(options, forHighlight)
-                val kotlinSearchOptions = if (element.isPotentiallyOperator()) {
+                val kotlinSearchOptions = if (element is KtNamedFunction && KotlinPsiHeuristics.isPossibleOperator(element)) {
                     baseKotlinSearchOptions
                 } else {
                     baseKotlinSearchOptions.copy(searchForOperatorConventions = false)
                 }
+
                 val searchParameters = KotlinReferencesSearchParameters(element, options.searchScope, kotlinOptions = kotlinSearchOptions)
 
                 addTask { applyQueryFilters(element, options, ReferencesSearch.search(searchParameters)).forEach(referenceProcessor) }

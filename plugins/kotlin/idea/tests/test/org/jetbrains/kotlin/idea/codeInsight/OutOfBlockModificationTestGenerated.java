@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -466,6 +466,11 @@ public class OutOfBlockModificationTestGenerated extends AbstractOutOfBlockModif
     @TestMetadata("StringInSuperConstroctorCall.kt")
     public void testStringInSuperConstroctorCall() throws Exception {
         runTest("testData/codeInsight/outOfBlock/StringInSuperConstroctorCall.kt");
+    }
+
+    @TestMetadata("Suppression.kt")
+    public void testSuppression() throws Exception {
+        runTest("testData/codeInsight/outOfBlock/Suppression.kt");
     }
 
     @TestMetadata("Uncomment.kt")

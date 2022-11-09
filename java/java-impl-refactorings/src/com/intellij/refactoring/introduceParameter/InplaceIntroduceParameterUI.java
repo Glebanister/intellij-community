@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.introduceParameter;
 
 import com.intellij.java.refactoring.JavaRefactoringBundle;
@@ -56,22 +56,18 @@ public abstract class InplaceIntroduceParameterUI extends IntroduceParameterSett
       IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_INACCESSIBLE,
       IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_NONE});
     myReplaceFieldsCb.setRenderer(SimpleListCellRenderer.create((label, value, index) -> {
-      switch (value) {
-        case IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_NONE:
-          label.setText(UIUtil.removeMnemonic(JavaRefactoringBundle.message("do.not.replace")));
-          break;
-        case IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_INACCESSIBLE:
-          label.setText(UIUtil.removeMnemonic(JavaRefactoringBundle.message("replace.fields.inaccessible.in.usage.context")));
-          break;
-        default:
-          label.setText(UIUtil.removeMnemonic(JavaRefactoringBundle.message("replace.all.fields")));
-      }
+      String message = switch (value) {
+        case IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_NONE -> JavaRefactoringBundle.message("do.not.replace");
+        case IntroduceParameterRefactoring.REPLACE_FIELDS_WITH_GETTERS_INACCESSIBLE ->
+          JavaRefactoringBundle.message("replace.fields.inaccessible.in.usage.context");
+        default -> JavaRefactoringBundle.message("replace.all.fields");
+      };
+      label.setText(UIUtil.removeMnemonic(message));
     }));
     myReplaceFieldsCb.setSelectedItem(JavaRefactoringSettings.getInstance().INTRODUCE_PARAMETER_REPLACE_FIELDS_WITH_GETTERS);
     KeyboardComboSwitcher.setupActions(myReplaceFieldsCb, myProject);
     component.setComponent(myReplaceFieldsCb);
     component.setText(JavaRefactoringBundle.message("replace.fields.used.in.expressions.with.their.getters"));
-    component.getLabel().setDisplayedMnemonic('u');
     component.setLabelLocation(BorderLayout.NORTH);
     component.setBorder(JBUI.Borders.empty(3, 3, 2, 2));
     return component;

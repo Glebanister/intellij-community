@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.notification;
 
 import com.intellij.CommonBundle;
@@ -31,9 +31,6 @@ import javax.swing.*;
 import javax.swing.event.AncestorEvent;
 import java.awt.*;
 
-/**
-* @author peter
-*/
 public final class EventLogToolWindowFactory implements ToolWindowFactory, DumbAware {
   @Override
   public boolean isApplicable(@NotNull Project project) {
@@ -92,7 +89,7 @@ public final class EventLogToolWindowFactory implements ToolWindowFactory, DumbA
     toolbar.setTargetComponent(editor.getContentComponent());
     panel.setToolbar(toolbar.getComponent());
 
-    Content content = ContentFactory.SERVICE.getInstance().createContent(panel, title, false);
+    Content content = ContentFactory.getInstance().createContent(panel, title, false);
     contentManager.addContent(content);
     contentManager.setSelectedContent(content);
   }
@@ -132,6 +129,11 @@ public final class EventLogToolWindowFactory implements ToolWindowFactory, DumbA
     @Override
     protected Editor getEditor(@NotNull AnActionEvent e) {
       return myEditor;
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
     }
   }
 

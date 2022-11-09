@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.UtilBundle;
@@ -15,10 +15,7 @@ import com.intellij.lang.Language;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.Separator;
-import com.intellij.openapi.actionSystem.ToggleAction;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.*;
@@ -46,6 +43,7 @@ import com.intellij.util.ui.UIUtil;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -54,7 +52,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static com.intellij.analysis.problemsView.toolWindow.ProblemsView.toggleCurrentFileProblems;
 
@@ -108,7 +105,7 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
    * {@code errorCount[idx]} equals to a number of highlighters of severity with index {@code idx} in this markup model.
    * Severity index can be obtained via {@link SeverityRegistrar#getSeverityIdx(HighlightSeverity)}.
    */
-  protected int @NotNull [] getErrorCounts() {
+  public int @NotNull [] getErrorCounts() {
     return cachedErrors.clone();
   }
 
@@ -134,7 +131,7 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
     HighlightInfo info = HighlightInfo.fromRangeHighlighter(highlighter);
     if (info == null) return;
     HighlightSeverity infoSeverity = info.getSeverity();
-    if (infoSeverity.myVal <= HighlightSeverity.INFORMATION.myVal) return;
+    if (infoSeverity.myVal <= HighlightSeverity.TEXT_ATTRIBUTES.myVal) return;
 
     errorCount.put(infoSeverity, errorCount.getInt(infoSeverity) + delta);
   }
@@ -143,14 +140,15 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
     return getPsiFile() != null;
   }
 
-  protected static final class DaemonCodeAnalyzerStatus {
+  @ApiStatus.Internal
+  public static final class DaemonCodeAnalyzerStatus {
     public boolean errorAnalyzingFinished;  // all passes are done
     List<ProgressableTextEditorHighlightingPass> passes = Collections.emptyList();
     public int[] errorCounts = ArrayUtilRt.EMPTY_INT_ARRAY;
     public @Nls String reasonWhyDisabled;
     public @Nls String reasonWhySuspended;
 
-    private HeavyProcessLatch.Type heavyProcessType;
+    public HeavyProcessLatch.Type heavyProcessType;
     private FileHighlightingSetting minimumLevel = FileHighlightingSetting.FORCE_HIGHLIGHTING;  // by default, full inspect mode is expected
 
     DaemonCodeAnalyzerStatus() {
@@ -158,20 +156,26 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
 
     @Override
     public String toString() {
-      String s = "DS: finished=" + errorAnalyzingFinished
-      +"; pass statuses: "+passes.size()+"; ";
+      StringBuilder s = new StringBuilder("DS: finished=" + errorAnalyzingFinished
+                                          + "; pass statuses: " + passes.size() + "; ");
       for (ProgressableTextEditorHighlightingPass passStatus : passes) {
-        s += String.format("(%s %2.0f%% %b)", passStatus.getPresentableName(), passStatus.getProgress() * 100, passStatus.isFinished());
+        s.append(
+          String.format("(%s %2.0f%% %b)", passStatus.getPresentableName(), passStatus.getProgress() * 100, passStatus.isFinished()));
       }
-      s += "; error counts: " + errorCounts.length + ": " + new IntArrayList(errorCounts);
+      s.append("; error counts: ").append(errorCounts.length).append(": ").append(new IntArrayList(errorCounts));
       if (reasonWhyDisabled != null) {
-        s += "; reasonWhyDisabled="+reasonWhyDisabled;
+        s.append("; reasonWhyDisabled=").append(reasonWhyDisabled);
       }
       if (reasonWhySuspended != null) {
-        s += "; reasonWhySuspended"+reasonWhySuspended;
+        s.append("; reasonWhySuspended").append(reasonWhySuspended);
       }
-      return s;
+      return s.toString();
     }
+  }
+
+  @ApiStatus.Internal
+  public @NotNull DaemonCodeAnalyzerStatus getDaemonCodeAnalyzerStatus() {
+    return getDaemonCodeAnalyzerStatus(mySeverityRegistrar);
   }
 
   protected @NotNull DaemonCodeAnalyzerStatus getDaemonCodeAnalyzerStatus(@NotNull SeverityRegistrar severityRegistrar) {
@@ -269,25 +273,6 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
     String title;
     String details;
     boolean isDumb = DumbService.isDumb(myProject);
-    if (status.errorAnalyzingFinished) {
-      if (isDumb) {
-        title = DaemonBundle.message("shallow.analysis.completed");
-        details = DaemonBundle.message("shallow.analysis.completed.details");
-      }
-      else if (getPsiFile() != null
-               && HighlightingSettingsPerFile.getInstance(myProject).getHighlightingSettingForRoot(getPsiFile()) == FileHighlightingSetting.ESSENTIAL) {
-        title = DaemonBundle.message("essential.analysis.completed");
-        details = DaemonBundle.message("essential.analysis.completed.details");
-      }
-      else {
-        title = "";
-        details = "";
-      }
-    }
-    else {
-      title = DaemonBundle.message("performing.code.analysis");
-      details = "";
-    }
 
     List<SeverityStatusItem> statusItems = new ArrayList<>();
     int[] errorCounts = status.errorCounts;
@@ -310,6 +295,26 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
       }
     }
 
+    if (status.errorAnalyzingFinished) {
+      if (isDumb) {
+        title = DaemonBundle.message("shallow.analysis.completed");
+        details = DaemonBundle.message("shallow.analysis.completed.details");
+      }
+      else if (getPsiFile() != null
+               && HighlightingSettingsPerFile.getInstance(myProject).getHighlightingSettingForRoot(getPsiFile()) == FileHighlightingSetting.ESSENTIAL) {
+        title = DaemonBundle.message("essential.analysis.completed");
+        details = DaemonBundle.message("essential.analysis.completed.details");
+      }
+      else {
+        title = statusItems.isEmpty() ? DaemonBundle.message("no.errors.or.warnings.found") : "";
+        details = "";
+      }
+    }
+    else {
+      title = DaemonBundle.message("performing.code.analysis");
+      details = "";
+    }
+
     if (!statusItems.isEmpty()) {
       AnalyzerStatus result = new AnalyzerStatus(statusItems.get(0).getIcon(), title, "", this::createUIController).
         withNavigation().
@@ -318,7 +323,7 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
 
       return status.errorAnalyzingFinished ? result :
              result.withAnalyzingType(AnalyzingType.PARTIAL).
-             withPasses(ContainerUtil.map(status.passes, p -> new PassWrapper(p.getPresentableName(), p.getProgress(), p.isFinished())));
+             withPasses(ContainerUtil.map(status.passes, pass -> new PassWrapper(pass.getPresentableName(), pass.getProgress(), pass.isFinished())));
     }
     if (StringUtil.isNotEmpty(status.reasonWhyDisabled)) {
       return new AnalyzerStatus(AllIcons.General.InspectionsTrafficOff,
@@ -346,7 +351,7 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
     return new AnalyzerStatus(AllIcons.General.InspectionsEye, DaemonBundle.message("no.errors.or.warnings.found"), details, this::createUIController).
       withTextStatus(DaemonBundle.message("iw.status.analyzing")).
       withAnalyzingType(AnalyzingType.EMPTY).
-      withPasses(ContainerUtil.map(status.passes, p -> new PassWrapper(p.getPresentableName(), p.getProgress(), p.isFinished())));
+      withPasses(ContainerUtil.map(status.passes, pass -> new PassWrapper(pass.getPresentableName(), pass.getProgress(), pass.isFinished())));
   }
 
   protected @NotNull UIController createUIController() {
@@ -357,35 +362,36 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
     boolean mergeEditor = editor.getUserData(DiffUserDataKeys.MERGE_EDITOR_FLAG) == Boolean.TRUE;
     return editor.getEditorKind() == EditorKind.DIFF && !mergeEditor ? new SimplifiedUIController() : new DefaultUIController();
   }
-  
+
   protected abstract class AbstractUIController implements UIController {
     private final boolean inLibrary;
+    @NotNull
     private final List<LanguageHighlightLevel> myLevelList;
+    @NotNull
     private List<HectorComponentPanel> myAdditionalPanels = Collections.emptyList();
 
     AbstractUIController() {
       PsiFile psiFile = getPsiFile();
-      if (psiFile != null) {
+      if (psiFile == null) {
+        inLibrary = false;
+        myLevelList = Collections.emptyList();
+      }
+      else {
         ProjectFileIndex fileIndex = ProjectRootManager.getInstance(getProject()).getFileIndex();
         VirtualFile virtualFile = psiFile.getVirtualFile();
         assert virtualFile != null;
         inLibrary = fileIndex.isInLibrary(virtualFile) && !fileIndex.isInContent(virtualFile);
+        myLevelList = initLevels(psiFile);
       }
-      else {
-        inLibrary = false;
-      }
-
-      myLevelList = initLevels();
     }
 
-    private @NotNull List<@NotNull LanguageHighlightLevel> initLevels() {
+    private static @NotNull List<@NotNull LanguageHighlightLevel> initLevels(@NotNull PsiFile psiFile) {
       List<LanguageHighlightLevel> result = new ArrayList<>();
-      PsiFile psiFile = getPsiFile();
-      if (psiFile != null && !getProject().isDisposed()) {
+      if (!psiFile.getProject().isDisposed()) {
         FileViewProvider viewProvider = psiFile.getViewProvider();
         for (Language language : viewProvider.getLanguages()) {
           PsiFile psiRoot = viewProvider.getPsi(language);
-          FileHighlightingSetting setting = HighlightingSettingsPerFile.getInstance(getProject()).getHighlightingSettingForRoot(psiRoot);
+          FileHighlightingSetting setting = HighlightingSettingsPerFile.getInstance(psiFile.getProject()).getHighlightingSettingForRoot(psiRoot);
           InspectionsLevel inspectionsLevel = FileHighlightingSetting.toInspectionsLevel(setting);
           result.add(new LanguageHighlightLevel(language.getID(), inspectionsLevel));
         }
@@ -431,8 +437,14 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
     public void fillHectorPanels(@NotNull Container container, @NotNull GridBag gc) {
       PsiFile psiFile = getPsiFile();
       if (psiFile != null) {
-        myAdditionalPanels = HectorComponentPanelsProvider.EP_NAME.extensions(getProject()).
-          map(hp -> hp.createConfigurable(psiFile)).filter(p -> p != null).collect(Collectors.toList());
+        List<HectorComponentPanel> list = new ArrayList<>();
+        for (HectorComponentPanelsProvider hp : HectorComponentPanelsProvider.EP_NAME.getExtensionList(getProject())) {
+          HectorComponentPanel configurable = hp.createConfigurable(psiFile);
+          if (configurable != null) {
+            list.add(configurable);
+          }
+        }
+        myAdditionalPanels = list;
 
         for (HectorComponentPanel p : myAdditionalPanels) {
           JComponent c;
@@ -529,6 +541,12 @@ public class TrafficLightRenderer implements ErrorStripeRenderer, Disposable {
         PsiFile psiFile = getPsiFile();
         return psiFile != null && myDaemonCodeAnalyzer.isImportHintsEnabled(psiFile);
       }
+
+      @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
+      }
+
 
       @Override
       public void setSelected(@NotNull AnActionEvent e, boolean state) {

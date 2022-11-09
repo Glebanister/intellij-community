@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.treeStructure;
 
 import com.intellij.ide.IdeBundle;
@@ -9,6 +9,7 @@ import com.intellij.openapi.ui.Queryable;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.ui.*;
+import com.intellij.ui.paint.RectanglePainter2D;
 import com.intellij.ui.tree.TreePathBackgroundSupplier;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ThreeState;
@@ -47,7 +48,7 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
   @ApiStatus.Internal
   public static final Key<Boolean> AUTO_SELECT_ON_MOUSE_PRESSED = Key.create("allows to select a node automatically on right click");
   @ApiStatus.Internal
-  public static final Key<Boolean> MOUSE_PRESSED_NON_FOCUSED = Key.create("mouse pressed state");
+  public static final Key<Boolean> AUTO_SCROLL_FROM_SOURCE_BLOCKED = Key.create("auto scroll from source temporarily blocked");
 
   private final StatusText myEmptyText;
   private final ExpandableItemsHandler<Integer> myExpandableItemsHandler;
@@ -61,6 +62,8 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
   private ThreeState myHorizontalAutoScrolling = ThreeState.UNSURE;
 
   private TreePath rollOverPath;
+
+  private final Timer autoScrollUnblockTimer = TimerUtil.createNamedTimer("TreeAutoscrollUnblock", 500, e -> unblockAutoScrollFromSource());
 
   public Tree() {
     this(new DefaultMutableTreeNode());
@@ -114,6 +117,8 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
 
     setSelectionModel(mySelectionModel);
     setOpaque(false);
+
+    putClientProperty(UIUtil.NOT_IN_HIERARCHY_COMPONENTS, myEmptyText.getWrappedFragmentsIterable());
   }
 
   @Override
@@ -333,18 +338,40 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
 
   protected void paintFileColorGutter(Graphics g) {
     GraphicsConfig config = new GraphicsConfig(g);
+    config.setupAAPainting();
     Rectangle rect = getVisibleRect();
     int firstVisibleRow = getClosestRowForLocation(rect.x, rect.y);
     int lastVisibleRow = getClosestRowForLocation(rect.x, rect.y + rect.height);
 
+    Color prevColor = firstVisibleRow == 0 ? null : getFileColorForRow(firstVisibleRow - 1);
+    Color curColor = getFileColorForRow(firstVisibleRow);
+    Color nextColor = firstVisibleRow + 1 < getRowCount() ? getFileColorForRow(firstVisibleRow + 1) : null;
     for (int row = firstVisibleRow; row <= lastVisibleRow; row++) {
-      TreePath path = getPathForRow(row);
-      Color color = path == null ? null : getFileColorForPath(path);
-      if (color != null) {
+      nextColor = row + 1 < getRowCount() ? getFileColorForRow(row + 1) : null;
+      if (curColor != null) {
         Rectangle bounds = getRowBounds(row);
-        g.setColor(color);
-        g.fillRect(0, bounds.y, getWidth(), bounds.height);
+        double x = JBUI.scale(4);
+        double y = bounds.y;
+        double w = JBUI.scale(4);
+        double h = bounds.height;
+        if (Registry.is("ide.file.colors.at.left")) {
+          g.setColor(curColor);
+          if (curColor.equals(prevColor) && curColor.equals(nextColor)) {
+            RectanglePainter2D.FILL.paint((Graphics2D)g, x, y, w, h);
+          } else if (!curColor.equals(prevColor) && !curColor.equals(nextColor)) {
+            RectanglePainter2D.FILL.paint((Graphics2D)g, x, y + 2, w, h - 4, w);
+          } else if (curColor.equals(prevColor)) {
+            RectanglePainter2D.FILL.paint((Graphics2D)g, x, y - w, w, h + w - 2, w);
+          } else {
+            RectanglePainter2D.FILL.paint((Graphics2D)g, x, y + 2, w, h + w, w);
+          }
+        } else {
+          g.setColor(curColor);
+          g.fillRect(0, bounds.y, getWidth(), bounds.height);
+        }
       }
+      prevColor = curColor;
+      curColor = nextColor;
     }
     config.restore();
   }
@@ -352,9 +379,14 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
   @Override
   @Nullable
   public Color getPathBackground(@NotNull TreePath path, int row) {
-    return isFileColorsEnabled() ? getFileColorForPath(path) : null;
+    return isFileColorsEnabled() && !Registry.is("ide.file.colors.at.left") ? getFileColorForPath(path) : null;
   }
 
+  @Nullable
+  public Color getFileColorForRow(int row) {
+    TreePath path = getPathForRow(row);
+    return path != null ? getFileColorForPath(path) : null;
+  }
   @Nullable
   public Color getFileColorForPath(@NotNull TreePath path) {
     Object component = path.getLastPathComponent();
@@ -609,6 +641,16 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
     return path != null && TreeUtil.getNodeDepth(this, path) <= 0;
   }
 
+  private void blockAutoScrollFromSource() {
+    ClientProperty.put(this, AUTO_SCROLL_FROM_SOURCE_BLOCKED, true);
+    autoScrollUnblockTimer.restart();
+  }
+
+  @ApiStatus.Internal
+  public void unblockAutoScrollFromSource() {
+    ClientProperty.remove(this, AUTO_SCROLL_FROM_SOURCE_BLOCKED);
+  }
+
   private static class MySelectionModel extends DefaultTreeSelectionModel {
 
     private TreePath[] myHeldSelection;
@@ -633,8 +675,17 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
   }
 
   private class MyMouseListener extends MouseAdapter {
+
+    private MyMouseListener() {
+      autoScrollUnblockTimer.setRepeats(false);
+    }
+
     @Override
     public void mousePressed(MouseEvent event) {
+      if (!hasFocus()) {
+        blockAutoScrollFromSource();
+      }
+
       setPressed(event, true);
 
       if (Boolean.FALSE.equals(UIUtil.getClientProperty(event.getSource(), AUTO_SELECT_ON_MOUSE_PRESSED))
@@ -692,7 +743,6 @@ public class Tree extends JTree implements ComponentWithEmptyText, ComponentWith
     }
 
     private void setPressed(MouseEvent e, boolean pressed) {
-      putClientProperty(MOUSE_PRESSED_NON_FOCUSED, pressed && !hasFocus());
       if (UIUtil.isUnderWin10LookAndFeel()) {
         Point p = e.getPoint();
         TreePath path = getPathForLocation(p.x, p.y);

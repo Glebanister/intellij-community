@@ -5,12 +5,13 @@ package org.jetbrains.kotlin.nj2k
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Computable
 import com.intellij.psi.*
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
-import org.jetbrains.kotlin.idea.project.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
 import org.jetbrains.kotlin.j2k.*
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.nj2k.externalCodeProcessing.NewExternalCodeProcessing
@@ -83,7 +84,11 @@ class NewJavaToKotlinConverter(
         }
     }
 
-    fun elementsToKotlin(inputElements: List<PsiElement>, processor: WithProgressProcessor, bodyFilter: ((PsiElement) -> Boolean)?): Result {
+    fun elementsToKotlin(
+        inputElements: List<PsiElement>,
+        processor: WithProgressProcessor,
+        bodyFilter: ((PsiElement) -> Boolean)?
+    ): Result {
         val phaseDescription = KotlinNJ2KBundle.message("phase.converting.j2k")
         val contextElement = inputElements.firstOrNull() ?: return Result(emptyList(), null, null)
         val resolver = JKResolver(project, targetModule, contextElement)
@@ -235,6 +240,7 @@ class NewJ2kWithProgressProcessor(
         fileIndex: Int?,
         description: String
     ) {
+        ProgressManager.checkCanceled()
         progress?.checkCanceled()
         val singlePhaseFraction = 1.0 / phasesCount.toDouble()
         val singleSubPhaseFraction = singlePhaseFraction / subPhaseCount.toDouble()
@@ -259,7 +265,7 @@ class NewJ2kWithProgressProcessor(
             progress?.text = KotlinNJ2KBundle.message("progress.text", description, phase + 1, phasesCount)
         }
         progress?.text2 = when {
-            files != null && files.isNotEmpty() && fileIndex != null -> files[fileIndex].virtualFile.presentableUrl + if (files.size > 1) " ($fileIndex/${files.size})" else ""
+            !files.isNullOrEmpty() && fileIndex != null -> files[fileIndex].virtualFile.presentableUrl + if (files.size > 1) " ($fileIndex/${files.size})" else ""
             else -> ""
         }
     }

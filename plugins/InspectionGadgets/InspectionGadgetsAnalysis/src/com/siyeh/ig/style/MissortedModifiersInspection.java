@@ -120,7 +120,7 @@ public class MissortedModifiersInspection extends BaseInspection implements Clea
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiModifierList)) {
         element = element.getParent();
@@ -233,7 +233,7 @@ public class MissortedModifiersInspection extends BaseInspection implements Clea
     }
 
     @Override
-    public void visitRequiresStatement(PsiRequiresStatement statement) {
+    public void visitRequiresStatement(@NotNull PsiRequiresStatement statement) {
       super.visitRequiresStatement(statement);
       checkForMissortedModifiers(statement);
     }

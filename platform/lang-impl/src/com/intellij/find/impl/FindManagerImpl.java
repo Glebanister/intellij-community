@@ -185,6 +185,13 @@ public final class FindManagerImpl extends FindManager {
   }
 
   @Override
+  public void closeFindDialog() {
+    if (myHelper != null) {
+      myHelper.closeUI();
+    }
+  }
+
+  @Override
   @NotNull
   public FindModel getFindInFileModel() {
     return myFindInFileModel;
@@ -597,7 +604,7 @@ public final class FindManagerImpl extends FindManager {
 
       try {
         SyntaxHighlighterOverEditorHighlighter highlighterAdapter =
-          new SyntaxHighlighterOverEditorHighlighter(highlighter, file, myProject);
+          ReadAction.compute(() -> new SyntaxHighlighterOverEditorHighlighter(highlighter, file, myProject));
         currentThreadData =
           new CommentsLiteralsSearchData(file, relevantLanguages, highlighterAdapter, tokensOfInterest, searcher, matcher, model.clone());
         currentThreadData.highlighter.restart(text);

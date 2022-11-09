@@ -16,8 +16,8 @@ import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.QualifiedName;
+import com.intellij.ui.IconManager;
 import com.intellij.util.IncorrectOperationException;
-import com.intellij.util.PlatformIcons;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.python.PyElementTypes;
 import com.jetbrains.python.PyNames;
@@ -201,6 +201,10 @@ public class PyTargetExpressionImpl extends PyBaseElementImpl<PyTargetExpression
 
       return PyUnionType.union(collect);
     }
+    if (parent instanceof PyExceptPart && ((PyExceptPart)parent).isStar() &&
+        LanguageLevel.forElement(this).isAtLeast(LanguageLevel.PYTHON311)) {
+      return PyClassTypeImpl.createTypeByQName(this, "ExceptionGroup", false);
+    }
     PyType iterType = getTypeFromIteration(context);
     if (iterType != null) {
       return iterType;
@@ -244,18 +248,15 @@ public class PyTargetExpressionImpl extends PyBaseElementImpl<PyTargetExpression
   @Nullable
   private static PyType getWithItemVariableType(@NotNull PyWithItem item, @NotNull TypeEvalContext context) {
     final PyExpression withExpression = item.getExpression();
-    if (withExpression != null) {
-      final PyType withType = context.getType(withExpression);
-      final PyWithStatement withStatement = PsiTreeUtil.getParentOfType(item, PyWithStatement.class);
-      final boolean isAsync = withStatement != null && withStatement.isAsync();
+    final PyType withType = context.getType(withExpression);
+    final PyWithStatement withStatement = PsiTreeUtil.getParentOfType(item, PyWithStatement.class);
+    final boolean isAsync = withStatement != null && withStatement.isAsync();
 
-      return PyTypeUtil
-        .toStream(withType)
-        .select(PyClassType.class)
-        .map(t -> getEnterTypeFromPyClass(withExpression, t, isAsync, context))
-        .collect(PyTypeUtil.toUnion());
-    }
-    return null;
+    return PyTypeUtil
+      .toStream(withType)
+      .select(PyClassType.class)
+      .map(t -> getEnterTypeFromPyClass(withExpression, t, isAsync, context))
+      .collect(PyTypeUtil.toUnion());
   }
 
   @Nullable
@@ -501,9 +502,9 @@ public class PyTargetExpressionImpl extends PyBaseElementImpl<PyTargetExpression
   @Override
   public Icon getIcon(final int flags) {
     if (isQualified() || PsiTreeUtil.getStubOrPsiParentOfType(this, PyDocStringOwner.class) instanceof PyClass) {
-      return PlatformIcons.FIELD_ICON;
+      return IconManager.getInstance().getPlatformIcon(com.intellij.ui.PlatformIcons.Field);
     }
-    return PlatformIcons.VARIABLE_ICON;
+    return IconManager.getInstance().getPlatformIcon(com.intellij.ui.PlatformIcons.Variable);
   }
 
   @Override
@@ -689,7 +690,7 @@ public class PyTargetExpressionImpl extends PyBaseElementImpl<PyTargetExpression
   @Override
   public PyStringLiteralExpression getDocStringExpression() {
     final PsiElement parent = getParent();
-    if (parent instanceof PyAssignmentStatement) {
+    if (parent instanceof PyAssignmentStatement || parent instanceof PyTypeDeclarationStatement) {
       final PsiElement nextSibling = PyPsiUtils.getNextNonCommentSibling(parent, true);
       if (nextSibling instanceof PyExpressionStatement) {
         final PyExpression expression = ((PyExpressionStatement)nextSibling).getExpression();

@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -29,6 +29,16 @@ public abstract class PostfixTemplateProviderTestGenerated extends AbstractPostf
         @TestMetadata("arg.kt")
         public void testArg() throws Exception {
             runTest("testData/codeInsight/postfix/arg.kt");
+        }
+
+        @TestMetadata("argWithReturn.kt")
+        public void testArgWithReturn() throws Exception {
+            runTest("testData/codeInsight/postfix/argWithReturn.kt");
+        }
+
+        @TestMetadata("argWithThrow.kt")
+        public void testArgWithThrow() throws Exception {
+            runTest("testData/codeInsight/postfix/argWithThrow.kt");
         }
 
         @TestMetadata("assert.kt")
@@ -134,6 +144,11 @@ public abstract class PostfixTemplateProviderTestGenerated extends AbstractPostf
         @TestMetadata("sout.kt")
         public void testSout() throws Exception {
             runTest("testData/codeInsight/postfix/sout.kt");
+        }
+
+        @TestMetadata("soutCompanionClassLiteral.kt")
+        public void testSoutCompanionClassLiteral() throws Exception {
+            runTest("testData/codeInsight/postfix/soutCompanionClassLiteral.kt");
         }
 
         @TestMetadata("soutInIf.kt")

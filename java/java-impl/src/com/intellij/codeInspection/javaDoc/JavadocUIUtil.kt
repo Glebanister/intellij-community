@@ -12,8 +12,6 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.dsl.builder.*
 import com.intellij.ui.dsl.builder.Cell
 import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
-import com.intellij.ui.dsl.gridLayout.VerticalAlign
 import com.intellij.ui.layout.*
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -27,14 +25,14 @@ data class MasterDetailsItem(@NlsContexts.Checkbox val text: String, val checkbo
 
 object JavadocUIUtil {
 
-  fun Cell<JBCheckBox>.bindCheckbox(get: () -> Boolean, set: (Boolean) -> Unit): Cell<JBCheckBox> = applyToComponent {
+  private fun Cell<JBCheckBox>.bindCheckbox(get: () -> Boolean, set: (Boolean) -> Unit): Cell<JBCheckBox> = applyToComponent {
     isSelected = get()
     addActionListener {
       set(isSelected)
     }
   }
 
-  fun Cell<JBCheckBox>.bindCheckbox(property: KMutableProperty0<Boolean>): Cell<JBCheckBox> = bindCheckbox(property::get, property::set)
+  private fun Cell<JBCheckBox>.bindCheckbox(property: KMutableProperty0<Boolean>): Cell<JBCheckBox> = bindCheckbox(property::get, property::set)
 
   fun <T> Cell<ComboBox<T>>.bindItem(property: KMutableProperty0<T>): Cell<ComboBox<T>> = applyToComponent {
     selectedItem = property.get()
@@ -48,7 +46,7 @@ object JavadocUIUtil {
     return MasterDetailsItem(text, PropertyBinding(checkboxBinding::get, checkboxBinding::set), description)
   }
 
-  fun createMasterDetails(items: List<MasterDetailsItem>): JPanel {
+  private fun createMasterDetails(items: List<MasterDetailsItem>): JPanel {
     val layout = CardLayout()
     val description = JPanel(layout)
     val list = CheckBoxList<MasterDetailsItem>()
@@ -75,8 +73,8 @@ object JavadocUIUtil {
 
     return panel {
       row {
-        cell(list).verticalAlign(VerticalAlign.FILL)
-        cell(description).horizontalAlign(HorizontalAlign.FILL).verticalAlign(VerticalAlign.TOP)
+        cell(list).align(AlignY.FILL)
+        cell(description).align(AlignX.FILL + AlignY.TOP)
       }
     }
   }
@@ -85,7 +83,7 @@ object JavadocUIUtil {
     row {
       expandableTextField()
         .label(JavaBundle.message("inspection.javadoc.label.text"), LabelPosition.TOP)
-        .horizontalAlign(HorizontalAlign.FILL)
+        .align(AlignX.FILL)
         .applyToComponent {
           text = settings.ADDITIONAL_TAGS
           document.addDocumentListener(object: DocumentAdapter() {
@@ -106,6 +104,10 @@ object JavadocUIUtil {
     row {
       checkBox(JavaBundle.message("inspection.javadoc.option.ignore.self.ref"))
         .bindCheckbox(settings::IGNORE_SELF_REFS)
+    }
+    row {
+      checkBox(JavaBundle.message("inspection.javadoc.option.ignore.deprecated"))
+        .bindCheckbox(settings::IGNORE_DEPRECATED_ELEMENTS)
     }
   }
 
@@ -145,7 +147,7 @@ object JavadocUIUtil {
             settings.TOP_LEVEL_CLASS_SETTINGS::ENABLED,
             createOptions(
               settings.TOP_LEVEL_CLASS_SETTINGS,
-              listOf(JavaDocLocalInspection.PUBLIC, JavaDocLocalInspection.PACKAGE_LOCAL),
+              listOf(MissingJavadocInspection.PUBLIC, MissingJavadocInspection.PACKAGE_LOCAL),
               listOf("@author", "@version", "@since", "@param")
             )
           ),
@@ -154,8 +156,8 @@ object JavadocUIUtil {
             settings.METHOD_SETTINGS::ENABLED,
             createOptions(
               settings.METHOD_SETTINGS,
-              listOf(JavaDocLocalInspection.PUBLIC, JavaDocLocalInspection.PROTECTED,
-                     JavaDocLocalInspection.PACKAGE_LOCAL, JavaDocLocalInspection.PRIVATE),
+              listOf(MissingJavadocInspection.PUBLIC, MissingJavadocInspection.PROTECTED,
+                     MissingJavadocInspection.PACKAGE_LOCAL, MissingJavadocInspection.PRIVATE),
               listOf("@return", "@param", JavaBundle.message("inspection.javadoc.throws.or.exception.option"))
             )
           ),
@@ -164,8 +166,8 @@ object JavadocUIUtil {
             settings.FIELD_SETTINGS::ENABLED,
             createOptions(
               settings.FIELD_SETTINGS,
-              listOf(JavaDocLocalInspection.PUBLIC, JavaDocLocalInspection.PROTECTED,
-                     JavaDocLocalInspection.PACKAGE_LOCAL, JavaDocLocalInspection.PRIVATE),
+              listOf(MissingJavadocInspection.PUBLIC, MissingJavadocInspection.PROTECTED,
+                     MissingJavadocInspection.PACKAGE_LOCAL, MissingJavadocInspection.PRIVATE),
               emptyList()
             )
           ),
@@ -174,8 +176,8 @@ object JavadocUIUtil {
             settings.INNER_CLASS_SETTINGS::ENABLED,
             createOptions(
               settings.INNER_CLASS_SETTINGS,
-              listOf(JavaDocLocalInspection.PUBLIC, JavaDocLocalInspection.PROTECTED,
-                     JavaDocLocalInspection.PACKAGE_LOCAL, JavaDocLocalInspection.PRIVATE),
+              listOf(MissingJavadocInspection.PUBLIC, MissingJavadocInspection.PROTECTED,
+                     MissingJavadocInspection.PACKAGE_LOCAL, MissingJavadocInspection.PRIVATE),
               emptyList()
             )
           )

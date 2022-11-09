@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -783,6 +783,11 @@ public abstract class InlineTestGenerated extends AbstractInlineTest {
                 runTest("testData/refactoring/inline/inlineVariableOrProperty/stringTemplates/addBraces.kt");
             }
 
+            @TestMetadata("addBracesToPrevEntry.kt")
+            public void testAddBracesToPrevEntry() throws Exception {
+                runTest("testData/refactoring/inline/inlineVariableOrProperty/stringTemplates/addBracesToPrevEntry.kt");
+            }
+
             @TestMetadata("blockEntry.kt")
             public void testBlockEntry() throws Exception {
                 runTest("testData/refactoring/inline/inlineVariableOrProperty/stringTemplates/blockEntry.kt");
@@ -874,6 +879,31 @@ public abstract class InlineTestGenerated extends AbstractInlineTest {
             @TestMetadata("lessAndGreaterInCallArgs.kt")
             public void testLessAndGreaterInCallArgs() throws Exception {
                 runTest("testData/refactoring/inline/inlineVariableOrProperty/lessAndGreaterInCallArgs.kt");
+            }
+
+            @TestMetadata("localVariableOnDeclaration.kt")
+            public void testLocalVariableOnDeclaration() throws Exception {
+                runTest("testData/refactoring/inline/inlineVariableOrProperty/localVariableOnDeclaration.kt");
+            }
+
+            @TestMetadata("localVariableOnDeclaration2.kt")
+            public void testLocalVariableOnDeclaration2() throws Exception {
+                runTest("testData/refactoring/inline/inlineVariableOrProperty/localVariableOnDeclaration2.kt");
+            }
+
+            @TestMetadata("localVariableOnDeclarationWithPropertyKeep.kt")
+            public void testLocalVariableOnDeclarationWithPropertyKeep() throws Exception {
+                runTest("testData/refactoring/inline/inlineVariableOrProperty/localVariableOnDeclarationWithPropertyKeep.kt");
+            }
+
+            @TestMetadata("localVariableOnDeclarationWithPropertyKeep2.kt")
+            public void testLocalVariableOnDeclarationWithPropertyKeep2() throws Exception {
+                runTest("testData/refactoring/inline/inlineVariableOrProperty/localVariableOnDeclarationWithPropertyKeep2.kt");
+            }
+
+            @TestMetadata("localVariableWithPropertyKeep.kt")
+            public void testLocalVariableWithPropertyKeep() throws Exception {
+                runTest("testData/refactoring/inline/inlineVariableOrProperty/localVariableWithPropertyKeep.kt");
             }
 
             @TestMetadata("MethodReference.kt")
@@ -1939,6 +1969,11 @@ public abstract class InlineTestGenerated extends AbstractInlineTest {
                 runTest("testData/refactoring/inline/namedFunction/extensionFunction2.kt");
             }
 
+            @TestMetadata("functionReferenceOfCompanionObject.kt")
+            public void testFunctionReferenceOfCompanionObject() throws Exception {
+                runTest("testData/refactoring/inline/namedFunction/functionReferenceOfCompanionObject.kt");
+            }
+
             @TestMetadata("getOperator.kt")
             public void testGetOperator() throws Exception {
                 runTest("testData/refactoring/inline/namedFunction/getOperator.kt");
@@ -2002,6 +2037,11 @@ public abstract class InlineTestGenerated extends AbstractInlineTest {
             @TestMetadata("let.kt")
             public void testLet() throws Exception {
                 runTest("testData/refactoring/inline/namedFunction/let.kt");
+            }
+
+            @TestMetadata("letWithFunctionReferenceOfCompanionObject.kt")
+            public void testLetWithFunctionReferenceOfCompanionObject() throws Exception {
+                runTest("testData/refactoring/inline/namedFunction/letWithFunctionReferenceOfCompanionObject.kt");
             }
 
             @TestMetadata("LocalCapturing.kt")
@@ -2232,6 +2272,21 @@ public abstract class InlineTestGenerated extends AbstractInlineTest {
             @TestMetadata("UnitReturnType4.kt")
             public void testUnitReturnType4() throws Exception {
                 runTest("testData/refactoring/inline/namedFunction/UnitReturnType4.kt");
+            }
+
+            @TestMetadata("withImportAlias.kt")
+            public void testWithImportAlias() throws Exception {
+                runTest("testData/refactoring/inline/namedFunction/withImportAlias.kt");
+            }
+
+            @TestMetadata("withImportAlias2.kt")
+            public void testWithImportAlias2() throws Exception {
+                runTest("testData/refactoring/inline/namedFunction/withImportAlias2.kt");
+            }
+
+            @TestMetadata("withImportAlias3.kt")
+            public void testWithImportAlias3() throws Exception {
+                runTest("testData/refactoring/inline/namedFunction/withImportAlias3.kt");
             }
 
             @TestMetadata("withoutUsage.kt")

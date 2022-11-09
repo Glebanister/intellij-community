@@ -210,7 +210,7 @@ public class PointlessBitwiseExpressionInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiExpression expression = (PsiExpression)descriptor.getPsiElement();
       CommentTracker ct = new CommentTracker();
       final String newExpression = calculateReplacementExpression(expression, ct);
@@ -223,7 +223,7 @@ public class PointlessBitwiseExpressionInspection extends BaseInspection {
   private class PointlessBitwiseVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitPrefixExpression(PsiPrefixExpression expression) {
+    public void visitPrefixExpression(@NotNull PsiPrefixExpression expression) {
       super.visitPrefixExpression(expression);
       PsiExpression complemented = unwrapComplement(expression);
       if (complemented == null) return;

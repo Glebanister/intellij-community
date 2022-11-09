@@ -65,7 +65,7 @@ public class MathRandomCastToIntInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       PsiElement parent = element.getParent();
       while (parent instanceof PsiPrefixExpression) {
@@ -117,7 +117,7 @@ public class MathRandomCastToIntInspection extends BaseInspection {
   private static class MathRandomCastToIntegerVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitTypeCastExpression(PsiTypeCastExpression expression) {
+    public void visitTypeCastExpression(@NotNull PsiTypeCastExpression expression) {
       super.visitTypeCastExpression(expression);
       PsiExpression operand = expression.getOperand();
       while (operand instanceof PsiPrefixExpression) {

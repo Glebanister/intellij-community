@@ -15,6 +15,7 @@
  */
 package com.siyeh.ig.assignment;
 
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ui.MultipleCheckboxOptionsPanel;
@@ -36,7 +37,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-public class ReplaceAssignmentWithOperatorAssignmentInspection extends BaseInspection {
+public class ReplaceAssignmentWithOperatorAssignmentInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   /**
    * @noinspection PublicField
@@ -146,7 +147,7 @@ public class ReplaceAssignmentWithOperatorAssignmentInspection extends BaseInspe
     }
 
     @Override
-    public void doFix(@NotNull Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiAssignmentExpression)) {
         return;

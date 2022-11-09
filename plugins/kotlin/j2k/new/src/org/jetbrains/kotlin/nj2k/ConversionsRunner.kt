@@ -11,7 +11,7 @@ import java.util.*
 
 object ConversionsRunner {
     private fun createConversions(context: NewJ2kConverterContext) = listOf(
-        ParenthesizeBitwiseOperationConversion(context),
+        ParenthesizeBinaryExpressionIfNeededConversion(context),
         NonCodeElementsConversion(context),
         JavaModifiersConversion(context),
         JavaAnnotationsConversion(context),
@@ -23,26 +23,21 @@ object ConversionsRunner {
         BoxedTypeOperationsConversion(context),
         AnyWithStringConcatenationConversion(context),
         AssignmentExpressionUnfoldingConversion(context),
-        AddParenthesisForLineBreaksInBinaryExpression(context),
-        ThrowStatementConversion(context),
         ArrayInitializerConversion(context),
-        TryStatementConversion(context),
+        JavaStatementConversion(context),
         EnumFieldAccessConversion(context),
-        SynchronizedStatementConversion(context),
-        JetbrainsNullableAnnotationsConverter(context),
+        NullabilityAnnotationsConversion(context),
         DefaultArgumentsConversion(context),
         ConstructorConversion(context),
         MoveConstructorsAfterFieldsConversion(context),
         ImplicitInitializerConversion(context),
         ParameterModificationInMethodCallsConversion(context),
         BlockToRunConversion(context),
+        RecordClassConversion(context),
         PrimaryConstructorDetectConversion(context),
         InsertDefaultPrimaryConstructorConversion(context),
-        FieldToPropertyConversion(context),
+        ClassMemberConversion(context),
         JavaStandardMethodsConversion(context),
-        JavaMethodToKotlinFunctionConversion(context),
-        MainFunctionConversion(context),
-        AssertStatementConversion(context),
         SwitchToWhenConversion(context),
         YieldStatementConversion(context),
         ForConversion(context),
@@ -51,7 +46,6 @@ object ConversionsRunner {
         EqualsOperatorConversion(context),
         TypeMappingConversion(context),
         InternalDeclarationConversion(context),
-
         InnerClassConversion(context),
         StaticsToCompanionExtractConversion(context),
         InterfaceWithFieldConversion(context),
@@ -66,8 +60,7 @@ object ConversionsRunner {
         PrimitiveTypeCastsConversion(context),
         LiteralConversion(context),
         RemoveRedundantQualifiersForCallsConversion(context),
-        FunctionalInterfacesConverter(context),
-
+        FunctionalInterfacesConversion(context),
         FilterImportsConversion(context),
         AddElementsInfoConversion(context)
     )

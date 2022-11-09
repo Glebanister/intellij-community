@@ -174,7 +174,7 @@ public class JavaCodeStyleManagerImpl extends JavaCodeStyleManager {
       for (PsiElement root : roots) {
         root.accept(new JavaRecursiveElementWalkingVisitor() {
           @Override
-          public void visitReferenceElement(PsiJavaCodeReferenceElement reference) {
+          public void visitReferenceElement(@NotNull PsiJavaCodeReferenceElement reference) {
             if (!reference.isQualified()) {
               final JavaResolveResult resolveResult = reference.advancedResolve(false);
               if (!inTheSamePackage(file, resolveResult.getElement())) {
@@ -332,7 +332,7 @@ public class JavaCodeStyleManagerImpl extends JavaCodeStyleManager {
       return Collections.singletonList(fromTypeMap);
     }
 
-    Collection<String> fromTypeName = suggestNamesFromTypeName(type, variableKind, getTypeName(type));
+    List<String> fromTypeName = suggestNamesFromTypeName(type, variableKind, getTypeName(type));
     if (!(type instanceof PsiClassType)) {
       return fromTypeName;
     }
@@ -364,21 +364,15 @@ public class JavaCodeStyleManagerImpl extends JavaCodeStyleManager {
   @Nullable
   private static String nameByType(@NotNull String longTypeName, @NotNull VariableKind kind) {
     if (kind == VariableKind.PARAMETER || kind == VariableKind.LOCAL_VARIABLE) {
-      switch (longTypeName) {
-        case "int":
-        case "boolean":
-        case "byte":
-        case "char":
-        case "long":
-          return longTypeName.substring(0, 1);
-        case "double":
-        case "float":
-          return "v";
-        case "short": return "i";
-        case CommonClassNames.JAVA_LANG_OBJECT: return "o";
-        case CommonClassNames.JAVA_LANG_STRING: return "s";
-        case CommonClassNames.JAVA_LANG_VOID: return "unused";
-      }
+      return switch (longTypeName) {
+        case "int", "boolean", "byte", "char", "long" -> longTypeName.substring(0, 1);
+        case "double", "float" -> "v";
+        case "short" -> "i";
+        case CommonClassNames.JAVA_LANG_OBJECT -> "o";
+        case CommonClassNames.JAVA_LANG_STRING -> "s";
+        case CommonClassNames.JAVA_LANG_VOID -> "unused";
+        default -> null;
+      };
     }
     return null;
   }
@@ -1100,10 +1094,10 @@ public class JavaCodeStyleManagerImpl extends JavaCodeStyleManager {
       boolean hasConflict = false;
 
       @Override
-      public void visitClass(final PsiClass aClass) {}
+      public void visitClass(final @NotNull PsiClass aClass) {}
 
       @Override
-      public void visitVariable(PsiVariable variable) {
+      public void visitVariable(@NotNull PsiVariable variable) {
         if (name.equals(variable.getName()) && !canBeReused.test(variable)) {
           hasConflict = true;
           stopWalking();

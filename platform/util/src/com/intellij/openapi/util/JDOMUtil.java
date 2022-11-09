@@ -3,8 +3,6 @@ package com.intellij.openapi.util;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.io.FileUtilRt;
-import com.intellij.openapi.util.text.Strings;
-import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.text.CharArrayUtil;
 import com.intellij.util.text.CharSequenceReader;
@@ -12,7 +10,6 @@ import com.intellij.util.xml.dom.StaxFactory;
 import com.intellij.xml.util.XmlStringUtil;
 import org.codehaus.stax2.XMLStreamReader2;
 import org.jdom.*;
-import org.jdom.filter.Filter;
 import org.jdom.output.Format;
 import org.jdom.output.XMLOutputter;
 import org.jetbrains.annotations.*;
@@ -27,8 +24,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.*;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+@SuppressWarnings("IOStreamConstructor")
 public final class JDOMUtil {
   private static final @NonNls String X = "x";
   private static final @NonNls String Y = "y";
@@ -91,18 +92,23 @@ public final class JDOMUtil {
         hashCode = hashCode * 31 * 31 + attribute.getName().hashCode() * 31 + value.hashCode();
       }
     }
-    for (Content content : e.getContent(CONTENT_FILTER)) {
+
+    Iterator<Content> iterator = e.content().filter(CONTENT_FILTER).iterator();
+    while (iterator.hasNext()) {
+      Content content = iterator.next();
       int contentHash = content instanceof Element ? hashCode((Element)content, ignoreEmptyAttrValues) : e.getValue().hashCode();
       hashCode = hashCode * 31 + contentHash;
     }
     return hashCode;
   }
 
-  public static boolean areElementContentsEqual(@NotNull Element e1, @NotNull Element e2, boolean ignoreEmptyAttrValues) {
-    return contentListsEqual(e1.getContent(CONTENT_FILTER), e2.getContent(CONTENT_FILTER), ignoreEmptyAttrValues);
+  private static boolean areElementContentsEqual(@NotNull Element e1, @NotNull Element e2, boolean ignoreEmptyAttrValues) {
+    return contentListsEqual(e1.content().filter(CONTENT_FILTER), e2.content().filter(CONTENT_FILTER), ignoreEmptyAttrValues);
   }
 
-  private static final EmptyTextFilter CONTENT_FILTER = new EmptyTextFilter();
+  private static final Predicate<Content> CONTENT_FILTER = content -> {
+    return !(content instanceof Text) || !CharArrayUtil.containsOnlyWhiteSpaces(((Text)content).getText());
+  };
 
   /**
    * @deprecated Use {@link Element#getChildren} instead
@@ -131,26 +137,17 @@ public final class JDOMUtil {
       sb.append(each == '<' ? "&lt;" : "&gt;");
     }
     else if (!Verifier.isXMLCharacter(each)) {
-      sb.append("0x").append(Strings.toUpperCase(Long.toHexString(each)));
+      String s = Long.toHexString(each);
+      sb.append("0x").append(s.toUpperCase(Locale.ENGLISH));
     }
     else {
       sb.append(each);
     }
   }
 
-  private static final class EmptyTextFilter implements Filter<Content> {
-    @Override
-    public boolean matches(Object obj) {
-      return !(obj instanceof Text) || !CharArrayUtil.containsOnlyWhiteSpaces(((Text)obj).getText());
-    }
-  }
-
-  private static boolean contentListsEqual(List<Content> c1, List<Content> c2, boolean ignoreEmptyAttrValues) {
-    if (c1 == null && c2 == null) return true;
-    if (c1 == null || c2 == null) return false;
-
-    Iterator<Content> l1 = c1.listIterator();
-    Iterator<Content> l2 = c2.listIterator();
+  private static boolean contentListsEqual(@NotNull Stream<Content> c1, @NotNull Stream<Content> c2, boolean ignoreEmptyAttrValues) {
+    Iterator<Content> l1 = c1.iterator();
+    Iterator<Content> l2 = c2.iterator();
     while (l1.hasNext() && l2.hasNext()) {
       if (!contentsEqual(l1.next(), l2.next(), ignoreEmptyAttrValues)) {
         return false;
@@ -208,9 +205,9 @@ public final class JDOMUtil {
     return a1.getName().equals(a2.getName()) && a1.getValue().equals(a2.getValue());
   }
 
-  private static @NotNull Document loadDocumentUsingStaX(@NotNull Reader reader) throws JDOMException, IOException {
+  private static @NotNull Document loadDocumentUsingStaX(@NotNull InputStream stream) throws JDOMException, IOException {
     try {
-      XMLStreamReader2 xmlStreamReader = StaxFactory.createXmlStreamReader(reader);
+      XMLStreamReader2 xmlStreamReader = StaxFactory.createXmlStreamReader(stream);
       try {
         return SafeStAXStreamBuilder.buildDocument(xmlStreamReader);
       }
@@ -222,7 +219,7 @@ public final class JDOMUtil {
       throw new JDOMException(e.getMessage(), e);
     }
     finally {
-      reader.close();
+      stream.close();
     }
   }
 
@@ -246,18 +243,11 @@ public final class JDOMUtil {
   }
 
   /**
-   * @deprecated Use {@link #load(CharSequence)}
-   * <p>
-   * Direct usage of element allows getting rid of {@link Document#getRootElement()} because only Element is required in mostly all cases.
+   * @deprecated Use {@link #load(Path)}
    */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval
-  public static @NotNull Document loadDocument(@NotNull Reader reader) throws IOException, JDOMException {
-    return loadDocumentUsingStaX(reader);
-  }
-
   public static @NotNull Document loadDocument(@NotNull File file) throws JDOMException, IOException {
-    return loadDocumentUsingStaX(new InputStreamReader(CharsetToolkit.inputStreamSkippingBOM(new BufferedInputStream(new FileInputStream(file))), StandardCharsets.UTF_8));
+    return loadDocumentUsingStaX(new FileInputStream(file));
   }
 
   public static @NotNull Element load(@NotNull File file) throws JDOMException, IOException {
@@ -273,9 +263,6 @@ public final class JDOMUtil {
     }
   }
 
-  /**
-   * Internal use only.
-   */
   @ApiStatus.Internal
   public static @NotNull Element load(@NotNull File file, @Nullable SafeJdomFactory factory) throws JDOMException, IOException {
     return loadUsingStaX(new FileInputStream(file), factory);
@@ -298,7 +285,7 @@ public final class JDOMUtil {
    */
   @Deprecated
   public static @NotNull Document loadDocument(@NotNull InputStream stream) throws JDOMException, IOException {
-    return loadDocumentUsingStaX(new InputStreamReader(stream, StandardCharsets.UTF_8));
+    return loadDocumentUsingStaX(stream);
   }
 
   @Contract("null -> null; !null -> !null")
@@ -355,13 +342,13 @@ public final class JDOMUtil {
   }
 
   /**
-   * @deprecated Use {@link #load(CharSequence)}
+   * @deprecated Use {@link #load(InputStream)}
    * <p>
    * Direct usage of element allows getting rid of {@link Document#getRootElement()} because only Element is required in mostly all cases.
    */
   @Deprecated
   public static @NotNull Document loadDocument(@NotNull URL url) throws JDOMException, IOException {
-    return loadDocument(URLUtil.openStream(url));
+    return loadDocumentUsingStaX(URLUtil.openStream(url));
   }
 
   public static @NotNull Element load(@NotNull URL url) throws JDOMException, IOException {
@@ -382,22 +369,14 @@ public final class JDOMUtil {
     write(document, file, lineSeparator);
   }
 
-  /**
-   * @deprecated Use {@link #write(Element, Path)}
-   */
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval
-  public static void write(@NotNull Element element, @NotNull File file) throws IOException {
-    FileUtilRt.createParentDirs(file);
-    try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
-      writeElement(element, writer, createOutputter("\n"));
-    }
-  }
-
   public static void write(@NotNull Element element, @NotNull Path file) throws IOException {
     Files.createDirectories(file.getParent());
     try (BufferedWriter writer = Files.newBufferedWriter(file)) {
-      writeElement(element, writer, createOutputter("\n"));
+      createOutputter("\n").output(element, writer);
+    }
+    catch (NullPointerException ex) {
+      getLogger().error(ex);
+      printDiagnostics(element, "");
     }
   }
 
@@ -417,6 +396,10 @@ public final class JDOMUtil {
     write(document, stream, lineSeparator);
   }
 
+  public static void write(@NotNull Parent element, @NotNull OutputStream stream) throws IOException {
+    write(element, stream, "\n");
+  }
+
   public static void write(@NotNull Parent element, @NotNull OutputStream stream, @NotNull String lineSeparator) throws IOException {
     try (OutputStreamWriter writer = new OutputStreamWriter(stream, StandardCharsets.UTF_8)) {
       if (element instanceof Document) {
@@ -430,7 +413,7 @@ public final class JDOMUtil {
 
   public static @NotNull String writeDocument(@NotNull Document document, String lineSeparator) {
     try {
-      final StringWriter writer = new StringWriter();
+      StringWriter writer = new StringWriter();
       writeDocument(document, writer, lineSeparator);
       return writer.toString();
     }
@@ -446,12 +429,12 @@ public final class JDOMUtil {
 
   public static @NotNull String write(@NotNull Parent element, String lineSeparator) {
     try {
-      final StringWriter writer = new StringWriter();
+      StringWriter writer = new StringWriter();
       write(element, writer, lineSeparator);
       return writer.toString();
     }
     catch (IOException e) {
-      throw new RuntimeException(e);
+      throw new UncheckedIOException(e);
     }
   }
 
@@ -465,12 +448,8 @@ public final class JDOMUtil {
   }
 
   public static void writeElement(@NotNull Element element, Writer writer, String lineSeparator) throws IOException {
-    writeElement(element, writer, createOutputter(lineSeparator));
-  }
-
-  public static void writeElement(@NotNull Element element, @NotNull Writer writer, @NotNull XMLOutputter xmlOutputter) throws IOException {
     try {
-      xmlOutputter.output(element, writer);
+      createOutputter(lineSeparator).output(element, writer);
     }
     catch (NullPointerException ex) {
       getLogger().error(ex);
@@ -483,18 +462,22 @@ public final class JDOMUtil {
   }
 
   public static @NotNull String writeElement(@NotNull Element element, String lineSeparator) {
+    StringWriter writer = new StringWriter();
     try {
-      final StringWriter writer = new StringWriter();
-      writeElement(element, writer, lineSeparator);
-      return writer.toString();
+      createOutputter(lineSeparator).output(element, writer);
     }
     catch (IOException e) {
-      throw new RuntimeException(e);
+      throw new UncheckedIOException(e);
     }
+    catch (NullPointerException ex) {
+      getLogger().error(ex);
+      printDiagnostics(element, "");
+    }
+    return writer.toString();
   }
 
-  public static @NotNull String writeChildren(final @NotNull Element element, final @NotNull String lineSeparator) throws IOException {
-    final StringWriter writer = new StringWriter();
+  public static @NotNull String writeChildren(@NotNull Element element, @NotNull String lineSeparator) throws IOException {
+    StringWriter writer = new StringWriter();
     for (Element child : element.getChildren()) {
       writeElement(child, writer, lineSeparator);
       writer.append(lineSeparator);
@@ -502,7 +485,7 @@ public final class JDOMUtil {
     return writer.toString();
   }
 
-  public static void writeDocument(@NotNull Document document, @NotNull Writer writer, String lineSeparator) throws IOException {
+  private static void writeDocument(@NotNull Document document, @NotNull Writer writer, String lineSeparator) throws IOException {
     XMLOutputter xmlOutputter = createOutputter(lineSeparator);
     try {
       xmlOutputter.output(document, writer);
@@ -517,12 +500,10 @@ public final class JDOMUtil {
     return Format.getCompactFormat()
       .setIndent("  ")
       .setTextMode(Format.TextMode.TRIM)
-      .setEncoding(CharsetToolkit.UTF8)
-      .setOmitEncoding(false)
-      .setOmitDeclaration(false)
       .setLineSeparator(lineSeparator);
   }
 
+  @ApiStatus.Internal
   public static @NotNull XMLOutputter createOutputter(String lineSeparator) {
     return new MyXMLOutputter(createFormat(lineSeparator));
   }
@@ -579,7 +560,7 @@ public final class JDOMUtil {
   }
 
   private static final class MyXMLOutputter extends XMLOutputter {
-    MyXMLOutputter(@NotNull Format format) {
+    private MyXMLOutputter(@NotNull Format format) {
       super(format);
     }
 
@@ -681,8 +662,8 @@ public final class JDOMUtil {
   }
 
   private static final class ElementInfo {
-    final @NotNull CharSequence name;
-    final boolean hasNullAttributes;
+    private final @NotNull CharSequence name;
+    private final boolean hasNullAttributes;
 
     private ElementInfo(@NotNull CharSequence name, boolean attributes) {
       this.name = name;
@@ -705,7 +686,7 @@ public final class JDOMUtil {
   }
 
   public static boolean isEmpty(@Nullable Element element) {
-    return element == null || (!element.hasAttributes() && element.getContent().isEmpty());
+    return element == null || element.isEmpty();
   }
 
   public static boolean isEmpty(@Nullable Element element, int attributeCount) {
@@ -740,6 +721,26 @@ public final class JDOMUtil {
   }
 
   public static @NotNull Element deepMerge(@NotNull Element to, @NotNull Element from) {
+    return deepMergeWithAttributes(to, from, Collections.emptyList());
+  }
+
+  public static class MergeAttribute {
+    public String elementName;
+    public String attributeName;
+
+    public MergeAttribute(String elementName, String attributeName) {
+      this.elementName = elementName;
+      this.attributeName = attributeName;
+    }
+  }
+
+  /**
+   * Deep merge that can join tags based on specified attributes.
+   * The regular deepMerge joins two tags only if they have exactly the same attributes.
+   * With this method you can provide a list of tag+attribute names. If two tags have similar attributes from this lists,
+   *   this method will merge them
+   */
+  public static @NotNull Element deepMergeWithAttributes(@NotNull Element to, @NotNull Element from, @NotNull List<MergeAttribute> mergeByAttributes) {
     for (Iterator<Element> iterator = from.getChildren().iterator(); iterator.hasNext(); ) {
       Element child = iterator.next();
       iterator.remove();
@@ -754,11 +755,11 @@ public final class JDOMUtil {
       // if no children (e.g. `<module fileurl="value" />`), it means that element should be added as list item
       if (existingChild == null ||
           existingChild.getChildren().isEmpty() ||
-          !isAttributesEqual(getAttributes(existingChild), getAttributes(child), false)) {
+          !areAttributesEqual(getAttributes(existingChild), getAttributes(child), existingChild, mergeByAttributes)) {
         to.addContent(child);
       }
       else {
-        deepMerge(existingChild, child);
+        deepMergeWithAttributes(existingChild, child, mergeByAttributes);
       }
     }
     for (Iterator<Attribute> iterator = getAttributes(from).iterator(); iterator.hasNext(); ) {
@@ -767,6 +768,24 @@ public final class JDOMUtil {
       to.setAttribute(attribute);
     }
     return to;
+  }
+
+  private static boolean areAttributesEqual(@NotNull List<? extends Attribute> l1,
+                                            @NotNull List<? extends Attribute> l2,
+                                            @NotNull Element base,
+                                            @NotNull List<MergeAttribute> mergeByAttributes) {
+    Set<String> attributes = mergeByAttributes.stream()
+      .filter(o -> o.elementName.equals(base.getName()))
+      .map(o -> o.attributeName)
+      .collect(Collectors.toSet());
+    if (attributes.isEmpty()) {
+      return isAttributesEqual(l1, l2, false);
+    }
+
+    Map<String, String> secondMap = l2.stream().collect(Collectors.toMap(Attribute::getName, Attribute::getValue));
+    return l1.stream()
+      .filter(o -> attributes.contains(o.getName()))
+      .allMatch(o -> o.getValue().equals(secondMap.get(o.getName())));
   }
 
   public static @Nullable Element reduceChildren(@NotNull String name, @NotNull Element parent) {
@@ -981,11 +1000,6 @@ public final class JDOMUtil {
   }
 
   private static boolean hasContent(@NotNull Element element, @NotNull Content content) {
-    if (content instanceof Element) {
-      return !element.getChildren(((Element)content).getName()).isEmpty();
-    }
-    else {
-      return false;
-    }
+    return content instanceof Element && !element.getChildren(((Element)content).getName()).isEmpty();
   }
 }

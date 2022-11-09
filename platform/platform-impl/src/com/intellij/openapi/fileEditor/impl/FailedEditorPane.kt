@@ -86,7 +86,7 @@ class FailedEditorBuilder internal constructor(@DialogMessage val message: Strin
    * Adds Link at the bottom of the text that
    * opens tab in target editor
    */
-  fun linkThatNavigatesToEditor(@NlsContexts.LinkLabel text: String, editorProviderId: String, project: Project, editor: FileEditor) =
+  private fun linkThatNavigatesToEditor(@NlsContexts.LinkLabel text: String, editorProviderId: String, project: Project, editor: FileEditor) =
     link(text) {
       editor.tryOpenTab(project, editorProviderId)
     }
@@ -108,7 +108,7 @@ class FailedEditorBuilder internal constructor(@DialogMessage val message: Strin
     val impl = FileEditorManager.getInstance(project) as? FileEditorManagerImpl ?: return false
 
     for (window in impl.windows) {
-      for (composite in window.allComposites) {
+      for (composite in window.composites.toList()) {
         for (tab in composite.allEditors) {
           if (tab == this) {
             //move focus to current window
@@ -192,7 +192,7 @@ class FailedEditorBuilder internal constructor(@DialogMessage val message: Strin
 
   private fun getGapAfterMessage() =
     if (myButtons.count() > 1)
-      UIUtil.DEFAULT_VGAP + 1;
+      UIUtil.DEFAULT_VGAP + 1
     else
       UIUtil.DEFAULT_VGAP
 }

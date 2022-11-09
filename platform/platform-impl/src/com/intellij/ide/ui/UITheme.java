@@ -23,15 +23,11 @@ import javax.swing.*;
 import javax.swing.plaf.BorderUIResource;
 import javax.swing.plaf.ColorUIResource;
 import java.awt.*;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
-import java.net.MalformedURLException;
-import java.net.URL;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.function.Function;
@@ -49,9 +45,10 @@ public final class UITheme {
   private String author;
   private String id;
   private String editorScheme;
+  private String[] additionalEditorSchemes;
   private Map<String, Object> ui;
   private @Nullable Map<String, Object> icons;
-  private IconPathPatcher patcher;
+  private @Nullable IconPathPatcher patcher;
   private Map<String, Object> background;
   private Map<String, Object> emptyFrameBackground;
   private @Nullable Map<String, Object> colors;
@@ -78,40 +75,6 @@ public final class UITheme {
 
   public String getAuthor() {
     return author;
-  }
-
-  public URL getResource(String path) {
-    if (isTempTheme()) {
-      File file = new File(path);
-      if (file.exists()) {
-        try {
-          return file.toURI().toURL();
-        }
-        catch (MalformedURLException e) {
-          LOG.warn(e);
-        }
-      }
-    }
-    return providerClassLoader.getResource(path);
-  }
-
-  public @Nullable InputStream getResourceAsStream(String path) {
-    if (isTempTheme()) {
-      Path file = Path.of(path);
-      if (Files.exists(file)) {
-        try {
-          return Files.newInputStream(file);
-        }
-        catch (IOException e) {
-          LOG.error(e);
-        }
-      }
-    }
-    return providerClassLoader.getResourceAsStream(path);
-  }
-
-  private boolean isTempTheme() {
-    return "Temp theme".equals(id);
   }
 
   // it caches classes - must be not extracted to util class
@@ -144,10 +107,11 @@ public final class UITheme {
                                                @NotNull Function<? super String, String> iconsMapper)
     throws IllegalStateException {
     if (provider != null) {
-      theme.setProviderClassLoader(provider);
+      theme.providerClassLoader = provider;
     }
 
     initializeNamedColors(theme);
+    PaletteScopeManager paletteScopeManager = new PaletteScopeManager();
 
     if (theme.iconColorsOnSelection != null && !theme.iconColorsOnSelection.isEmpty()) {
       Map<String, String> colors = new HashMap<>(theme.iconColorsOnSelection.size());
@@ -160,7 +124,19 @@ public final class UITheme {
       theme.selectionColorPatcher = new SVGLoader.SvgElementColorPatcherProvider() {
         @Override
         public SVGLoader.@Nullable SvgElementColorPatcher forPath(@Nullable String path) {
-          return SVGLoader.newPatcher(null, colors, alpha);
+          MessageDigest hasher = DigestUtil.sha512();
+          PaletteScope scope = paletteScopeManager.getScopeByPath(path);
+          if (scope != null) hasher.update(scope.digest());
+          for (Map.Entry<String, String> entry : colors.entrySet()) {
+            hasher.update(entry.getKey().getBytes(StandardCharsets.UTF_8));
+            hasher.update(entry.getValue().getBytes(StandardCharsets.UTF_8));
+          }
+          for (Map.Entry<String, Integer> entry : alpha.entrySet()) {
+            hasher.update(entry.getKey().getBytes(StandardCharsets.UTF_8));
+            hasher.update(ByteBuffer.allocate(4).putInt(entry.getValue()).array());
+          }
+
+          return SVGLoader.newPatcher(hasher.digest(), colors, alpha);
         }
       };
     }
@@ -198,7 +174,6 @@ public final class UITheme {
       if (palette instanceof Map) {
         @SuppressWarnings("rawtypes")
         Map colors = (Map)palette;
-        PaletteScopeManager paletteScopeManager = new PaletteScopeManager();
         for (Object o : colors.keySet()) {
           String colorKey = o.toString();
           PaletteScope scope = paletteScopeManager.getScope(colorKey);
@@ -355,6 +330,11 @@ public final class UITheme {
     return editorScheme;
   }
 
+  @Nullable
+  public String[] getAdditionalEditorSchemes() {
+    return additionalEditorSchemes;
+  }
+
   public Map<String, Object> getBackground() {
     return background;
   }
@@ -389,8 +369,14 @@ public final class UITheme {
     }
   }
 
-  public IconPathPatcher getPatcher() {
+  @ApiStatus.Internal
+  public @Nullable IconPathPatcher getPatcher() {
     return patcher;
+  }
+
+  @ApiStatus.Internal
+  public void setPatcher(@Nullable IconPathPatcher patcher) {
+    this.patcher = patcher;
   }
 
   public SVGLoader.SvgElementColorPatcherProvider getColorPatcher() {
@@ -505,12 +491,15 @@ public final class UITheme {
   public static Object parseValue(String key, @NotNull String value, @NotNull ClassLoader classLoader) {
     try {
       switch (value) {
-        case "null":
+        case "null" -> {
           return null;
-        case "true":
+        }
+        case "true" -> {
           return Boolean.TRUE;
-        case "false":
+        }
+        case "false" -> {
           return Boolean.FALSE;
+        }
       }
 
       if (value.endsWith(".png") || value.endsWith(".svg")) {
@@ -767,6 +756,11 @@ public final class UITheme {
   @SuppressWarnings("unused")
   public void setEditorScheme(String editorScheme) {
     this.editorScheme = editorScheme;
+  }
+
+  @SuppressWarnings("unused")
+  public void setAdditionalEditorSchemes(String[] additionalEditorSchemes) {
+    this.additionalEditorSchemes = additionalEditorSchemes;
   }
 
   public void setBackground(Map<String, Object> background) {

@@ -1,8 +1,8 @@
 package com.intellij.cce.evaluation.step
 
+import com.intellij.cce.evaluation.UndoableEvaluationStep
 import com.intellij.cce.evaluation.features.CCEContextFeatureProvider
 import com.intellij.cce.evaluation.features.CCEElementFeatureProvider
-import com.intellij.cce.evaluation.UndoableEvaluationStep
 import com.intellij.cce.workspace.EvaluationWorkspace
 import com.intellij.codeInsight.completion.ml.ContextFeatureProvider
 import com.intellij.codeInsight.completion.ml.ElementFeatureProvider
@@ -84,7 +84,13 @@ class SetupStatsCollectorStep(private val project: Project,
     val experimentStatus = object : ExperimentStatus {
       // it allows to collect logs from all sessions (need a more explicit solution in stats-collector)
       override fun forLanguage(language: Language): ExperimentInfo =
-        ExperimentInfo(true, version = experimentGroup ?: 0, shouldRank = false, shouldShowArrows = false, shouldCalculateFeatures = true)
+        ExperimentInfo(true,
+                       version = experimentGroup ?: 0,
+                       shouldRank = false,
+                       shouldShowArrows = false,
+                       shouldCalculateFeatures = true,
+                       shouldLogElementFeatures = true)
+
       // it allows to ignore experiment info during ranking
       override fun isDisabled(): Boolean = true
       override fun disable() = Unit
@@ -123,7 +129,6 @@ class SetupStatsCollectorStep(private val project: Project,
     }
   }
 
-  @Suppress("UnstableApiUsage")
   private fun registerFeatureProvidersIfNeeded() {
     contextFeatureProvider = CCEContextFeatureProvider(logLocationAndTextItem)
     ContextFeatureProvider.EP_NAME.addExplicitExtension(Language.ANY, contextFeatureProvider)
@@ -132,7 +137,6 @@ class SetupStatsCollectorStep(private val project: Project,
     ElementFeatureProvider.EP_NAME.addExplicitExtension(Language.ANY, elementFeatureProvider)
   }
 
-  @Suppress("UnstableApiUsage")
   private fun unregisterFeatureProviders() {
     ContextFeatureProvider.EP_NAME.removeExplicitExtension(Language.ANY, contextFeatureProvider)
     if (!logLocationAndTextItem) return

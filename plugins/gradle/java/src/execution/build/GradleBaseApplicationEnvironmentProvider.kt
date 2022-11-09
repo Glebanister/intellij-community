@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.execution.build
 
 import com.intellij.codeInsight.daemon.impl.analysis.JavaModuleGraphUtil
@@ -38,6 +38,7 @@ import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.plugins.gradle.codeInspection.GradleInspectionBundle
 import org.jetbrains.plugins.gradle.execution.GradleRunnerUtil
 import org.jetbrains.plugins.gradle.execution.target.GradleServerEnvironmentSetup
+import org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration
 import org.jetbrains.plugins.gradle.service.project.GradleProjectResolverUtil
 import org.jetbrains.plugins.gradle.service.task.GradleTaskManager
 import org.jetbrains.plugins.gradle.util.GradleConstants
@@ -63,7 +64,7 @@ abstract class GradleBaseApplicationEnvironmentProvider<T : JavaRunConfiguration
     val mainClass = runProfile.configurationModule.findClass(runClass) ?: return null
 
     val virtualFile = mainClass.containingFile.virtualFile
-    val module = ProjectFileIndex.SERVICE.getInstance(project).getModuleForFile(virtualFile) ?: return null
+    val module = ProjectFileIndex.getInstance(project).getModuleForFile(virtualFile) ?: return null
 
     val params = JavaParameters().apply {
       JavaParametersUtil.configureConfiguration(this, runProfile)
@@ -120,6 +121,7 @@ abstract class GradleBaseApplicationEnvironmentProvider<T : JavaRunConfiguration
                                         runAppTaskName, mainClass, javaExePath, sourceSetName, javaModuleName)
     gradleRunConfiguration.putUserData<String>(GradleTaskManager.INIT_SCRIPT_KEY, initScript)
     gradleRunConfiguration.putUserData<String>(GradleTaskManager.INIT_SCRIPT_PREFIX_KEY, runAppTaskName)
+    (gradleRunConfiguration as GradleRunConfiguration).isScriptDebugEnabled = false
 
     // reuse all before tasks except 'Make' as it doesn't make sense for delegated run
     gradleRunConfiguration.beforeRunTasks = RunManagerImpl.getInstanceImpl(project).getBeforeRunTasks(runProfile)

@@ -14,9 +14,6 @@ import org.jetbrains.annotations.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * @author peter
- */
 class JavaIntentionPolicy extends IntentionPolicy {
   @Override
   protected boolean shouldSkipIntention(@NotNull String actionText) {
@@ -88,7 +85,7 @@ class JavaCommentingStrategy extends JavaIntentionPolicy {
     String familyName = intention.getFamilyName();
     boolean isCommentChangingAction = intentionText.startsWith("Replace with end-of-line comment") ||
                                       intentionText.startsWith("Replace with block comment") ||
-                                      intentionText.startsWith("Replace with javadoc") ||
+                                      intentionText.equals("Replace with Javadoc comment") ||
                                       intentionText.startsWith("Remove //noinspection") ||
                                       intentionText.startsWith("Convert to Basic Latin") ||
                                       intentionText.startsWith("Unwrap 'if' statement") ||//remove ifs content
@@ -100,7 +97,7 @@ class JavaCommentingStrategy extends JavaIntentionPolicy {
                                       intentionText.startsWith("Remove redundant arguments to call") ||//removes arg with all comments inside
                                       intentionText.startsWith("Convert to 'enum'") ||//removes constructor with javadoc?
                                       intentionText.startsWith("Remove redundant constructor") ||
-                                      intentionText.startsWith("Remove block marker comments") ||
+                                      intentionText.startsWith("Remove block marker comment") ||
                                       intentionText.startsWith("Remove redundant method") ||
                                       intentionText.startsWith("Delete unnecessary import") ||
                                       intentionText.startsWith("Delete empty class initializer") ||
@@ -180,7 +177,8 @@ class JavaParenthesesPolicy extends JavaIntentionPolicy {
       familyName.equals("Simplify boolean expression") ||
       // A parenthesized enum switch case label is a compilation error
       familyName.equals("Create missing enum switch branches") ||
-      familyName.equals("Reformat the whole file");
+      familyName.equals("Reformat the whole file") ||
+      familyName.equals("Fix whitespace");
   }
 
   @NotNull

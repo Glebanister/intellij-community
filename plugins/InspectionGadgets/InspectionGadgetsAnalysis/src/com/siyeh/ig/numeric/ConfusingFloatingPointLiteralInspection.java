@@ -15,6 +15,7 @@
  */
 package com.siyeh.ig.numeric;
 
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.codeInspection.ui.SingleCheckboxOptionsPanel;
 import com.intellij.openapi.project.Project;
@@ -35,7 +36,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-public class ConfusingFloatingPointLiteralInspection extends BaseInspection {
+public class ConfusingFloatingPointLiteralInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   @SuppressWarnings("PublicField")
   public boolean ignoreScientificNotation = false;
@@ -72,7 +73,7 @@ public class ConfusingFloatingPointLiteralInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiExpression literalExpression = (PsiExpression)descriptor.getPsiElement();
       final String text = literalExpression.getText();
       final String newText = getCanonicalForm(text);

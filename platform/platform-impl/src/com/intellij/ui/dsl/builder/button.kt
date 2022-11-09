@@ -1,26 +1,20 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.ui.dsl.builder
 
-import com.intellij.openapi.observable.properties.GraphProperty
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.observable.properties.ObservableMutableProperty
 import com.intellij.openapi.observable.util.bind
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.dsl.builder.impl.CellImpl.Companion.installValidationRequestor
-import com.intellij.ui.layout.*
+import com.intellij.ui.layout.selected
 import com.intellij.util.ui.ThreeStateCheckBox
 import org.jetbrains.annotations.ApiStatus
 import java.awt.event.ActionEvent
 import java.awt.event.ActionListener
 import javax.swing.AbstractButton
+import javax.swing.JCheckBox
 import kotlin.reflect.KMutableProperty0
-
-@Deprecated("Please, recompile code", level = DeprecationLevel.HIDDEN)
-@ApiStatus.ScheduledForRemoval
-fun <T : JBCheckBox> Cell<T>.bindSelected(property: GraphProperty<Boolean>) = bindSelected(property)
-
-@Deprecated("Please, recompile code", level = DeprecationLevel.HIDDEN)
-@ApiStatus.ScheduledForRemoval
-fun <T : ThreeStateCheckBox> Cell<T>.bindState(property: GraphProperty<ThreeStateCheckBox.State>) = bindState(property)
+import com.intellij.openapi.observable.util.whenStateChangedFromUi as whenStateChangedFromUiImpl
 
 fun <T : JBCheckBox> Cell<T>.bindSelected(property: ObservableMutableProperty<Boolean>): Cell<T> {
   installValidationRequestor(property)
@@ -30,6 +24,10 @@ fun <T : JBCheckBox> Cell<T>.bindSelected(property: ObservableMutableProperty<Bo
 fun <T : ThreeStateCheckBox> Cell<T>.bindState(property: ObservableMutableProperty<ThreeStateCheckBox.State>): Cell<T> {
   installValidationRequestor(property)
   return applyToComponent { bind(property) }
+}
+
+fun <T : AbstractButton> Cell<T>.bindSelected(prop: MutableProperty<Boolean>): Cell<T> {
+  return bind(AbstractButton::isSelected, AbstractButton::setSelected, prop)
 }
 
 fun <T : AbstractButton> Cell<T>.bindSelected(prop: KMutableProperty0<Boolean>): Cell<T> {
@@ -48,6 +46,7 @@ fun <T : AbstractButton> Cell<T>.actionListener(actionListener: (event: ActionEv
 val Cell<AbstractButton>.selected
   get() = component.selected
 
-private fun <T : AbstractButton> Cell<T>.bindSelected(prop: MutableProperty<Boolean>): Cell<T> {
-  return bind(AbstractButton::isSelected, AbstractButton::setSelected, prop)
+@ApiStatus.Experimental
+fun <T : JCheckBox> Cell<T>.whenStateChangedFromUi(parentDisposable: Disposable? = null, listener: (Boolean) -> Unit): Cell<T> {
+  return applyToComponent { whenStateChangedFromUiImpl(parentDisposable, listener) }
 }

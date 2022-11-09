@@ -11,7 +11,6 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
-import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Ref
@@ -23,6 +22,7 @@ import training.learn.ActionsRecorder
 import training.learn.course.KLesson
 import training.learn.exceptons.NoTextEditor
 import training.learn.lesson.LessonManager
+import training.statistic.LearningInternalProblems
 import training.statistic.StatisticBase
 import training.ui.LearningUiUtil
 import training.util.WeakReferenceDelegator
@@ -41,6 +41,7 @@ internal class LessonExecutor(val lesson: KLesson,
                               var taskProperties: TaskProperties?,
                               val taskContent: (TaskContext.() -> Unit)?,
                               val taskVisualIndex: Int?,
+                              var nextTaskHasBeenScheduled: Boolean = false,
                               var messagesNumberBeforeStart: Int = 0,
                               var rehighlightComponent: (() -> Component?)? = null,
                               var userVisibleInfo: PreviousTaskInfo? = null,
@@ -94,6 +95,8 @@ internal class LessonExecutor(val lesson: KLesson,
   internal val visualIndexNumber: Int get() = taskActions[currentTaskIndex].taskVisualIndex ?: 0
 
   private var continueHighlighting: Ref<Boolean> = Ref(true)
+
+  internal val internalProblems: MutableSet<LearningInternalProblems> = mutableSetOf()
 
   // Is used from ui detection pooled thread
   @Volatile
@@ -149,7 +152,7 @@ internal class LessonExecutor(val lesson: KLesson,
     ApplicationManager.getApplication().assertIsDispatchThread()
     val lessonPassed = currentTaskIndex == taskActions.size
     val visualIndex = if(lessonPassed) currentVisualIndex else (taskActions[currentTaskIndex].taskVisualIndex ?: 0)
-    lesson.onStop(project, lessonPassed, currentTaskIndex, visualIndex)
+    lesson.onStop(project, lessonPassed, currentTaskIndex, visualIndex, internalProblems)
     continueHighlighting.set(false)
     clearRestore()
     disposeRecorders()
@@ -174,15 +177,7 @@ internal class LessonExecutor(val lesson: KLesson,
 
   fun startLesson() {
     addAllInactiveMessages()
-    if (lesson.properties.canStartInDumbMode) {
-      processNextTask(0)
-    }
-    else {
-      DumbService.getInstance(project).runWhenSmart {
-        if (!hasBeenStopped)
-          processNextTask(0)
-      }
-    }
+    processNextTask(0)
   }
 
   inline fun invokeInBackground(crossinline runnable: () -> Unit) {
@@ -227,6 +222,7 @@ internal class LessonExecutor(val lesson: KLesson,
       return
     }
     val taskInfo = taskActions[currentTaskIndex]
+    taskInfo.nextTaskHasBeenScheduled = false
     taskInfo.messagesNumberBeforeStart = LessonManager.instance.messagesNumber()
     setUserVisibleInfo()
     taskInfo.content()
@@ -409,9 +405,11 @@ internal class LessonExecutor(val lesson: KLesson,
 
   private fun stepHasBeenCompleted(taskContext: TaskContextImpl, taskInfo: TaskInfo) {
     ApplicationManager.getApplication().assertIsDispatchThread()
-    // do not process the next step if step is not fully completed
+    // do not process the next task if the current task is not fully completed
     // or lesson has been stopped during task completion (dialogs in Recent Files and Restore removed code lessons)
-    if (!isTaskCompleted(taskContext) || hasBeenStopped) return
+    // or the next task already has been processed
+    val allStepsAreCompleted = taskContext.steps.all { it.isDone && it.get() }
+    if (!allStepsAreCompleted || hasBeenStopped || taskInfo.nextTaskHasBeenScheduled) return
 
     clearRestore()
     LessonManager.instance.passExercise()
@@ -424,9 +422,8 @@ internal class LessonExecutor(val lesson: KLesson,
     }
     taskInfo.taskProperties?.let { it.messagesNumber -= taskInfo.removeAfterDoneMessages.size }
     processNextTask(currentTaskIndex + 1)
+    taskInfo.nextTaskHasBeenScheduled = true
   }
-
-  private fun isTaskCompleted(taskContext: TaskContextImpl) = taskContext.steps.all { it.isDone && it.get() }
 
   private fun canBeRestored(taskContext: TaskContextImpl): Boolean {
     return !hasBeenStopped && taskContext.steps.any { !it.isCancelled && !it.isCompletedExceptionally && (!it.isDone || !it.get()) }

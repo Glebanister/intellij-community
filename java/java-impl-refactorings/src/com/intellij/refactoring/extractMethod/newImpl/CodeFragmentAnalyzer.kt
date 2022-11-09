@@ -147,8 +147,7 @@ class CodeFragmentAnalyzer(val elements: List<PsiElement>) {
   }
 
   private fun isNonLocalJump(instructionOffset: Int): Boolean {
-    val instruction = flow.instructions[instructionOffset]
-    return when (instruction) {
+    return when (val instruction = flow.instructions[instructionOffset]) {
       is ThrowToInstruction, is ConditionalThrowToInstruction, is ReturnInstruction -> false
       is GoToInstruction -> instruction.offset !in (flowRange.first until flowRange.last)
       is BranchingInstruction -> instruction.offset !in (flowRange.first until flowRange.last)
@@ -264,18 +263,6 @@ class CodeFragmentAnalyzer(val elements: List<PsiElement>) {
       val artificialReturn = codeBlock.add(probeStatement) as PsiReturnStatement
       val artificialExpression = requireNotNull(artificialReturn.returnValue)
       return inferNullability(listOf(artificialExpression))
-    }
-
-    fun findReturnExpressionsIn(scope: PsiElement): List<PsiExpression> {
-      val expressions = mutableListOf<PsiExpression>()
-      val visitor: JavaRecursiveElementWalkingVisitor = object : JavaRecursiveElementWalkingVisitor() {
-        override fun visitReturnStatement(statement: PsiReturnStatement) {
-          val returnExpression = statement.returnValue
-          if (returnExpression != null) expressions += returnExpression
-        }
-      }
-      scope.accept(visitor)
-      return expressions
     }
   }
 }

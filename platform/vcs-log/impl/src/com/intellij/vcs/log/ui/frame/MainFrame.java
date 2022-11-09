@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.vcs.log.ui.frame;
 
 import com.google.common.primitives.Ints;
@@ -34,6 +34,7 @@ import com.intellij.vcs.log.data.DataPackBase;
 import com.intellij.vcs.log.data.VcsLogData;
 import com.intellij.vcs.log.impl.CommonUiProperties;
 import com.intellij.vcs.log.impl.MainVcsLogUiProperties;
+import com.intellij.vcs.log.impl.VcsLogNavigationUtil;
 import com.intellij.vcs.log.impl.VcsLogUiProperties;
 import com.intellij.vcs.log.ui.AbstractVcsLogUi;
 import com.intellij.vcs.log.ui.VcsLogActionIds;
@@ -111,7 +112,7 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
 
     myDetailsPanel = new CommitDetailsListPanel(logData.getProject(), this, () -> {
       return new CommitDetailsPanel(commit -> {
-        logUi.getVcsLog().jumpToCommit(commit.getHash(), commit.getRoot());
+        VcsLogNavigationUtil.jumpToCommit(logUi, commit.getHash(), commit.getRoot(), false, true);
         return Unit.INSTANCE;
       });
     });
@@ -139,7 +140,7 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
     myGraphTable.getSelectionModel().addListSelectionListener(listenerForDiff);
     Disposer.register(this, () -> myGraphTable.getSelectionModel().removeListSelectionListener(listenerForDiff));
 
-    myNotificationLabel = new EditorNotificationPanel(UIUtil.getPanelBackground());
+    myNotificationLabel = new EditorNotificationPanel(UIUtil.getPanelBackground(), EditorNotificationPanel.Status.Warning);
     myNotificationLabel.setVisible(false);
     myNotificationLabel.setBorder(new CompoundBorder(JBUI.Borders.customLine(JBColor.border(), 1, 0, 0, 0),
                                                      notNull(myNotificationLabel.getBorder(), JBUI.Borders.empty())));
@@ -149,7 +150,8 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
     toolbars.add(myNotificationLabel, BorderLayout.CENTER);
     JComponent toolbarsAndTable = new JPanel(new BorderLayout());
     toolbarsAndTable.add(toolbars, BorderLayout.NORTH);
-    toolbarsAndTable.add(VcsLogUiUtil.installProgress(VcsLogUiUtil.setupScrolledGraph(myGraphTable, SideBorder.TOP),
+    int border = ExperimentalUI.isNewUI() ? SideBorder.NONE : SideBorder.TOP;
+    toolbarsAndTable.add(VcsLogUiUtil.installProgress(VcsLogUiUtil.setupScrolledGraph(myGraphTable, border),
                                                       myLogData, logUi.getId(), this), BorderLayout.CENTER);
 
     myDetailsSplitter = new OnePixelSplitter(true, DETAILS_SPLITTER_PROPORTION, 0.7f);
@@ -181,7 +183,7 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
   }
 
   public void setExplanationHtml(@Nullable @NlsContexts.LinkLabel String text) {
-    myNotificationLabel.setText(text);
+    myNotificationLabel.setText(Objects.requireNonNullElse(text, ""));
     myNotificationLabel.setVisible(text != null);
   }
 
@@ -210,42 +212,29 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
 
   @NotNull
   private JComponent createActionsToolbar() {
-    DefaultActionGroup toolbarGroup = new DefaultActionGroup();
-    toolbarGroup.copyFromGroup((DefaultActionGroup)ActionManager.getInstance().getAction(VcsLogActionIds.TOOLBAR_ACTION_GROUP));
-    if (BekUtil.isBekEnabled()) {
-      Constraints constraint = new Constraints(Anchor.BEFORE, VcsLogActionIds.PRESENTATION_SETTINGS_ACTION_GROUP);
-      if (BekUtil.isLinearBekEnabled()) {
-        toolbarGroup.add(new IntelliSortChooserPopupAction(), constraint);
-        // can not register both of the actions in xml file, choosing to register an action for the "outer world"
-        // I can of course if linear bek is enabled replace the action on start but why bother
-      }
-      else {
-        toolbarGroup.add(ActionManager.getInstance().getAction(VcsLogActionIds.VCS_LOG_INTELLI_SORT_ACTION),
-                         constraint);
-      }
-    }
+    ActionManager actionManager = ActionManager.getInstance();
+
+    DefaultActionGroup toolbarGroup = (DefaultActionGroup)actionManager.getAction(VcsLogActionIds.TOOLBAR_ACTION_GROUP);
 
     DefaultActionGroup mainGroup = new DefaultActionGroup();
-    mainGroup.add(ActionManager.getInstance().getAction(VcsLogActionIds.TEXT_FILTER_SETTINGS_ACTION_GROUP));
-    mainGroup.add(new Separator());
     mainGroup.add(myFilterUi.createActionGroup());
     mainGroup.addSeparator();
     mainGroup.add(toolbarGroup);
-    ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.VCS_LOG_TOOLBAR_PLACE, mainGroup, true);
-    toolbar.setTargetComponent(this);
+    ActionToolbar toolbar = actionManager.createActionToolbar(ActionPlaces.VCS_LOG_TOOLBAR_PLACE, mainGroup, true);
+    toolbar.setTargetComponent(myGraphTable);
 
     Wrapper textFilter = new Wrapper(myFilterUi.getTextFilterComponent());
     textFilter.setVerticalSizeReferent(toolbar.getComponent());
     String vcsDisplayName = VcsLogUtil.getVcsDisplayName(myLogData.getProject(), myLogData.getLogProviders().values());
     textFilter.getAccessibleContext().setAccessibleName(VcsLogBundle.message("vcs.log.text.filter.accessible.name", vcsDisplayName));
 
-    DefaultActionGroup rightCornerGroup =
-      new DefaultActionGroup(ActionManager.getInstance().getAction(VcsLogActionIds.TOOLBAR_RIGHT_CORNER_ACTION_GROUP));
-    ActionToolbar rightCornerToolbar = ActionManager.getInstance().createActionToolbar(ActionPlaces.VCS_LOG_TOOLBAR_PLACE,
-                                                                                       rightCornerGroup, true);
-    rightCornerToolbar.setTargetComponent(this);
+    DefaultActionGroup presentationSettingsGroup = (DefaultActionGroup)actionManager.getAction(VcsLogActionIds.PRESENTATION_SETTINGS_ACTION_GROUP);
+    configureIntelliSortAction(presentationSettingsGroup);
+
+    DefaultActionGroup rightCornerGroup = (DefaultActionGroup)actionManager.getAction(VcsLogActionIds.TOOLBAR_RIGHT_CORNER_ACTION_GROUP);
+    ActionToolbar rightCornerToolbar = actionManager.createActionToolbar(ActionPlaces.VCS_LOG_TOOLBAR_PLACE, rightCornerGroup, true);
+    rightCornerToolbar.setTargetComponent(myGraphTable);
     rightCornerToolbar.setReservePlaceAutoPopupIcon(false);
-    rightCornerToolbar.setLayoutPolicy(ActionToolbar.NOWRAP_LAYOUT_POLICY);
 
     JPanel panel = new JPanel(new MigLayout("ins 0, fill", "[left]0[left, fill]push[pref:pref, right]", "center"));
     GuiUtils.installVisibilityReferent(panel, toolbar.getComponent());
@@ -255,11 +244,24 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
     return panel;
   }
 
+  private static void configureIntelliSortAction(@NotNull DefaultActionGroup group) {
+    AnAction intelliSortAction = ActionManager.getInstance().getAction(VcsLogActionIds.VCS_LOG_INTELLI_SORT_ACTION);
+    if (BekUtil.isBekEnabled()) {
+      if (BekUtil.isLinearBekEnabled()) {
+        group.replaceAction(intelliSortAction, new IntelliSortChooserPopupAction());
+      }
+    }
+    else {
+      // drop together with com.intellij.vcs.log.util.BekUtil.isBekEnabled
+      group.remove(intelliSortAction);
+    }
+  }
+
   @Nullable
   @Override
   public Object getData(@NotNull @NonNls String dataId) {
     if (VcsDataKeys.CHANGES.is(dataId) || VcsDataKeys.SELECTED_CHANGES.is(dataId)) {
-      return myChangesBrowser.getDirectChanges().toArray(new Change[0]);
+      return myChangesBrowser.getDirectChanges().toArray(Change.EMPTY_CHANGE_ARRAY);
     }
     else if (VcsLogInternalDataKeys.LOG_UI_PROPERTIES.is(dataId)) {
       return myUiProperties;
@@ -416,7 +418,7 @@ public class MainFrame extends JPanel implements DataProvider, Disposable {
     protected List<Component> getOrderedComponents() {
       return ContainerUtil.newArrayList(myGraphTable, myChangesBrowser.getPreferredFocusedComponent(),
                                         myDiffPreview.getPreviewDiff().getPreferredFocusedComponent(),
-                                        myFilterUi.getTextFilterComponent().getTextEditor());
+                                        myFilterUi.getTextFilterComponent());
     }
   }
 

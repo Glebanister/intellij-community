@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -425,6 +425,11 @@ public abstract class ShortenRefsTestGenerated extends AbstractShortenRefsTest {
         @TestMetadata("classInCompanionObject.kt")
         public void testClassInCompanionObject() throws Exception {
             runTest("testData/shortenRefs/classInCompanionObject.kt");
+        }
+
+        @TestMetadata("classLiteralOnCompanion.kt")
+        public void testClassLiteralOnCompanion() throws Exception {
+            runTest("testData/shortenRefs/classLiteralOnCompanion.kt");
         }
 
         @TestMetadata("ClassNameConflict.kt")

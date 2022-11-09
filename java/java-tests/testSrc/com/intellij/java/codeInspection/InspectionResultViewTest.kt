@@ -13,7 +13,6 @@ import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.createGlobalContextForTool
 import com.intellij.util.ui.UIUtil
-import com.intellij.util.ui.tree.TreeUtil
 import java.io.File
 
 class InspectionResultViewTest : LightJava9ModulesCodeInsightFixtureTestCase() {
@@ -29,10 +28,17 @@ class InspectionResultViewTest : LightJava9ModulesCodeInsightFixtureTestCase() {
   }
 
   public override fun tearDown() {
-    GlobalInspectionContextImpl.TESTING_VIEW = false
-    InspectionProfileImpl.INIT_INSPECTIONS = false
-    AnalysisUIOptions.getInstance(project).SHOW_STRUCTURE = myDefaultShowStructure
-    super.tearDown()
+    try {
+      GlobalInspectionContextImpl.TESTING_VIEW = false
+      InspectionProfileImpl.INIT_INSPECTIONS = false
+      AnalysisUIOptions.getInstance(project).SHOW_STRUCTURE = myDefaultShowStructure
+    }
+    catch (e: Throwable) {
+      addSuppressedException(e)
+    }
+    finally {
+      super.tearDown()
+    }
   }
 
   fun testModuleInfoProblemsTree() {
@@ -41,40 +47,40 @@ class InspectionResultViewTest : LightJava9ModulesCodeInsightFixtureTestCase() {
     val view = runInspections()
 
     updateTree(view)
-    TreeUtil.expandAll(view.tree)
+    PlatformTestUtil.expandAll(view.tree)
     updateTree(view)
     PlatformTestUtil.assertTreeEqual(view.tree, """
-      -Inspections Results
+      -Inspection Results
        -Java
         -Code maturity
          -Usage of API marked for removal
           -some.module
-           'M2' is deprecated and marked for removal(LIKE_DEPRECATED)
+           'M2' is deprecated and marked for removal
         -Declaration redundancy
          -Redundant 'requires' directive in module-info
           -some.module
-           Redundant directive 'requires M2'
+           Redundant directive 'requires M2'. No usages of module packages are found.
       """.trimIndent())
 
     view.globalInspectionContext.uiOptions.SHOW_STRUCTURE = true
     view.update()
 
     updateTree(view)
-    TreeUtil.expandAll(view.tree)
+    PlatformTestUtil.expandAll(view.tree)
     updateTree(view)
     PlatformTestUtil.assertTreeEqual(view.tree, """
-      -Inspections Results
+      -Inspection Results
        -Java
         -Code maturity
          -Usage of API marked for removal
           -${LightProjectDescriptor.TEST_MODULE_NAME}
            -some.module
-            'M2' is deprecated and marked for removal(LIKE_DEPRECATED)
+            'M2' is deprecated and marked for removal
         -Declaration redundancy
          -Redundant 'requires' directive in module-info
           -${LightProjectDescriptor.TEST_MODULE_NAME}
            -some.module
-            Redundant directive 'requires M2'
+            Redundant directive 'requires M2'. No usages of module packages are found.
       """.trimIndent())
   }
 
@@ -85,10 +91,10 @@ class InspectionResultViewTest : LightJava9ModulesCodeInsightFixtureTestCase() {
     view.globalInspectionContext.uiOptions.SHOW_STRUCTURE = true
     view.update()
     updateTree(view)
-    TreeUtil.expandAll(view.tree)
+    PlatformTestUtil.expandAll(view.tree)
     updateTree(view)
     PlatformTestUtil.assertTreeEqual(view.tree, """
-      -Inspections Results
+      -Inspection Results
        -Groovy
         -Data flow
          -Unused assignment

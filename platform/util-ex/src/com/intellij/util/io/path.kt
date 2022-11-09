@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.io
 
 import com.intellij.openapi.util.io.NioFiles
@@ -13,13 +13,10 @@ import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.FileTime
 import java.util.*
-import java.util.function.Predicate
-import kotlin.math.min
 
 fun Path.exists(): Boolean = Files.exists(this)
 
-fun Path.createDirectories(): Path =
-  NioFiles.createDirectories(this)
+fun Path.createDirectories(): Path = NioFiles.createDirectories(this)
 
 /**
  * Opposite to Java, parent directories will be created
@@ -60,11 +57,14 @@ fun Path.createSymbolicLink(target: Path): Path {
 }
 
 @JvmOverloads
-fun Path.delete(recursively: Boolean = true) =
-  when {
-    recursively -> NioFiles.deleteRecursively(this)
-    else -> Files.delete(this)
+fun Path.delete(recursively: Boolean = true) {
+  if (recursively) {
+    return NioFiles.deleteRecursively(this)
   }
+  else {
+    return Files.delete(this)
+  }
+}
 
 fun Path.deleteWithParentsIfEmpty(root: Path, isFile: Boolean = true): Boolean {
   var parent = if (isFile) this.parent else null
@@ -101,9 +101,6 @@ fun Path.lastModified(): FileTime = Files.getLastModifiedTime(this)
 
 val Path.systemIndependentPath: String
   get() = toString().replace(File.separatorChar, '/')
-
-val Path.parentSystemIndependentPath: String
-  get() = parent!!.toString().replace(File.separatorChar, '/')
 
 @Throws(IOException::class)
 fun Path.readBytes(): ByteArray = Files.readAllBytes(this)
@@ -184,6 +181,15 @@ fun Path.copy(target: Path): Path {
   return Files.copy(this, target, StandardCopyOption.REPLACE_EXISTING)
 }
 
+fun Path.copyRecursively(target: Path) {
+  target.parent?.createDirectories()
+  Files.walk(this).use { stream ->
+    stream.forEach { file ->
+      Files.copy(file, target.resolve(this.relativize(file)))
+    }
+  }
+}
+
 /**
  * Opposite to Java, parent directories will be created
  */
@@ -209,46 +215,6 @@ inline fun <R> Path.directoryStreamIfExists(noinline filter: ((path: Path) -> Bo
   catch (ignored: NoSuchFileException) {
   }
   return null
-}
-
-@Suppress("ReplaceJavaStaticMethodWithKotlinAnalog")
-private val illegalChars = HashSet(java.util.List.of('/', '\\', '?', '<', '>', ':', '*', '|', '"', ':'))
-
-// https://github.com/parshap/node-sanitize-filename/blob/master/index.js
-fun sanitizeFileName(name: String, replacement: String? = "_", truncateIfNeeded: Boolean = true, extraIllegalChars: Predicate<Char>? = null): String {
-  var result: StringBuilder? = null
-  var last = 0
-  val length = name.length
-  for (i in 0 until length) {
-    val c = name[i]
-    if (!illegalChars.contains(c) && !c.isISOControl() && (extraIllegalChars == null || !extraIllegalChars.test(c))) {
-      continue
-    }
-
-    if (result == null) {
-      result = StringBuilder()
-    }
-    if (last < i) {
-      result.append(name, last, i)
-    }
-
-    if (replacement != null) {
-      result.append(replacement)
-    }
-    last = i + 1
-  }
-
-  fun truncateFileName(s: String) = if (truncateIfNeeded) s.substring(0, min(length, 255)) else s
-
-  if (result == null) {
-    return truncateFileName(name)
-  }
-
-  if (last < length) {
-    result.append(name, last, length)
-  }
-
-  return truncateFileName(result.toString())
 }
 
 val Path.isWritable: Boolean

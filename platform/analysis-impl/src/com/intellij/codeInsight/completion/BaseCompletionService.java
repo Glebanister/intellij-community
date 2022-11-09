@@ -33,9 +33,6 @@ import java.util.function.Supplier;
 import static com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND;
 import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT;
 
-/**
- * @author peter
- */
 public class BaseCompletionService extends CompletionService {
   private static final Logger LOG = Logger.getInstance(BaseCompletionService.class);
 

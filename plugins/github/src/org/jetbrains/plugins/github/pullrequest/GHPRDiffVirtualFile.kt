@@ -31,12 +31,15 @@ internal class GHPRDiffVirtualFile(fileManagerId: String,
   override fun getName() = "#${pullRequest.number}.diff"
   override fun getPresentableName() = GithubBundle.message("pull.request.diff.editor.title", pullRequest.number)
 
-  override fun getPath(): String = (fileSystem as GHPRVirtualFileSystem).getPath(fileManagerId, project, repository, pullRequest, true)
+  override fun getPath(): String =
+    (fileSystem as GHPRVirtualFileSystem).getPath(fileManagerId, project, repository, pullRequest, null, true)
+
   override fun getPresentablePath() = "${repository.toUrl()}/pulls/${pullRequest.number}.diff"
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is GHPRDiffVirtualFile) return false
+    if (other.pullRequest != pullRequest) return false
     if (!super.equals(other)) return false
     return true
   }

@@ -1,22 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.perf.suite
 
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.runWriteAction
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ex.ProjectManagerEx
-import com.intellij.openapi.projectRoots.JavaSdk
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.projectRoots.impl.JavaAwareProjectJdkTableImpl
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.psi.impl.PsiDocumentManagerBase
@@ -28,21 +24,19 @@ import com.intellij.util.ArrayUtilRt
 import com.intellij.util.containers.toArray
 import com.intellij.util.indexing.UnindexedFilesUpdater
 import org.jetbrains.kotlin.idea.KotlinFileType
-import org.jetbrains.kotlin.idea.framework.KotlinSdkType
-import org.jetbrains.kotlin.idea.testFramework.ProjectBuilder
 import org.jetbrains.kotlin.idea.perf.util.ExternalProject
 import org.jetbrains.kotlin.idea.perf.util.ProfileTools.Companion.disableAllInspections
 import org.jetbrains.kotlin.idea.perf.util.ProfileTools.Companion.enableAllInspections
 import org.jetbrains.kotlin.idea.perf.util.ProfileTools.Companion.enableInspections
 import org.jetbrains.kotlin.idea.perf.util.ProfileTools.Companion.enableSingleInspection
 import org.jetbrains.kotlin.idea.perf.util.ProfileTools.Companion.initDefaultProfile
-import org.jetbrains.kotlin.idea.perf.util.TeamCity
-import org.jetbrains.kotlin.idea.perf.util.logMessage
-import org.jetbrains.kotlin.idea.test.GradleProcessOutputInterceptor
+import org.jetbrains.kotlin.idea.performance.tests.utils.*
+import org.jetbrains.kotlin.idea.performance.tests.utils.project.*
 import org.jetbrains.kotlin.idea.test.invalidateLibraryCache
-import org.jetbrains.kotlin.idea.testFramework.*
+import org.jetbrains.kotlin.idea.testFramework.Fixture
 import org.jetbrains.kotlin.idea.testFramework.Fixture.Companion.cleanupCaches
-import org.jetbrains.kotlin.idea.util.getProjectJdkTableSafe
+import org.jetbrains.kotlin.idea.testFramework.ProjectBuilder
+import org.jetbrains.kotlin.idea.testFramework.Stats
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtFile
 import java.io.File
@@ -142,51 +136,17 @@ class PerformanceSuite {
             }
 
             fixture("src/HelloMain.kt").use { fixture ->
-                fixture.highlight().firstOrNull { it.severity == HighlightSeverity.WARNING }
+                fixture.highlight()
+                    .also {
+                        fixture.checkNoErrors(it)
+                    }
+                    .firstOrNull { it.severity == HighlightSeverity.WARNING }
                     ?: error("`[UNUSED_PARAMETER] Parameter 'args' is never used` has to be highlighted")
             }
         }
 
         override fun close() {
             application.setDataProvider(null)
-        }
-
-        companion object {
-            fun initApp(rootDisposable: Disposable): TestApplicationManager {
-                val application = TestApplicationManager.getInstance()
-                GradleProcessOutputInterceptor.install(rootDisposable)
-                return application
-            }
-
-            fun initSdk(rootDisposable: Disposable): Sdk {
-                return runWriteAction {
-                    val jdkTableImpl = JavaAwareProjectJdkTableImpl.getInstanceEx()
-                    val homePath = if (jdkTableImpl.internalJdk.homeDirectory!!.name == "jre") {
-                        jdkTableImpl.internalJdk.homeDirectory!!.parent.path
-                    } else {
-                        jdkTableImpl.internalJdk.homePath!!
-                    }
-
-                    val roots = mutableListOf<String>()
-                    roots += homePath
-                    System.getenv("JDK_18")?.let {
-                        roots += it
-                    }
-                    VfsRootAccess.allowRootAccess(rootDisposable, *roots.toTypedArray())
-
-                    val javaSdk = JavaSdk.getInstance()
-                    val jdk = javaSdk.createJdk("1.8", homePath)
-                    val internal = javaSdk.createJdk("IDEA jdk", homePath)
-                    val gradle = javaSdk.createJdk(GRADLE_JDK_NAME, homePath)
-
-                    val jdkTable = getProjectJdkTableSafe()
-                    jdkTable.addJdk(jdk, rootDisposable)
-                    jdkTable.addJdk(internal, rootDisposable)
-                    jdkTable.addJdk(gradle, rootDisposable)
-                    KotlinSdkType.setUpIfNeeded()
-                    jdk
-                }
-            }
         }
     }
 
@@ -212,6 +172,13 @@ class PerformanceSuite {
 
         fun Fixture.highlight() = highlight(psiFile)
 
+        fun Fixture.checkNoErrors(highlightInfos: List<HighlightInfo>?) {
+            val errorHighlightInfos = highlightInfos?.filter { it.severity == HighlightSeverity.ERROR }
+            check(errorHighlightInfos?.isNotEmpty() != true) {
+                "No ERRORs are expected in ${this.fileName}: $errorHighlightInfos"
+            }
+        }
+
         fun highlight(editorFile: PsiFile?, toIgnore: IntArray = ArrayUtilRt.EMPTY_INT_ARRAY) =
             editorFile?.highlightFile(toIgnore) ?: error("editor isn't ready for highlight")
 
@@ -231,10 +198,10 @@ class PerformanceSuite {
             this.project.enableAllInspections()
 
         fun editor(path: String) =
-            Fixture.openInEditor(project, path).psiFile.also { openFiles.add(it.virtualFile) }
+            openInEditor(project, path).psiFile.also { openFiles.add(it.virtualFile) }
 
         fun fixture(path: String, updateScriptDependenciesIfNeeded: Boolean = true): Fixture {
-            return fixture(Fixture.projectFileByName(project, path).virtualFile, path, updateScriptDependenciesIfNeeded)
+            return fixture(projectFileByName(project, path).virtualFile, path, updateScriptDependenciesIfNeeded)
         }
 
         fun fixture(file: VirtualFile, fileName: String? = null, updateScriptDependenciesIfNeeded: Boolean = true): Fixture {
@@ -281,7 +248,7 @@ class PerformanceSuite {
         }
 
         fun measureHighlight(fixture: Fixture, vararg name: String): List<List<HighlightInfo>?> {
-            return measure(combineNameWithSimpleFileName("highlighting", fixture, *name)) {
+            return measure<List<HighlightInfo>?>(combineNameWithSimpleFileName("highlighting", fixture, *name)) {
                 before = {
                     fixture.openInEditor()
                 }
@@ -292,7 +259,7 @@ class PerformanceSuite {
                     fixture.close()
                     project.cleanupCaches()
                 }
-            }
+            }.onEach { fixture.checkNoErrors(it) }
         }
 
         fun typeAndMeasureAutoCompletion(fixture: Fixture, vararg name: String, clearCaches: Boolean = true, f: TypeAndAutoCompletionMeasurementScope.() -> Unit): List<String?> {
@@ -365,7 +332,7 @@ class PerformanceSuite {
 
                 dispatchAllInvocationEvents()
                 with(DumbService.getInstance(project)) {
-                    queueTask(UnindexedFilesUpdater(project))
+                    UnindexedFilesUpdater(project).queue()
                     completeJustSubmittedTasks()
                 }
                 dispatchAllInvocationEvents()

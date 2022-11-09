@@ -1,15 +1,18 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.uast.kotlin
 
 import com.intellij.psi.*
+import com.intellij.psi.util.PropertyUtilBase
 import com.intellij.psi.util.PsiTypesUtil
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.uast.*
 import org.jetbrains.uast.internal.acceptList
 import org.jetbrains.uast.kotlin.internal.TypedResolveResult
 import org.jetbrains.uast.visitor.UastVisitor
 
+@ApiStatus.Internal
 class KotlinUFunctionCallExpression(
     override val sourcePsi: KtCallElement,
     givenParent: UElement?,
@@ -23,11 +26,11 @@ class KotlinUFunctionCallExpression(
         baseResolveProviderService.resolvedFunctionName(sourcePsi)
     }
 
-    override val classReference by lz {
+    override val classReference: UReferenceExpression by lz {
         KotlinClassViaConstructorUSimpleReferenceExpression(sourcePsi, methodName.orAnonymous("class"), this)
     }
 
-    override val methodIdentifier by lz {
+    override val methodIdentifier: UIdentifier? by lz {
         if (sourcePsi is KtSuperTypeCallEntry) {
             ((sourcePsi.parent as? KtInitializerList)?.parent as? KtEnumEntry)?.let { ktEnumEntry ->
                 return@lz KotlinUIdentifier(ktEnumEntry.nameIdentifier, this)
@@ -123,18 +126,28 @@ class KotlinUFunctionCallExpression(
         }
 
         val ktNameReferenceExpression = sourcePsi.calleeExpression as? KtNameReferenceExpression ?: return@lz null
-        val localCallableDeclaration =
-            baseResolveProviderService.resolveToDeclaration(ktNameReferenceExpression) as? PsiVariable ?: return@lz null
-        if (localCallableDeclaration !is PsiLocalVariable && localCallableDeclaration !is PsiParameter) return@lz null
+        val callableDeclaration = baseResolveProviderService.resolveToDeclaration(ktNameReferenceExpression) ?: return@lz null
+
+        val variable = when (callableDeclaration) {
+            is PsiVariable -> callableDeclaration
+            is PsiMethod -> {
+                callableDeclaration.containingClass?.let { containingClass ->
+                    PropertyUtilBase.getPropertyName(callableDeclaration.name)?.let { propertyName ->
+                        PropertyUtilBase.findPropertyField(containingClass, propertyName, true)
+                    }
+                }
+            }
+            else -> null
+        } ?: return@lz null
 
         // an implicit receiver for variables calls (KT-25524)
         object : KotlinAbstractUExpression(this), UReferenceExpression {
 
             override val sourcePsi: KtNameReferenceExpression get() = ktNameReferenceExpression
 
-            override val resolvedName: String? get() = localCallableDeclaration.name
+            override val resolvedName: String? get() = variable.name
 
-            override fun resolve(): PsiElement = localCallableDeclaration
+            override fun resolve(): PsiElement = variable
 
         }
     }

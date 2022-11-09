@@ -19,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.RGBImageFilter;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.util.HashSet;
@@ -90,6 +91,8 @@ public final class Presentation implements Cloneable {
 
   @NonNls public static final Key<@Nls String> PROP_VALUE = Key.create("value");
 
+  @NonNls public static final Key<Supplier<RGBImageFilter>> DISABLE_ICON_FILTER = Key.create("DISABLE_ICON_FILTER");
+
   public static final double DEFAULT_WEIGHT = 0;
   public static final double HIGHER_WEIGHT = 42;
   public static final double EVEN_HIGHER_WEIGHT = 239;
@@ -99,11 +102,13 @@ public final class Presentation implements Cloneable {
   private static final int IS_MULTI_CHOICE = 0x4;
   private static final int IS_POPUP_GROUP = 0x10;
   private static final int IS_PERFORM_GROUP = 0x20;
+  private static final int IS_HIDE_GROUP_IF_EMPTY = 0x40;
+  private static final int IS_DISABLE_GROUP_IF_EMPTY = 0x80;
   private static final int IS_TEMPLATE = 0x1000;
 
-  private int myFlags = IS_ENABLED | IS_VISIBLE;
+  private int myFlags = IS_ENABLED | IS_VISIBLE | IS_DISABLE_GROUP_IF_EMPTY;
   private @NotNull Supplier<@ActionDescription String> myDescriptionSupplier = () -> null;
-  private @NotNull Supplier<TextWithMnemonic> myTextWithMnemonicSupplier = () -> null;
+  private @NotNull Supplier<? extends TextWithMnemonic> myTextWithMnemonicSupplier = () -> null;
   private @NotNull SmartFMap<String, Object> myUserMap = SmartFMap.emptyMap();
 
   private Icon myIcon;
@@ -150,9 +155,20 @@ public final class Presentation implements Cloneable {
     }
   }
 
+  /**
+   * DO NOT USE as <code>presentation1.setText(presentation2.getText())</code>,
+   * this will skip mnemonic and might break for texts with <code>'_'</code> or <code>'&'</code> symbols.
+   * <p>
+   * Use <code>presentation1.setTextWithMnemonic(presentation2.getTextWithPossibleMnemonic())</code>
+   * or  <code>presentation1.setText(presentation2.getTextWithMnemonic())</code> to copy text between two presentations.
+   * Use <code>presentation1.setText(presentation2.getText(), false)</code> to copy text without mnemonic.
+   * <p>
+   * This applies to AnAction constructors.
+   *
+   * @return Text without mnemonic.
+   */
   public @ActionText String getText() {
-    TextWithMnemonic textWithMnemonic = myTextWithMnemonicSupplier.get();
-    return textWithMnemonic == null ? null : textWithMnemonic.getText();
+    return getText(false);
   }
 
   public @ActionText String getText(boolean withSuffix) {
@@ -163,7 +179,7 @@ public final class Presentation implements Cloneable {
   /**
    * Sets the presentation text.
    *
-   * @param text presentation text. Use it if you need to localize text.
+   * @param text               presentation text. Use it if you need to localize text.
    * @param mayContainMnemonic if true, the text has {@linkplain TextWithMnemonic#parse(String) text-with-mnemonic} format, otherwise
    *                           it's a plain text and no mnemonic will be used.
    */
@@ -175,7 +191,7 @@ public final class Presentation implements Cloneable {
   /**
    * Sets the presentation text.
    *
-   * @param text presentation text.
+   * @param text               presentation text.
    * @param mayContainMnemonic if true, the text has {@linkplain TextWithMnemonic#parse(String) text-with-mnemonic} format, otherwise
    *                           it's a plain text and no mnemonic will be used.
    */
@@ -206,9 +222,10 @@ public final class Presentation implements Cloneable {
 
   /**
    * Sets the presentation text
+   *
    * @param textWithMnemonicSupplier text with mnemonic to set
    */
-  public void setTextWithMnemonic(@NotNull Supplier<TextWithMnemonic> textWithMnemonicSupplier) {
+  public void setTextWithMnemonic(@NotNull Supplier<? extends TextWithMnemonic> textWithMnemonicSupplier) {
     String oldText = getText();
     String oldTextWithSuffix = getText(true);
     int oldMnemonic = getMnemonic();
@@ -223,6 +240,7 @@ public final class Presentation implements Cloneable {
 
   /**
    * Sets the text with mnemonic.
+   *
    * @see #setText(String, boolean)
    */
   public void setText(@Nullable @ActionText String text) {
@@ -247,7 +265,7 @@ public final class Presentation implements Cloneable {
   }
 
   @NotNull
-  public Supplier<TextWithMnemonic> getTextWithPossibleMnemonic() {
+  public Supplier<? extends TextWithMnemonic> getTextWithPossibleMnemonic() {
     return myTextWithMnemonicSupplier;
   }
 
@@ -327,7 +345,7 @@ public final class Presentation implements Cloneable {
     return textWithMnemonic == null ? -1 : textWithMnemonic.getMnemonicIndex();
   }
 
-  /** @see Presentation#setVisible(boolean)  */
+  /** @see Presentation#setVisible(boolean) */
   public boolean isVisible() {
     return BitUtil.isSet(myFlags, IS_VISIBLE);
   }
@@ -363,9 +381,38 @@ public final class Presentation implements Cloneable {
 
   /**
    * For an action group presentation sets whether the action group is "performable" as an ordinary action or not.
+   *
+   * @see com.intellij.openapi.actionSystem.impl.ActionMenu#SUPPRESS_SUBMENU
+   * @see com.intellij.openapi.actionSystem.impl.ActionButton#HIDE_DROPDOWN_ICON
    */
   public void setPerformGroup(boolean performing) {
     myFlags = BitUtil.set(myFlags, IS_PERFORM_GROUP, performing);
+  }
+
+  /** @see Presentation#setHideGroupIfEmpty(boolean) */
+  public boolean isHideGroupIfEmpty() {
+    return BitUtil.isSet(myFlags, IS_HIDE_GROUP_IF_EMPTY);
+  }
+
+  /**
+   * For an action group presentation sets whether the action group will be hidden if no visible children are present.
+   * The default is {@code false}.
+   */
+  public void setHideGroupIfEmpty(boolean hide) {
+    myFlags = BitUtil.set(myFlags, IS_HIDE_GROUP_IF_EMPTY, hide);
+  }
+
+  /** @see Presentation#setHideGroupIfEmpty(boolean) */
+  public boolean isDisableGroupIfEmpty() {
+    return BitUtil.isSet(myFlags, IS_DISABLE_GROUP_IF_EMPTY);
+  }
+
+  /**
+   * For an action group presentation sets whether the action group will be shown as disabled if no visible children are present.
+   * The default is {@code true}.
+   */
+  public void setDisableGroupIfEmpty(boolean disable) {
+    myFlags = BitUtil.set(myFlags, IS_DISABLE_GROUP_IF_EMPTY, disable);
   }
 
   /**
@@ -374,11 +421,11 @@ public final class Presentation implements Cloneable {
    * because menus and shortcut processing use different defaults,
    * so values from template presentations are silently ignored.
    */
-  boolean isTemplate() {
+  public boolean isTemplate() {
     return BitUtil.isSet(myFlags, IS_TEMPLATE);
   }
 
-  /** @see Presentation#setEnabled(boolean)  */
+  /** @see Presentation#setEnabled(boolean) */
   public boolean isEnabled() {
     return BitUtil.isSet(myFlags, IS_ENABLED);
   }
@@ -413,9 +460,9 @@ public final class Presentation implements Cloneable {
     }
   }
 
-  private void assertNotTemplatePresentation() {
+  void assertNotTemplatePresentation() {
     if (BitUtil.isSet(myFlags, IS_TEMPLATE)) {
-      LOG.warn(new Throwable("Shall not be called on a template presentation"));
+      LOG.warn(new Throwable("Template presentations must not be used directly"));
     }
   }
 
@@ -522,16 +569,11 @@ public final class Presentation implements Cloneable {
 
   /**
    * Some action groups (like 'New...') may filter out actions with non-highest priority.
+   *
    * @param weight please use {@link #HIGHER_WEIGHT} or {@link #EVEN_HIGHER_WEIGHT}
    */
   public void setWeight(double weight) {
     myWeight = weight;
-  }
-
-  @Override
-  @Nls
-  public String toString() {
-    return getText() + " (" + myDescriptionSupplier.get() + ")";
   }
 
   public boolean isEnabledAndVisible() {
@@ -539,13 +581,19 @@ public final class Presentation implements Cloneable {
   }
 
   /**
-   * This parameter specifies if multiple actions can be taken in the same context
+   * Sets if multiple actions or toggles can be performed in the same menu or popup.
    */
-  public void setMultipleChoice(boolean b) {
+  public void setMultiChoice(boolean b) {
     myFlags = BitUtil.set(myFlags, IS_MULTI_CHOICE, b);
   }
 
-  public boolean isMultipleChoice(){
+  public boolean isMultiChoice() {
     return BitUtil.isSet(myFlags, IS_MULTI_CHOICE);
+  }
+
+  @Nls
+  @Override
+  public String toString() {
+    return getText() + " (" + myDescriptionSupplier.get() + ")";
   }
 }

@@ -8,9 +8,6 @@ import com.intellij.openapi.util.JDOMUtil
 import com.intellij.openapi.util.io.BufferExposingByteArrayOutputStream
 import com.intellij.util.ArrayUtilRt
 import com.intellij.util.SystemProperties
-import com.intellij.util.isEmpty
-import net.jpountz.lz4.LZ4FrameInputStream
-import net.jpountz.lz4.LZ4FrameOutputStream
 import org.jdom.Element
 import java.io.ByteArrayInputStream
 import java.util.*
@@ -18,14 +15,14 @@ import java.util.concurrent.atomic.AtomicReferenceArray
 
 private fun archiveState(state: Element): BufferExposingByteArrayOutputStream {
   val byteOut = BufferExposingByteArrayOutputStream()
-  LZ4FrameOutputStream(byteOut, LZ4FrameOutputStream.BLOCKSIZE.SIZE_4MB).use {
+  byteOut.use {
     serializeElementToBinary(state, it)
   }
   return byteOut
 }
 
 private fun unarchiveState(state: ByteArray): Element {
-  return LZ4FrameInputStream(ByteArrayInputStream(state)).use {
+  return ByteArrayInputStream(state).use {
     deserializeElementFromBinary(it)
   }
 }
@@ -64,11 +61,11 @@ private fun getNewByteIfDiffers(key: String, newState: Any, oldState: ByteArray)
 }
 
 private fun stateToElement(key: String, state: Any?, newLiveStates: Map<String, Element>? = null): Element? {
-  if (state is Element) {
-    return state.clone()
+  return if (state is Element) {
+    state.clone()
   }
   else {
-    return newLiveStates?.get(key) ?: (state as? ByteArray)?.let(::unarchiveState)
+    newLiveStates?.get(key) ?: (state as? ByteArray)?.let(::unarchiveState)
   }
 }
 
@@ -179,7 +176,7 @@ class StateMap private constructor(private val names: Array<String>, private val
 
 fun setStateAndCloneIfNeeded(key: String, newState: Element?, oldStates: StateMap, newLiveStates: MutableMap<String, Element>? = null): MutableMap<String, Any>? {
   val oldState = oldStates.get(key)
-  if (newState == null || newState.isEmpty()) {
+  if (newState == null || JDOMUtil.isEmpty(newState)) {
     if (oldState == null) {
       return null
     }

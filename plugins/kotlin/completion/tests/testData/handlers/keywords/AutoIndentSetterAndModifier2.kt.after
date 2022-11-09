@@ -1,5 +1,0 @@
-var v: Int
-    private set(value) = <caret>
-
-// ELEMENT: "set"
-// TAIL_TEXT: "(value) = ..."

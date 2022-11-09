@@ -2,10 +2,7 @@
 package com.intellij.diff.impl.ui
 
 import com.intellij.diff.util.DiffUtil
-import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.ActionToolbar
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.actionSystem.ex.ToolbarLabelAction
 import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl
@@ -27,6 +24,10 @@ abstract class DifferencesLabel(private val goToChangeAction: AnAction?, private
 
   override fun actionPerformed(e: AnActionEvent) {
     goToChangeAction?.actionPerformed(e)
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.EDT
   }
 
   override fun update(e: AnActionEvent) {
@@ -75,7 +76,7 @@ abstract class DifferencesLabel(private val goToChangeAction: AnAction?, private
 
     return when {
       differencesStatus.isNullOrBlank() && filesCount > 1 -> filesLink
-      differencesStatus != null && differencesStatus.isNotBlank() && filesCount > 1 -> inFiles
+      !differencesStatus.isNullOrBlank() && filesCount > 1 -> inFiles
       else -> null
     }
   }

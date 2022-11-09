@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.java.codeInsight.javadoc;
 
 import com.intellij.JavaTestUtil;
@@ -104,10 +104,12 @@ public class JavaDocInfoGeneratorTest extends JavaCodeInsightTestCase {
   public void testDocumentationForUncheckedExceptionsInSupers() { doTestAtCaret(); }
   public void testDocumentationForGetterByField() { doTestAtCaret(); }
   public void testParamInJavadoc() { doTestAtCaret(); }
+  public void testExternalLinksInJavadoc() { doTestAtCaret(); }
   public void testLiteralInsideCode() { useJava8(); doTestClass(); }
   public void testSuperJavadocExactResolve() { doTestAtCaret(); }
   public void testSuperJavadocErasureResolve() { doTestAtCaret(); }
   public void testPackageInfo() { doTestPackageInfo(); }
+  public void testPackageWithoutPackageInfo() { doTestPackageInfo(); }
   public void testPackageHtml() { doTestPackageInfo(); }
   public void testSyntheticEnumValues() { doTestAtCaret(); }
   public void testVariableDoc() { doTestAtCaret(); }
@@ -126,16 +128,18 @@ public class JavaDocInfoGeneratorTest extends JavaCodeInsightTestCase {
   public void testUnknownInlineMultilineTag() { doTestClass(); }
   public void testUnknownTag() { doTestMethod(); }
   public void testUnknownClassTag() { doTestClass(); }
+  public void testReflectConstructor() { useJava10(); doTestAtCaret(); }
 
   public void testRepeatableAnnotations() {
     useJava8();
     assertEquals(
-      "<span style=\"color:#808000;\">@</span><a href=\"psi_element://R\"><code><span style=\"color:#808000;\">R</span></code></a><span style=\"\">(</span><span style=\"color:#008000;font-weight:bold;\">\"a\"</span><span style=\"\">)</span>&nbsp;\n" +
-      "<span style=\"color:#808000;\">@</span><a href=\"psi_element://R\"><code><span style=\"color:#808000;\">R</span></code></a><span style=\"\">(</span><span style=\"color:#008000;font-weight:bold;\">\"b\"</span><span style=\"\">)</span>&nbsp;\n" +
-      "<span style=\"color:#000080;font-weight:bold;\">class</span> <span style=\"color:#000000;\">repeatableAnnotations</span>",
+      """
+        <span style="color:#808000;">@</span><a href="psi_element://R"><code><span style="color:#808000;">R</span></code></a><span style="">(</span><span style="color:#008000;font-weight:bold;">"a"</span><span style="">)</span>&nbsp;
+        <span style="color:#808000;">@</span><a href="psi_element://R"><code><span style="color:#808000;">R</span></code></a><span style="">(</span><span style="color:#008000;font-weight:bold;">"b"</span><span style="">)</span>&nbsp;
+        <span style="color:#000080;font-weight:bold;">class</span> <span style="color:#000000;">repeatableAnnotations</span>""",
       new JavaDocInfoGenerator(getProject(), getTestClass()).generateSignature(getTestClass()));
   }
-  
+
   public void testAnonymousAndSuperJavadoc() {
     PsiClass psiClass = PsiTreeUtil.findChildOfType(getTestClass(), PsiAnonymousClass.class);
     assertNotNull(psiClass);
@@ -143,17 +147,16 @@ public class JavaDocInfoGeneratorTest extends JavaCodeInsightTestCase {
     verifyJavaDoc(method);
   }
 
-  public void testEnumConstantOrdinal() {
-    PsiClass psiClass = getTestClass();
-    PsiField field = psiClass.getFields() [0];
-    String docInfo = new JavaDocumentationProvider().generateDoc(field, field);
-    assertNotNull(docInfo);
-    assertFileTextEquals(docInfo);
+  public void testEnumConstant1() {
+    doTestEnumConstant();
+  }
 
-    docInfo = new JavaDocumentationProvider().getQuickNavigateInfo(field, field);
-    assertNotNull(docInfo);
-    String htmlText = loadFile(new File(getTestDataPath() + TEST_DATA_FOLDER + getTestName(true) + "_quick.html"));
-    assertEquals(htmlText, replaceEnvironmentDependentContent(UIUtil.getHtmlBody(docInfo)));
+  public void testEnumConstant2() {
+    doTestEnumConstant();
+  }
+
+  public void testEnumConstant3() {
+    doTestEnumConstant();
   }
 
   public void testClickableFieldReference() {
@@ -275,6 +278,19 @@ public class JavaDocInfoGeneratorTest extends JavaCodeInsightTestCase {
   private void doTestClass() {
     PsiClass psiClass = getTestClass();
     verifyJavaDoc(psiClass);
+  }
+
+  private void doTestEnumConstant() {
+    PsiClass psiClass = getTestClass();
+    PsiField field = psiClass.getFields()[0];
+    String docInfo = new JavaDocumentationProvider().generateDoc(field, field);
+    assertNotNull(docInfo);
+    assertFileTextEquals(docInfo);
+
+    docInfo = new JavaDocumentationProvider().getQuickNavigateInfo(field, field);
+    assertNotNull(docInfo);
+    String htmlText = loadFile(new File(getTestDataPath() + TEST_DATA_FOLDER + getTestName(true) + "_quick.html"));
+    assertEquals(htmlText, replaceEnvironmentDependentContent(UIUtil.getHtmlBody(docInfo)));
   }
 
   private void doTestField() {

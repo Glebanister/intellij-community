@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.findUsages.handlers
 
@@ -6,6 +6,7 @@ import com.intellij.find.findUsages.AbstractFindUsagesDialog
 import com.intellij.find.findUsages.FindUsagesOptions
 import com.intellij.find.findUsages.JavaFindUsagesHelper
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.application.runReadAction
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.PsiElementProcessor
@@ -27,7 +28,6 @@ import org.jetbrains.kotlin.idea.search.declarationsSearch.searchInheritors
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOptions
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchParameters
 import org.jetbrains.kotlin.idea.search.isImportUsage
-import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.contains
 import org.jetbrains.kotlin.psi.psiUtil.effectiveDeclarations

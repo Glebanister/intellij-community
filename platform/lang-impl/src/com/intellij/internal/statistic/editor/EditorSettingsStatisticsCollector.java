@@ -93,7 +93,6 @@ final class EditorSettingsStatisticsCollector extends ApplicationUsagesCollector
     addBoolIfDiffers(set, es, esDefault, s -> s.isShowNotificationAfterOptimizeImports(), Settings.AFTER_OPTIMIZE_NOTIFICATION);
     addBoolIfDiffers(set, es, esDefault, s -> s.isSmartHome(), Settings.SMART_HOME);
     addBoolIfDiffers(set, es, esDefault, s -> s.isCamelWords(), Settings.CAMEL_WORDS);
-    addBoolIfDiffers(set, es, esDefault, s -> s.isShowParameterNameHints(), Settings.EDITOR_INLAY_PARAMETER_HINTS);
     addBoolIfDiffers(set, es, esDefault, s -> s.isBreadcrumbsAbove(), Settings.BREADCRUMBS_ABOVE);
     addBoolIfDiffers(set, es, esDefault, s -> s.isBreadcrumbsShown(), Settings.ALL_BREADCRUMBS);
     addBoolIfDiffers(set, es, esDefault, s -> s.isShowIntentionBulb(), Settings.INTENTION_BULB);
@@ -174,7 +173,7 @@ final class EditorSettingsStatisticsCollector extends ApplicationUsagesCollector
     return set;
   }
 
-  private static <T> void addBoolIfDiffers(@NotNull Set<MetricEvent> set,
+  private static <T> void addBoolIfDiffers(@NotNull Set<? super MetricEvent> set,
                                            @NotNull T settingsBean,
                                            @NotNull T defaultSettingsBean,
                                            @NotNull Function<T, Boolean> valueFunction,
@@ -190,10 +189,10 @@ final class EditorSettingsStatisticsCollector extends ApplicationUsagesCollector
     }
   }
 
-  private static <T, V> void addIfDiffers(@NotNull Set<MetricEvent> set,
+  private static <T, V> void addIfDiffers(@NotNull Set<? super MetricEvent> set,
                                           @NotNull T settingsBean,
                                           @NotNull T defaultSettingsBean,
-                                          @NotNull Function<T, V> valueFunction,
+                                          @NotNull Function<? super T, ? extends V> valueFunction,
                                           @NotNull Settings setting,
                                           @NotNull EventField<V> field) {
     V value = valueFunction.apply(settingsBean);
@@ -223,7 +222,7 @@ final class EditorSettingsStatisticsCollector extends ApplicationUsagesCollector
     return CaretStopBoundaries.OTHER;
   }
 
-  private static void addTooltipActionsMetricIfDiffers(@NotNull Set<MetricEvent> set) {
+  private static void addTooltipActionsMetricIfDiffers(@NotNull Set<? super MetricEvent> set) {
     boolean value = TooltipActionProvider.isShowActions();
     if (value != TooltipActionProvider.SHOW_FIXES_DEFAULT_VALUE) {
       set.add(SETTING.metric(SETTING_ID.with(Settings.SHOW_ACTIONS_IN_TOOLTIP), EventFields.Enabled.with(value)));
@@ -273,7 +272,6 @@ final class EditorSettingsStatisticsCollector extends ApplicationUsagesCollector
     AFTER_OPTIMIZE_NOTIFICATION("afterOptimizeNotification"),
     SMART_HOME("smartHome"),
     CAMEL_WORDS("camelWords"),
-    EDITOR_INLAY_PARAMETER_HINTS("editor.inlay.parameter.hints"),
     BREADCRUMBS_ABOVE("breadcrumbsAbove"),
     ALL_BREADCRUMBS("all.breadcrumbs"),
     INTENTION_BULB("intentionBulb"),

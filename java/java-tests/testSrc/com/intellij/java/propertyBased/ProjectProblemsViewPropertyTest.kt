@@ -34,7 +34,6 @@ import com.intellij.testFramework.propertyBased.MadTestingUtil
 import com.intellij.util.ArrayUtilRt
 import com.siyeh.ig.psiutils.TypeUtils
 import junit.framework.TestCase
-import one.util.streamex.StreamEx
 import org.jetbrains.jetCheck.Generator
 import org.jetbrains.jetCheck.ImperativeCommand
 import org.jetbrains.jetCheck.PropertyChecker
@@ -120,7 +119,7 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
       val prevScope = psiMember.useScope
       env.logMessage("Changing member: ${JavaDocUtil.getReferenceText(myProject, psiMember)}")
       val usages = findUsages(psiMember)
-      if (usages == null || usages.isEmpty()) {
+      if (usages.isNullOrEmpty()) {
         env.logMessage("Member has no usages (or too many). Skipping.")
         continue
       }
@@ -251,8 +250,8 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
                                                          PsiStatement::class.java, PsiClass::class.java,
                                                          PsiMethod::class.java, PsiField::class.java,
                                                          PsiReferenceList::class.java) ?: return@any false
-      return@any StreamEx.ofTree(context, { StreamEx.of(*it.children) })
-        .anyMatch { el -> el is PsiReference && members.any { m -> el.isReferenceTo(m.psiMember) && inScope(el.containingFile, m.scope) } }
+      return@any PsiTreeUtil.collectElements(context, { r -> true })
+        .any { el -> el is PsiReference && members.any { m -> el.isReferenceTo(m.psiMember) && inScope(el.containingFile, m.scope) } }
     }
   }
 
@@ -384,10 +383,8 @@ class ProjectProblemsViewPropertyTest : BaseUnivocityTest() {
       }
 
       private fun findTypeElements(member: PsiMember): List<PsiTypeElement> {
-        return StreamEx.ofTree(member as PsiElement) { el ->
-          if (el is PsiCodeBlock || el is PsiComment) StreamEx.empty()
-          else StreamEx.of(*el.children)
-        }.filterIsInstance<PsiTypeElement>()
+        val elements: Collection<PsiTypeElement> = PsiTreeUtil.findChildrenOfAnyType(member, false, PsiTypeElement::class.java)
+        return elements.toMutableList()
       }
 
       override fun toString(): String =

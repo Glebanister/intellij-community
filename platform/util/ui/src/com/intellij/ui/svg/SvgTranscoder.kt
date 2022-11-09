@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("UndesirableClassUsage")
 
 package com.intellij.ui.svg
@@ -40,7 +40,7 @@ class SvgTranscoder private constructor(private var width: Float, private var he
     // An SVG tag custom attribute, optional for @2x SVG icons.
     // When provided and is set to "true" the document size should be treated as double-scaled of the base size.
     // See https://youtrack.jetbrains.com/issue/IDEA-267073
-    const val DATA_SCALED_ATTR = "data-scaled"
+    private const val DATA_SCALED_ATTR = "data-scaled"
 
     init {
       SVGFeatureStrings.addSupportedFeatureStrings(supportedFeatures)
@@ -309,7 +309,6 @@ private fun render(offScreenWidth: Int, offScreenHeight: Int, usr2dev: AffineTra
   g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
   g.setRenderingHint(RenderingHintsKeyExt.KEY_BUFFERED_IMAGE, WeakReference(image))
   g.transform = identityTransform
-  @Suppress("GraphicsSetClipInspection")
   g.setClip(0, 0, offScreenWidth, offScreenHeight)
   g.composite = AlphaComposite.Clear
   g.fillRect(0, 0, offScreenWidth, offScreenHeight)

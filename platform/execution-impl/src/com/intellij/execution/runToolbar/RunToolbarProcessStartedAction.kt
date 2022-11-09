@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.runToolbar
 
 import com.intellij.execution.runToolbar.components.MouseListenerHelper
@@ -6,8 +6,8 @@ import com.intellij.execution.runToolbar.components.TrimmedMiddleLabel
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.idea.ActionsBundle
 import com.intellij.openapi.actionSystem.ActionToolbar
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Presentation
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.actionSystem.impl.segmentedActionBar.SegmentedCustomPanel
@@ -21,24 +21,28 @@ import java.beans.PropertyChangeEvent
 import javax.swing.JComponent
 import javax.swing.JLabel
 
-class RunToolbarProcessStartedAction : ComboBoxAction(), RTRunConfiguration {
+internal class RunToolbarProcessStartedAction : ComboBoxAction(),
+                                                RTRunConfiguration {
+
   companion object {
     val PROP_ACTIVE_ENVIRONMENT = Key<ExecutionEnvironment>("PROP_ACTIVE_ENVIRONMENT")
 
     fun updatePresentation(e: AnActionEvent) {
-      e.presentation.isEnabledAndVisible = e.project?.let { project ->
+      val presentation = e.presentation
+      presentation.isEnabledAndVisible = e.project?.let { project ->
         e.runToolbarData()?.let {
           it.environment?.let { environment ->
-            e.presentation.putClientProperty(PROP_ACTIVE_ENVIRONMENT, environment)
+            presentation.putClientProperty(PROP_ACTIVE_ENVIRONMENT, environment)
             environment.contentToReuse?.let { contentDescriptor ->
-              e.presentation.setText(contentDescriptor.displayName, false)
-              e.presentation.icon = contentDescriptor.icon
+              presentation.setText(contentDescriptor.displayName, false)
+              presentation.icon = contentDescriptor.icon
             } ?: run {
-              e.presentation.text = ""
-              e.presentation.icon = null
+              presentation.text = ""
+              presentation.icon = null
             }
-            e.presentation.description = RunToolbarData.prepareDescription(e.presentation.text,
-              ActionsBundle.message("action.RunToolbarShowHidePopupAction.click.to.open.toolwindow.text"))
+            presentation.description = RunToolbarData.prepareDescription(presentation.text,
+                                                                         ActionsBundle.message(
+                                                                           "action.RunToolbarShowHidePopupAction.click.to.open.toolwindow.text"))
 
             true
           } ?: false
@@ -46,8 +50,6 @@ class RunToolbarProcessStartedAction : ComboBoxAction(), RTRunConfiguration {
       } ?: false
     }
   }
-
-  override fun createPopupActionGroup(button: JComponent?): DefaultActionGroup = DefaultActionGroup()
 
   override fun actionPerformed(e: AnActionEvent) {
 
@@ -57,15 +59,19 @@ class RunToolbarProcessStartedAction : ComboBoxAction(), RTRunConfiguration {
     return state == RunToolbarMainSlotState.PROCESS
   }
 
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
   override fun update(e: AnActionEvent) {
     super.update(e)
     updatePresentation(e)
 
     if (!RunToolbarProcess.isExperimentalUpdatingEnabled) {
       e.mainState()?.let {
-        e.presentation.isEnabledAndVisible = e.presentation.isEnabledAndVisible && checkMainSlotVisibility(it)
+        val presentation = e.presentation
+        presentation.isEnabledAndVisible = presentation.isEnabledAndVisible && checkMainSlotVisibility(it)
       }
     }
+    e.presentation.isEnabled = e.presentation.isEnabled && e.isFromActionToolbar
   }
 
   override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
@@ -130,9 +136,7 @@ class RunToolbarProcessStartedAction : ComboBoxAction(), RTRunConfiguration {
       }
 
       private fun showPopup() {
-        presentation.getClientProperty(PROP_ACTIVE_ENVIRONMENT)?.let { environment ->
-          environment.showToolWindowTab()
-        }
+        presentation.getClientProperty(PROP_ACTIVE_ENVIRONMENT)?.showToolWindowTab()
       }
 
       private fun doRightClick() {
@@ -145,7 +149,10 @@ class RunToolbarProcessStartedAction : ComboBoxAction(), RTRunConfiguration {
 
       override fun getPreferredSize(): Dimension {
         val d = super.getPreferredSize()
-        d.width = FixWidthSegmentedActionToolbarComponent.RUN_CONFIG_WIDTH
+        getProject()?.let {
+          d.width = RunWidgetWidthHelper.getInstance(it).runConfig
+        }
+
         return d
       }
     }

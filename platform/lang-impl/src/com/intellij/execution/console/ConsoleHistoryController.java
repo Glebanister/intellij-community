@@ -32,6 +32,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
@@ -80,7 +81,7 @@ public class ConsoleHistoryController implements Disposable {
   private final LanguageConsoleView myConsole;
   private final AnAction myHistoryNext = new MyAction(true, getKeystrokesUpDown(true));
   private final AnAction myHistoryPrev = new MyAction(false, getKeystrokesUpDown(false));
-  private final AnAction myBrowseHistory = new MyBrowseAction();
+  private final AnAction myBrowseHistory = createBrowseAction();
   private boolean myMultiline;
   private ModelHelper myHelper;
   private long myLastSaveStamp;
@@ -310,6 +311,11 @@ public class ConsoleHistoryController implements Disposable {
       e.getPresentation().setVisible(false);
     }
 
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.EDT;
+    }
+
     private boolean isUpDownKey(@NotNull AnActionEvent e) {
       final InputEvent event = e.getInputEvent();
       if (!(event instanceof KeyEvent)) {
@@ -339,7 +345,11 @@ public class ConsoleHistoryController implements Disposable {
 
 
 
-  private class MyBrowseAction extends DumbAwareAction {
+  protected BrowseAction createBrowseAction() {
+    return new BrowseAction();
+  }
+
+  protected class BrowseAction extends DumbAwareAction {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
@@ -348,8 +358,13 @@ public class ConsoleHistoryController implements Disposable {
     }
 
     @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.EDT;
+    }
+
+    @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      String title = LangBundle.message("dialog.title.history", myConsole.getTitle());
+      String title = getTitle();
       final ContentChooser<String> chooser = new ContentChooser<>(myConsole.getProject(), title, true, true) {
         {
           setOKButtonText(ActionsBundle.actionText(IdeActions.ACTION_EDITOR_PASTE));
@@ -406,6 +421,13 @@ public class ConsoleHistoryController implements Disposable {
       if (chooser.showAndGet() && myConsole.getCurrentEditor().getComponent().isShowing()) {
         setConsoleText(new Entry(chooser.getSelectedText(), -1), false, true);
       }
+    }
+
+
+    @NotNull
+    @NlsContexts.DialogTitle
+    protected String getTitle() {
+      return LangBundle.message("dialog.title.history", myConsole.getTitle());
     }
   }
 

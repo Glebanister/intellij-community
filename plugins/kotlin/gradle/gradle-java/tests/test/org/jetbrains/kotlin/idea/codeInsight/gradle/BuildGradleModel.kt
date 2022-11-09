@@ -1,7 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeInsight.gradle
 
-import com.intellij.testFramework.IdeaTestUtil
 import kotlinx.coroutines.runBlocking
 import org.gradle.tooling.GradleConnectionException
 import org.gradle.tooling.GradleConnector
@@ -11,7 +10,8 @@ import org.gradle.tooling.model.idea.IdeaModule
 import org.gradle.tooling.model.idea.IdeaProject
 import org.gradle.util.GradleVersion
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModelBuilder
-import org.jetbrains.kotlin.idea.projectModel.KotlinVariant
+import org.jetbrains.kotlin.idea.projectModel.KotlinCompilation
+import org.jetbrains.kotlin.tooling.core.KotlinToolingVersion
 import org.jetbrains.plugins.gradle.model.ClassSetImportModelProvider
 import org.jetbrains.plugins.gradle.model.ProjectImportAction
 import org.jetbrains.plugins.gradle.service.execution.GradleExecutionHelper
@@ -43,7 +43,15 @@ class BuiltGradleModel<T : Any>(val modules: Map<IdeaModule, T?>) {
     }
 }
 
-fun <T : Any> buildGradleModel(projectPath: File, gradleVersion: GradleVersion, clazz: KClass<T>): BuiltGradleModel<T> {
+data class BuildGradleModelDebuggerOptions(
+    val suspend: Boolean = true,
+    val port: Int = 5005
+)
+
+fun <T : Any> buildGradleModel(
+    projectPath: File, gradleVersion: GradleVersion, javaHomePath: String, clazz: KClass<T>,
+    debuggerOptions: BuildGradleModelDebuggerOptions? = null
+): BuiltGradleModel<T> {
     val connector = GradleConnector.newConnector()
     connector.useDistribution(AbstractModelBuilderTest.DistributionLocator().getDistributionFor(gradleVersion))
     connector.forProjectDirectory(projectPath)
@@ -59,7 +67,7 @@ fun <T : Any> buildGradleModel(projectPath: File, gradleVersion: GradleVersion, 
                 setOf(
                     clazz.java,
                     /* Representative of the `kotlin.project-module` module */
-                    KotlinVariant::class.java,
+                    KotlinCompilation::class.java,
                     /* Representative of the kotlin stdlib */
                     Unit::class.java
                 ), setOf(IdeaProject::class.java)
@@ -75,7 +83,10 @@ fun <T : Any> buildGradleModel(projectPath: File, gradleVersion: GradleVersion, 
                         KotlinMPPGradleModelBuilder::class.java,
 
                         /* Representative of the `kotlin.project-module` module */
-                        KotlinVariant::class.java,
+                        KotlinCompilation::class.java,
+
+                        /* Representative of the `kotlin-tooling-core` library */
+                        KotlinToolingVersion::class.java,
 
                         /* Representative of the kotlin stdlib */
                         Unit::class.java
@@ -87,11 +98,11 @@ fun <T : Any> buildGradleModel(projectPath: File, gradleVersion: GradleVersion, 
         val buildActionExecutor = gradleConnection.action(projectImportAction)
         buildActionExecutor.withArguments(executionSettings.arguments)
 
-        val jdkHome = IdeaTestUtil.requireRealJdkHome()
-        buildActionExecutor.setJavaHome(File(jdkHome))
-        buildActionExecutor.setJvmArguments("-Xmx512m")
+        buildActionExecutor.setJavaHome(File(javaHomePath))
         buildActionExecutor.setStandardOutput(System.out)
-        buildActionExecutor.setStandardError(System.err)
+        buildActionExecutor.setStandardError(System.out)
+        buildActionExecutor.setJvmArguments(listOfNotNull("-Xmx512m", debuggerOptions?.toJvmArgumentString()))
+
 
         val allModels = runBlocking {
             suspendCoroutine<ProjectImportAction.AllModels> { continuation ->
@@ -112,4 +123,8 @@ fun <T : Any> buildGradleModel(projectPath: File, gradleVersion: GradleVersion, 
         val ideaProject = allModels.getModel(IdeaProject::class.java) ?: fail("Missing '${IdeaProject::class.simpleName}' model")
         return BuiltGradleModel(ideaProject.modules.associateWith { module -> allModels.getModel(module, clazz.java) })
     }
+}
+
+private fun BuildGradleModelDebuggerOptions.toJvmArgumentString(): String {
+    return "-agentlib:jdwp=transport=dt_socket,server=y,suspend=${if (suspend) "y" else "n"},address=${port}"
 }

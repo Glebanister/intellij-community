@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package training.util
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder
@@ -10,6 +10,7 @@ import com.intellij.ide.plugins.PluginManager
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.lang.Language
 import com.intellij.notification.NotificationGroup
+import com.intellij.notification.NotificationGroupManager
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
@@ -24,8 +25,10 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.BuildNumber
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.ui.ExperimentalUI
 import com.intellij.ui.components.labels.LinkLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -103,11 +106,11 @@ internal fun clearTrainingProgress() {
   LearningUiManager.activeToolWindow = null
 }
 
-internal fun resetPrimaryLanguage(activeLangSupport: LangSupport): Boolean {
-  val old = LangManager.getInstance().getLangSupport()
-  if (activeLangSupport != old) {
+internal fun resetPrimaryLanguage(newLanguageId: String): Boolean {
+  val oldLanguageId = LangManager.getInstance().getLanguageId()
+  if (newLanguageId != oldLanguageId) {
     LessonManager.instance.stopLesson()
-    LangManager.getInstance().updateLangSupport(activeLangSupport)
+    LangManager.getInstance().updateLangSupport(newLanguageId)
     LearningUiManager.activeToolWindow?.setModulesPanel()
     return true
   }
@@ -115,15 +118,15 @@ internal fun resetPrimaryLanguage(activeLangSupport: LangSupport): Boolean {
 }
 
 fun findLanguageSupport(project: Project): LangSupport? {
-  val langSupport = LangManager.getInstance().getLangSupport() ?: return null
-  if (isLearningProject(project, langSupport)) {
-    return langSupport
+  val languageId = LangManager.getInstance().getLanguageId() ?: return null
+  if (isLearningProject(project, languageId)) {
+    return LangManager.getInstance().getLangSupport()
   }
   return null
 }
 
-fun isLearningProject(project: Project, langSupport: LangSupport): Boolean {
-  return FileUtil.pathsEqual(project.basePath, LangManager.getInstance().getLearningProjectPath(langSupport))
+fun isLearningProject(project: Project, languageId: String): Boolean {
+  return FileUtil.pathsEqual(project.basePath, LangManager.getInstance().getLearningProjectPath(languageId))
 }
 
 fun getFeedbackLink(langSupport: LangSupport, ownRegistry: Boolean): String? {
@@ -134,6 +137,9 @@ fun getFeedbackLink(langSupport: LangSupport, ownRegistry: Boolean): String? {
 
 val switchOnExperimentalLessons: Boolean
   get() = Registry.`is`("ift.experimental.lessons", false)
+
+val enableLessonsAndPromoters: Boolean
+  get() = !ExperimentalUI.isNewUI() || Registry.`is`("ift.enable.in.new.ui", false)
 
 fun invokeActionForFocusContext(action: AnAction) {
   DataManager.getInstance().dataContextFromFocusAsync.onSuccess { dataContext ->
@@ -175,7 +181,7 @@ fun scaledRigid(width: Int, height: Int): Component {
 
 internal fun getLearnToolWindowForProject(project: Project): LearnToolWindow? {
   val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(LearnToolWindowFactory.LEARN_TOOL_WINDOW) ?: return null
-  val jComponent = toolWindow.contentManager.contents.singleOrNull()?.component
+  val jComponent = toolWindow.contentManagerIfCreated?.contents?.singleOrNull()?.component
   return jComponent as? LearnToolWindow
 }
 
@@ -238,7 +244,12 @@ private fun excludeNullCheck(value: String?): String? {
   return value
 }
 
-fun String.replaceSpacesWithNonBreakSpace(): String = this.replace(" ", "\u00A0")
+fun String.replaceSpacesWithNonBreakSpace(): String = this.replace(" ", StringUtil.NON_BREAK_SPACE)
+
+fun String.surroundWithNonBreakSpaces(): String {
+  val spaces = "${StringUtil.NON_BREAK_SPACE}${StringUtil.NON_BREAK_SPACE}"
+  return spaces + this + spaces
+}
 
 internal val iftPluginIsUsing: Boolean get() = LessonStateManager.getPassedLessonsNumber() >= 5
 
@@ -265,5 +276,4 @@ internal fun filterUnseenLessons(newLessons: List<Lesson>): List<Lesson> {
 }
 
 val iftNotificationGroup: NotificationGroup get() =
-  NotificationGroup.findRegisteredGroup("IDE Features Trainer")
-  ?: error("Not found notificationGroup for IDE Features Trainer")
+  NotificationGroupManager.getInstance().getNotificationGroup("IDE Features Trainer")

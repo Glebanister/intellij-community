@@ -2,26 +2,26 @@
 package org.jetbrains.idea.maven.statistics
 
 import com.intellij.internal.statistic.beans.MetricEvent
-import com.intellij.internal.statistic.beans.newMetric
 import com.intellij.internal.statistic.eventLog.EventLogGroup
 import com.intellij.internal.statistic.eventLog.events.EventFields
 import com.intellij.internal.statistic.service.fus.collectors.ProjectUsagesCollector
 import com.intellij.openapi.externalSystem.statistics.ExternalSystemUsagesCollector
+import com.intellij.openapi.externalSystem.statistics.ExternalSystemUsagesCollector.Companion.JRE_TYPE_FIELD
 import com.intellij.openapi.project.ExternalStorageConfigurationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Version
+import com.intellij.project.isDirectoryBased
 import org.jetbrains.idea.maven.execution.MavenExecutionOptions
 import org.jetbrains.idea.maven.execution.MavenExternalParameters.resolveMavenHome
 import org.jetbrains.idea.maven.execution.MavenRunner
 import org.jetbrains.idea.maven.project.MavenGeneralSettings
 import org.jetbrains.idea.maven.project.MavenImportingSettings
+import org.jetbrains.idea.maven.project.MavenImportingSettings.GeneratedSourcesFolder
+import org.jetbrains.idea.maven.project.MavenImportingSettings.UPDATE_FOLDERS_PHASES
 import org.jetbrains.idea.maven.project.MavenProjectsManager
 import org.jetbrains.idea.maven.server.MavenDistributionsCache
 import org.jetbrains.idea.maven.utils.MavenUtil
 import java.io.File
-import com.intellij.openapi.externalSystem.statistics.ExternalSystemUsagesCollector.Companion.JRE_TYPE_FIELD
-import org.jetbrains.idea.maven.project.MavenImportingSettings.GeneratedSourcesFolder
-import org.jetbrains.idea.maven.project.MavenImportingSettings.UPDATE_FOLDERS_PHASES
 
 class MavenSettingsCollector : ProjectUsagesCollector() {
 
@@ -67,8 +67,10 @@ class MavenSettingsCollector : ProjectUsagesCollector() {
     val importingSettings = manager.importingSettings
     usages.add(LOOK_FOR_NESTED.metric(importingSettings.isLookForNested))
 
+    usages.add(USE_WORKSPACE_IMPORT.metric(importingSettings.isWorkspaceImportEnabled))
     usages.add(DEDICATED_MODULE_DIR.metric(importingSettings.dedicatedModuleDir.isNotBlank()))
     usages.add(STORE_PROJECT_FILES_EXTERNALLY.metric(ExternalStorageConfigurationManager.getInstance(project).isEnabled))
+    usages.add(IS_DIRECTORY_BASED_PROJECT.metric(project.isDirectoryBased))
     usages.add(AUTO_DETECT_COMPILER.metric(importingSettings.isAutoDetectCompiler))
     usages.add(CREATE_MODULES_FOR_AGGREGATORS.metric(importingSettings.isCreateModulesForAggregators))
     usages.add(CREATE_MODULE_GROUPS.metric(importingSettings.isCreateModuleGroups))
@@ -113,7 +115,7 @@ class MavenSettingsCollector : ProjectUsagesCollector() {
   }
 
   companion object {
-    private val GROUP = EventLogGroup("build.maven.state", 2)
+    private val GROUP = EventLogGroup("build.maven.state", 7)
     private val HAS_MAVEN_PROJECT = GROUP.registerEvent("hasMavenProject", EventFields.Enabled)
     private val ALWAYS_UPDATE_SNAPSHOTS = GROUP.registerEvent("alwaysUpdateSnapshots", EventFields.Enabled)
     private val NON_RECURSIVE = GROUP.registerEvent("nonRecursive", EventFields.Enabled)
@@ -123,8 +125,10 @@ class MavenSettingsCollector : ProjectUsagesCollector() {
     private val LOCAL_REPOSITORY = GROUP.registerEvent("localRepository", EventFields.Enabled)
     private val USER_SETTINGS_FILE = GROUP.registerEvent("userSettingsFile", EventFields.Enabled)
     private val LOOK_FOR_NESTED = GROUP.registerEvent("lookForNested", EventFields.Enabled)
+    private val USE_WORKSPACE_IMPORT = GROUP.registerEvent("useWorkspaceImport", EventFields.Enabled)
     private val DEDICATED_MODULE_DIR = GROUP.registerEvent("dedicatedModuleDir", EventFields.Enabled)
     private val STORE_PROJECT_FILES_EXTERNALLY = GROUP.registerEvent("storeProjectFilesExternally", EventFields.Enabled)
+    private val IS_DIRECTORY_BASED_PROJECT = GROUP.registerEvent("useDirectoryBasedProject", EventFields.Enabled)
     private val AUTO_DETECT_COMPILER = GROUP.registerEvent("autoDetectCompiler", EventFields.Enabled)
     private val CREATE_MODULES_FOR_AGGREGATORS = GROUP.registerEvent("createModulesForAggregators", EventFields.Enabled)
     private val CREATE_MODULE_GROUPS = GROUP.registerEvent("createModuleGroups", EventFields.Enabled)

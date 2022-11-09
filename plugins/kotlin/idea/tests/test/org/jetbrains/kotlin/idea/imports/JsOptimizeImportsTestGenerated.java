@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -340,6 +340,11 @@ public abstract class JsOptimizeImportsTestGenerated extends AbstractJsOptimizeI
             @TestMetadata("NestedClassReferenceOutsideClassBody.kt")
             public void testNestedClassReferenceOutsideClassBody() throws Exception {
                 runTest("testData/editor/optimizeImports/common/NestedClassReferenceOutsideClassBody.kt");
+            }
+
+            @TestMetadata("NestedClassReferenceThroughAlias.kt")
+            public void testNestedClassReferenceThroughAlias() throws Exception {
+                runTest("testData/editor/optimizeImports/common/NestedClassReferenceThroughAlias.kt");
             }
 
             @TestMetadata("NestedClassReferenceThroughTopLevelClass.kt")

@@ -16,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.accessibility.AccessibleContext;
 import javax.swing.*;
 import javax.swing.border.Border;
-import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.FocusEvent;
@@ -39,7 +38,7 @@ public class TitledSeparator extends JPanel {
     return JBUI.Borders.empty(TOP_INSET, 0, BOTTOM_INSET, 0);
   }
 
-  protected final JBLabel myLabel = new JBLabel();
+  protected final JBLabel myLabel = createLabel();
   protected final JSeparator mySeparator = new JSeparator(SwingConstants.HORIZONTAL);
   private @NlsContexts.Separator String originalText;
 
@@ -100,6 +99,10 @@ public class TitledSeparator extends JPanel {
       }
       myLabel.setBorder(null);
     }
+  }
+
+  protected JBLabel createLabel() {
+    return new JBLabel();
   }
 
   private void setLabelBorder(boolean focused) {
@@ -193,8 +196,10 @@ public class TitledSeparator extends JPanel {
       }
 
       int arcSize = JBUIScale.scale(Registry.intValue("ide.link.button.focus.round.arc", 4));
-      return new CompoundBorder(new EmptyBorder(getOutsideFrameInsets()), new CompoundBorder(
-        new RoundedLineBorder(JBUI.CurrentTheme.Link.FOCUSED_BORDER_COLOR, arcSize, FOCUS_THICKNESS), new EmptyBorder(getInsideFrameInsets())));
+      return JBUI.Borders.compound(
+        new EmptyBorder(getOutsideFrameInsets()),
+        new RoundedLineBorder(JBUI.CurrentTheme.Link.FOCUSED_BORDER_COLOR, arcSize, FOCUS_THICKNESS),
+        new EmptyBorder(getInsideFrameInsets()));
     }
 
     private static void add(Insets destInsets, Insets insetsToAdd) {

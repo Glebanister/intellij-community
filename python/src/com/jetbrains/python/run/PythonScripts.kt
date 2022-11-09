@@ -7,72 +7,78 @@ import com.intellij.execution.ExecutionException
 import com.intellij.execution.Platform
 import com.intellij.execution.configurations.ParametersList
 import com.intellij.execution.process.CapturingProcessHandler
+import com.intellij.execution.process.LocalPtyOptions
 import com.intellij.execution.process.ProcessOutput
 import com.intellij.execution.target.*
 import com.intellij.execution.target.TargetEnvironment.TargetPath
 import com.intellij.execution.target.TargetEnvironment.UploadRoot
-import com.intellij.execution.target.value.TargetEnvironmentFunction
-import com.intellij.execution.target.value.TargetValue
-import com.intellij.execution.target.value.getRelativeTargetPath
-import com.intellij.execution.target.value.joinToStringFunction
+import com.intellij.execution.target.local.LocalTargetPtyOptions
+import com.intellij.execution.target.value.*
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.module.Module
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.util.io.FileUtil
-import com.intellij.remote.RemoteSdkPropertiesPaths
 import com.intellij.util.io.isAncestor
 import com.jetbrains.python.HelperPackage
 import com.jetbrains.python.PythonHelpersLocator
+import com.jetbrains.python.debugger.PyDebugRunner
 import com.jetbrains.python.packaging.PyExecutionException
+import com.jetbrains.python.psi.LanguageLevel
 import com.jetbrains.python.run.target.HelpersAwareTargetEnvironmentRequest
+import com.jetbrains.python.sdk.PythonEnvUtil
 import com.jetbrains.python.sdk.PythonSdkType
+import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
+import com.jetbrains.python.sdk.configureBuilderToRunPythonOnTarget
+import com.jetbrains.python.sdk.targetAdditionalData
+import com.jetbrains.python.target.PyTargetAwareAdditionalData.Companion.pathsAddedByUser
 import java.nio.file.Path
 
 private val LOG = Logger.getInstance("#com.jetbrains.python.run.PythonScripts")
 
+
+@JvmOverloads
 fun PythonExecution.buildTargetedCommandLine(targetEnvironment: TargetEnvironment,
-                                             sdk: Sdk?,
-                                             interpreterParameters: List<String>): TargetedCommandLine {
+                                             sdk: Sdk,
+                                             interpreterParameters: List<String>,
+                                             isUsePty: Boolean = false): TargetedCommandLine {
   val commandLineBuilder = TargetedCommandLineBuilder(targetEnvironment.request)
+  commandLineBuilder.addEnvironmentVariable(PythonEnvUtil.PYTHONIOENCODING, charset.name())
   workingDir?.apply(targetEnvironment)?.let { commandLineBuilder.setWorkingDirectory(it) }
-  charset?.let { commandLineBuilder.setCharset(it) }
-  val interpreterPath = getInterpreterPath(sdk)
-  if (!interpreterPath.isNullOrEmpty()) {
-    commandLineBuilder.setExePath(targetEnvironment.targetPlatform.platform.toSystemDependentName(interpreterPath))
-  }
+  commandLineBuilder.charset = charset
+  inputFile?.let { commandLineBuilder.setInputFile(TargetValue.fixed(it.absolutePath)) }
+  sdk.configureBuilderToRunPythonOnTarget(commandLineBuilder)
   commandLineBuilder.addParameters(interpreterParameters)
   when (this) {
     is PythonScriptExecution -> pythonScriptPath?.let { commandLineBuilder.addParameter(it.apply(targetEnvironment)) }
                                 ?: throw IllegalArgumentException("Python script path must be set")
-    is PythonModuleExecution -> moduleName?.let { commandLineBuilder.addParameters(listOf("-m", moduleName)) }
+    is PythonModuleExecution -> moduleName?.let { commandLineBuilder.addParameters(listOf("-m", it)) }
                                 ?: throw IllegalArgumentException("Python module name must be set")
   }
   for (parameter in parameters) {
     commandLineBuilder.addParameter(parameter.apply(targetEnvironment))
+  }
+  sdk.targetAdditionalData?.pathsAddedByUser?.map { it.value }?.forEach { path ->
+    appendToPythonPath(constant(path), targetEnvironment.targetPlatform)
   }
   for ((name, value) in envs) {
     commandLineBuilder.addEnvironmentVariable(name, value.apply(targetEnvironment))
   }
   val environmentVariablesForVirtualenv = mutableMapOf<String, String>()
   // TODO [Targets API] It would be cool to activate environment variables for any type of target
-  sdk?.let { PythonSdkType.patchEnvironmentVariablesForVirtualenv(environmentVariablesForVirtualenv, it) }
+  PythonSdkType.patchEnvironmentVariablesForVirtualenv(environmentVariablesForVirtualenv, sdk)
   // TODO [Targets API] [major] PATH env for virtualenv should extend existing PATH env
   environmentVariablesForVirtualenv.forEach { (name, value) -> commandLineBuilder.addEnvironmentVariable(name, value) }
   // TODO [Targets API] [major] `PythonSdkFlavor` should be taken into account to pass (at least) "IRONPYTHONPATH" or "JYTHONPATH"
   //  environment variables for corresponding interpreters
+  if (isUsePty) {
+    commandLineBuilder.ptyOptions = LocalTargetPtyOptions(LocalPtyOptions.DEFAULT)
+  }
   return commandLineBuilder.build()
 }
 
-/**
- * Returns the path to Python interpreter executable. The path is the path on
- * the target environment.
- */
-fun getInterpreterPath(sdk: Sdk?): String? {
-  if (sdk == null) return null
-  // `RemoteSdkPropertiesPaths` suits both `PyRemoteSdkAdditionalDataBase` and `PyTargetAwareAdditionalData`
-  return sdk.sdkAdditionalData?.let { (it as? RemoteSdkPropertiesPaths)?.interpreterPath } ?: sdk.homePath
-}
 
 data class Upload(val localPath: String, val targetPath: TargetEnvironmentFunction<String>)
 
@@ -137,6 +143,7 @@ fun PythonExecution.addPythonScriptAsParameter(targetScript: PythonExecution) {
   when (targetScript) {
     is PythonScriptExecution -> targetScript.pythonScriptPath?.let { pythonScriptPath -> addParameter(pythonScriptPath) }
                                 ?: throw IllegalArgumentException("Python script path must be set")
+
     is PythonModuleExecution -> targetScript.moduleName?.let { moduleName -> addParameters("-m", moduleName) }
                                 ?: throw IllegalArgumentException("Python module name must be set")
   }
@@ -176,6 +183,7 @@ fun appendToPythonPath(envs: MutableMap<String, TargetEnvironmentFunction<String
 fun Collection<TargetEnvironmentFunction<String>>.joinToPathValue(targetPlatform: TargetPlatform): TargetEnvironmentFunction<String> =
   this.joinToStringFunction(separator = targetPlatform.platform.pathSeparator.toString())
 
+// TODO: Make this code python-agnostic, get red of path hardcode
 fun PythonExecution.extendEnvs(additionalEnvs: Map<String, TargetEnvironmentFunction<String>>, targetPlatform: TargetPlatform) {
   for ((key, value) in additionalEnvs) {
     if (key == PYTHONPATH_ENV) {
@@ -202,12 +210,35 @@ fun TargetedCommandLine.execute(env: TargetEnvironment, indicator: ProgressIndic
   return output
 }
 
+
 /**
  * Checks whether the base directory of [project] is registered in [this] request. Adds it if it is not.
+ * You can also provide [modules] to add its content roots and [Sdk] for which user added custom paths
  */
-fun TargetEnvironmentRequest.ensureProjectDirIsOnTarget(project: Project) {
-  val basePath = project.basePath?.let { Path.of(it) } ?: return
-  if (uploadVolumes.none { it.localRootPath.isAncestor(basePath) }) {
-    uploadVolumes += UploadRoot(localRootPath = basePath, targetRootPath = TargetPath.Temporary())
+fun TargetEnvironmentRequest.ensureProjectSdkAndModuleDirsAreOnTarget(project: Project, vararg modules: Module) {
+  fun TargetEnvironmentRequest.addPathToVolume(basePath: Path) {
+    if (uploadVolumes.none { it.localRootPath.isAncestor(basePath) }) {
+      uploadVolumes += UploadRoot(localRootPath = basePath, targetRootPath = TargetPath.Temporary())
+    }
+  }
+  for (module in modules) {
+    ModuleRootManager.getInstance(module).contentRoots.forEach {
+      try {
+        addPathToVolume(it.toNioPath())
+      }
+      catch (_: UnsupportedOperationException) {
+        // VirtualFile.toNioPath throws UOE if VirtualFile has no associated path which is common case for JupyterRemoteVirtualFile
+      }
+    }
+  }
+  project.basePath?.let { addPathToVolume(Path.of(it)) }
+}
+
+/**
+ * Mimics [PyDebugRunner.disableBuiltinBreakpoint] for [PythonExecution].
+ */
+fun PythonExecution.disableBuiltinBreakpoint(sdk: Sdk?) {
+  if (sdk != null && PythonSdkFlavor.getFlavor(sdk)?.getLanguageLevel(sdk)?.isAtLeast(LanguageLevel.PYTHON37) == true) {
+    addEnvironmentVariable("PYTHONBREAKPOINT", "0")
   }
 }

@@ -1,28 +1,30 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.runToolbar
 
 import com.intellij.execution.ExecutionListener
 import com.intellij.execution.ExecutionManager
-import com.intellij.execution.impl.ExecutionManagerImpl
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.ide.ui.ToolbarSettings
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.project.Project
 
-class RunToolbarComponentService(val project: Project): Disposable {
+internal class RunToolbarComponentService(private val project: Project): Disposable {
   companion object {
-    private val LOG = Logger.getInstance(RunToolbarComponentService::class.java)
+    private val LOG = logger<RunToolbarComponentService>()
   }
-  private val extraSlots = RunToolbarSlotManager.getInstance(project)
+
+  private val extraSlots: RunToolbarSlotManager
+    get() = RunToolbarSlotManager.getInstance(project)
 
   init {
-    if (RunToolbarProcess.isAvailable) {
+    if (ToolbarSettings.getInstance().isAvailable) {
       project.messageBus.connect(this).subscribe(ExecutionManager.EXECUTION_TOPIC, object : ExecutionListener {
         override fun processNotStarted(executorId: String, env: ExecutionEnvironment) {
           ApplicationManager.getApplication().invokeLater {
-            if (env.project == project) {
+            if (env.project == project && !project.isDisposed) {
               processNotStarted(env)
             }
           }
@@ -30,7 +32,7 @@ class RunToolbarComponentService(val project: Project): Disposable {
 
         override fun processStarted(executorId: String, env: ExecutionEnvironment, handler: ProcessHandler) {
           ApplicationManager.getApplication().invokeLater {
-            if (env.project == project) {
+            if (env.project == project && !project.isDisposed) {
               start(env)
             }
           }
@@ -38,7 +40,7 @@ class RunToolbarComponentService(val project: Project): Disposable {
 
         override fun processTerminating(executorId: String, env: ExecutionEnvironment, handler: ProcessHandler) {
           ApplicationManager.getApplication().invokeLater {
-            if (env.project == project) {
+            if (env.project == project && !project.isDisposed) {
               terminating(env)
             }
           }
@@ -46,28 +48,10 @@ class RunToolbarComponentService(val project: Project): Disposable {
 
         override fun processTerminated(executorId: String, env: ExecutionEnvironment, handler: ProcessHandler, exitCode: Int) {
           ApplicationManager.getApplication().invokeLater {
-            if (env.project == project) {
+            if (env.project == project && !project.isDisposed) {
               terminated(env)
             }
           }
-        }
-      })
-
-      extraSlots.addListener(object : ActiveListener {
-        override fun enabled() {
-          val environments = ExecutionManagerImpl.getAllDescriptors(project)
-            .mapNotNull { it.environment() }
-            .filter { it.contentToReuse?.processHandler?.isProcessTerminated == false }
-
-          if (RunToolbarProcess.logNeeded) LOG.info("ENABLED. put data ${environments.map { "$it (${it.executionId}); " }} RunToolbar")
-          environments.forEach {
-            extraSlots.processStarted(it)
-          }
-        }
-
-        override fun disabled() {
-          if (RunToolbarProcess.logNeeded) LOG.info("DISABLED RunToolbar")
-          super.disabled()
         }
       })
     }

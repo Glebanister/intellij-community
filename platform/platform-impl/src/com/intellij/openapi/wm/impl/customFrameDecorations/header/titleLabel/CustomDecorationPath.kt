@@ -22,15 +22,11 @@ import java.beans.PropertyChangeListener
 import javax.swing.JComponent
 import javax.swing.JFrame
 
-internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFilePath(), CustomHeaderTitle {
+internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFilePath(frame), CustomHeaderTitle {
   companion object {
-    fun createInstance(frame: JFrame): CustomDecorationPath {
-      return CustomDecorationPath(frame)
-    }
+    fun createInstance(frame: JFrame): CustomDecorationPath = CustomDecorationPath(frame)
 
-    fun createMainInstance(frame: JFrame): CustomDecorationPath {
-      return MainCustomDecorationPath(frame)
-    }
+    fun createMainInstance(frame: JFrame): CustomDecorationPath = MainCustomDecorationPath(frame)
   }
 
   private val projectManagerListener = object : ProjectManagerListener {
@@ -114,8 +110,7 @@ internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFile
     frame.removePropertyChangeListener(titleChangeListener)
   }
 
-  private fun getMouseInsetList(view: JComponent,
-                                mouseInsets: Int = 1): List<RelativeRectangle> {
+  private fun getMouseInsetList(view: JComponent, mouseInsets: Int = 1): List<RelativeRectangle> {
     return listOf(
       RelativeRectangle(view, Rectangle(0, 0, mouseInsets, view.height)),
       RelativeRectangle(view, Rectangle(0, 0, view.width, mouseInsets)),
@@ -127,7 +122,7 @@ internal open class CustomDecorationPath(val frame: JFrame) : SelectedEditorFile
   }
 }
 
-internal class MainCustomDecorationPath(frame: JFrame) : CustomDecorationPath(frame) {
+private class MainCustomDecorationPath(frame: JFrame) : CustomDecorationPath(frame) {
   private val classKey = "ide.borderless.tab.caption.in.title"
 
   private val registryListener = object : RegistryValueListener {

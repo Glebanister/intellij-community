@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.fir.uast;
 
@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -26,6 +26,26 @@ public class FirUastDeclarationTestGenerated extends AbstractFirUastDeclarationT
     @TestMetadata("annotationOnElvis.kt")
     public void testAnnotationOnElvis() throws Exception {
         runTest("testData/declaration/annotationOnElvis.kt");
+    }
+
+    @TestMetadata("commentsOnDataClass.kt")
+    public void testCommentsOnDataClass() throws Exception {
+        runTest("testData/declaration/commentsOnDataClass.kt");
+    }
+
+    @TestMetadata("commentsOnProperties.kt")
+    public void testCommentsOnProperties() throws Exception {
+        runTest("testData/declaration/commentsOnProperties.kt");
+    }
+
+    @TestMetadata("constructorProperties.kt")
+    public void testConstructorProperties() throws Exception {
+        runTest("testData/declaration/constructorProperties.kt");
+    }
+
+    @TestMetadata("constructorWithJvmOverloads.kt")
+    public void testConstructorWithJvmOverloads() throws Exception {
+        runTest("testData/declaration/constructorWithJvmOverloads.kt");
     }
 
     @TestMetadata("doWhile.kt")
@@ -48,9 +68,24 @@ public class FirUastDeclarationTestGenerated extends AbstractFirUastDeclarationT
         runTest("testData/declaration/importOnDemand.kt");
     }
 
+    @TestMetadata("init.kt")
+    public void testInit() throws Exception {
+        runTest("testData/declaration/init.kt");
+    }
+
+    @TestMetadata("interfaceCompanionObject.kt")
+    public void testInterfaceCompanionObject() throws Exception {
+        runTest("testData/declaration/interfaceCompanionObject.kt");
+    }
+
     @TestMetadata("labeledExpression.kt")
     public void testLabeledExpression() throws Exception {
         runTest("testData/declaration/labeledExpression.kt");
+    }
+
+    @TestMetadata("mangling.kt")
+    public void testMangling() throws Exception {
+        runTest("testData/declaration/mangling.kt");
     }
 
     @TestMetadata("objects.kt")
@@ -58,8 +93,23 @@ public class FirUastDeclarationTestGenerated extends AbstractFirUastDeclarationT
         runTest("testData/declaration/objects.kt");
     }
 
+    @TestMetadata("overriddenYetDeprecated.kt")
+    public void testOverriddenYetDeprecated() throws Exception {
+        runTest("testData/declaration/overriddenYetDeprecated.kt");
+    }
+
+    @TestMetadata("reflectKclassExperimental.kt")
+    public void testReflectKclassExperimental() throws Exception {
+        runTest("testData/declaration/reflectKclassExperimental.kt");
+    }
+
     @TestMetadata("retention.kt")
     public void testRetention() throws Exception {
         runTest("testData/declaration/retention.kt");
+    }
+
+    @TestMetadata("returns.kt")
+    public void testReturns() throws Exception {
+        runTest("testData/declaration/returns.kt");
     }
 }

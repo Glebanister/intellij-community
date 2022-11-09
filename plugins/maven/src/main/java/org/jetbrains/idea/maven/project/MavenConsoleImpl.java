@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.project;
 
 import com.intellij.execution.filters.RegexpFilter;
@@ -106,28 +106,21 @@ public class MavenConsoleImpl extends MavenConsole {
   protected void doPrint(String text, OutputType type) {
     ensureAttachedToToolWindow();
 
-    ConsoleViewContentType contentType;
-    switch (type) {
-      case SYSTEM:
-        contentType = ConsoleViewContentType.SYSTEM_OUTPUT;
-        break;
-      case ERROR:
-        contentType = ConsoleViewContentType.ERROR_OUTPUT;
-        break;
-      case NORMAL:
-      default:
-        contentType = ConsoleViewContentType.NORMAL_OUTPUT;
-    }
-   myConsoleView.print(text, contentType);
+    ConsoleViewContentType contentType = switch (type) {
+      case SYSTEM -> ConsoleViewContentType.SYSTEM_OUTPUT;
+      case ERROR -> ConsoleViewContentType.ERROR_OUTPUT;
+      case NORMAL -> ConsoleViewContentType.NORMAL_OUTPUT;
+    };
+    myConsoleView.print(text, contentType);
   }
 
   private void ensureAttachedToToolWindow() {
     if (!isOpen.compareAndSet(false, true)) return;
 
     MavenUtil.invokeLater(myProject, () -> {
-      MessageView messageView = MessageView.SERVICE.getInstance(myProject);
+      MessageView messageView = MessageView.getInstance(myProject);
 
-      Content content = ContentFactory.SERVICE.getInstance().createContent(
+      Content content = ContentFactory.getInstance().createContent(
         myConsoleView.getComponent(), myTitle, true);
       content.putUserData(CONSOLE_KEY, this);
       messageView.getContentManager().addContent(content);
@@ -156,7 +149,7 @@ public class MavenConsoleImpl extends MavenConsole {
   }
 
   public void close() {
-    MessageView messageView = MessageView.SERVICE.getInstance(myProject);
+    MessageView messageView = MessageView.getInstance(myProject);
     for (Content each : messageView.getContentManager().getContents()) {
       MavenConsoleImpl console = each.getUserData(CONSOLE_KEY);
       if (console != null) {

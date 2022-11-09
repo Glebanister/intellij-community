@@ -26,8 +26,8 @@ abstract class SurroundAndUnwrapLesson
 
       task("SurroundWith") {
         proposeIfModified {
-          editor.caretModel.currentCaret.selectionStart != previous.sample.selection?.first ||
-          editor.caretModel.currentCaret.selectionEnd != previous.sample.selection?.second
+          editor.caretModel.currentCaret.selectionStart != sample.selection?.first ||
+          editor.caretModel.currentCaret.selectionEnd != sample.selection?.second
         }
         text(LessonsBundle.message("surround.and.unwrap.invoke.surround", action(it)))
         triggerAndBorderHighlight().listItem { item ->
@@ -101,8 +101,6 @@ abstract class SurroundAndUnwrapLesson
       else null
     }
   }
-
-  override val suitableTips = listOf("SurroundWith")
 
   override val helpLinks: Map<String, String> = mapOf(
     Pair(LessonsBundle.message("surround.and.unwrap.help.surround.code.fragments"),

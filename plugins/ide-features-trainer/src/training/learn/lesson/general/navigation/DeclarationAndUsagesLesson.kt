@@ -27,6 +27,8 @@ abstract class DeclarationAndUsagesLesson
 
   override val lessonContent: LessonContext.() -> Unit
     get() = {
+      sdkConfigurationTasks()
+
       setInitialPosition()
 
       prepareRuntimeTask {
@@ -143,8 +145,6 @@ abstract class DeclarationAndUsagesLesson
   private data class MyInfo(val target: PsiElement, val position: MyPosition)
 
   private data class MyPosition(val file: PsiFile, val offset: Int)
-
-  override val suitableTips = listOf("GoToDeclaration", "ShowUsages")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(LessonsBundle.message("declaration.and.usages.help.link"),

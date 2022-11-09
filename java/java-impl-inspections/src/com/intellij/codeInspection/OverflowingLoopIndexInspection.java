@@ -17,7 +17,7 @@ public class OverflowingLoopIndexInspection extends AbstractBaseJavaLocalInspect
   public PsiElementVisitor buildVisitor(@NotNull ProblemsHolder holder, boolean isOnTheFly) {
     return new JavaElementVisitor() {
       @Override
-      public void visitForStatement(PsiForStatement statement) {
+      public void visitForStatement(@NotNull PsiForStatement statement) {
         PsiStatement initialization = statement.getInitialization();
         PsiDeclarationStatement declaration = tryCast(initialization, PsiDeclarationStatement.class);
         if (declaration == null) return;
@@ -45,14 +45,11 @@ public class OverflowingLoopIndexInspection extends AbstractBaseJavaLocalInspect
     VarLower;
 
     ConditionType inverted() {
-      switch (this) {
-        case VarGreater:
-          return VarLower;
-        case VarLower:
-          return VarGreater;
-        default:
-          return Unknown;
-      }
+      return switch (this) {
+        case VarGreater -> VarLower;
+        case VarLower -> VarGreater;
+        default -> Unknown;
+      };
     }
   }
 

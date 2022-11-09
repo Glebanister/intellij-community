@@ -21,6 +21,8 @@ class JavaInheritanceHierarchyLesson
   override val sampleFilePath: String = "src/InheritanceHierarchySample.java"
 
   override val lessonContent: LessonContext.() -> Unit = {
+    sdkConfigurationTasks()
+
     caret("foo(demo)")
 
     actionTask("GotoImplementation") {
@@ -131,8 +133,6 @@ class JavaInheritanceHierarchyLesson
 
   private fun TaskContext.findToolWindow() = strong(UIBundle.message("tool.window.name.find"))
   private fun TaskContext.hierarchyToolWindow() = strong(UIBundle.message("tool.window.name.hierarchy"))
-
-  override val suitableTips = listOf("HierarchyBrowser")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(JavaLessonsBundle.message("java.inheritance.hierarchy.help.link"),

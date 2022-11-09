@@ -2,7 +2,6 @@
 
 package com.intellij.ide.util.gotoByName;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.primitives.Ints;
 import com.intellij.Patches;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
@@ -13,6 +12,7 @@ import com.intellij.ide.IdeBundle;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.actions.CopyReferenceAction;
 import com.intellij.ide.actions.GotoFileAction;
+import com.intellij.ide.impl.DataValidators;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextBorder;
 import com.intellij.ide.ui.laf.darcula.ui.DarculaTextFieldUI;
 import com.intellij.lang.LangBundle;
@@ -75,10 +75,7 @@ import com.intellij.util.indexing.DumbModeAccessType;
 import com.intellij.util.text.Matcher;
 import com.intellij.util.text.MatcherHolder;
 import com.intellij.util.ui.*;
-import org.jetbrains.annotations.Nls;
-import org.jetbrains.annotations.NonNls;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -265,40 +262,43 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
 
     @Override
     public Object getData(@NotNull String dataId) {
-      if (PlatformDataKeys.SEARCH_INPUT_TEXT.is(dataId)) {
-        return myTextField.getText();
-      }
-
       if (PlatformCoreDataKeys.HELP_ID.is(dataId)) {
         return myModel.getHelpId();
       }
+      if (PlatformCoreDataKeys.BGT_DATA_PROVIDER.is(dataId)) {
+        List<Object> selection = getChosenElements();
+        return (DataProvider)slowId -> getSlowData(slowId, selection);
+      }
+      else if (PlatformDataKeys.DOMINANT_HINT_AREA_RECTANGLE.is(dataId)) {
+        return getBounds();
+      }
+      return null;
+    }
 
+    private @Nullable Object getSlowData(@NotNull String dataId, @NotNull List<Object> selection) {
       if (myCalcElementsThread != null) {
         return null;
       }
-      if (CommonDataKeys.PSI_ELEMENT.is(dataId)) {
-        Object element = getChosenElement();
 
+      if (CommonDataKeys.PSI_ELEMENT.is(dataId)) {
+        Object element = ContainerUtil.getOnlyItem(selection);
         if (element instanceof PsiElement) {
           return element;
         }
 
         if (element instanceof DataProvider) {
-          return ((DataProvider)element).getData(dataId);
+          Object data = ((DataProvider)element).getData(dataId);
+          return data == null ? null : DataValidators.validOrNull(data, dataId, element);
         }
       }
-      else if (LangDataKeys.PSI_ELEMENT_ARRAY.is(dataId)) {
-        final List<Object> chosenElements = getChosenElements();
-        List<PsiElement> result = new ArrayList<>(chosenElements.size());
-        for (Object element : chosenElements) {
+      else if (PlatformCoreDataKeys.PSI_ELEMENT_ARRAY.is(dataId)) {
+        List<PsiElement> result = new ArrayList<>(selection.size());
+        for (Object element : selection) {
           if (element instanceof PsiElement) {
             result.add((PsiElement)element);
           }
         }
         return PsiUtilCore.toPsiElementArray(result);
-      }
-      else if (PlatformDataKeys.DOMINANT_HINT_AREA_RECTANGLE.is(dataId)) {
-        return getBounds();
       }
       return null;
     }
@@ -572,28 +572,18 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
           keyCode = e.getKeyCode();
         }
         switch (keyCode) {
-          case KeyEvent.VK_DOWN:
-            ScrollingUtil.moveDown(myList, e.getModifiersEx());
-            break;
-          case KeyEvent.VK_UP:
-            ScrollingUtil.moveUp(myList, e.getModifiersEx());
-            break;
-          case KeyEvent.VK_PAGE_UP:
-            ScrollingUtil.movePageUp(myList);
-            break;
-          case KeyEvent.VK_PAGE_DOWN:
-            ScrollingUtil.movePageDown(myList);
-            break;
-          case KeyEvent.VK_TAB:
-            close(true);
-            break;
-          case KeyEvent.VK_ENTER:
+          case KeyEvent.VK_DOWN -> ScrollingUtil.moveDown(myList, e.getModifiersEx());
+          case KeyEvent.VK_UP -> ScrollingUtil.moveUp(myList, e.getModifiersEx());
+          case KeyEvent.VK_PAGE_UP -> ScrollingUtil.movePageUp(myList);
+          case KeyEvent.VK_PAGE_DOWN -> ScrollingUtil.movePageDown(myList);
+          case KeyEvent.VK_TAB -> close(true);
+          case KeyEvent.VK_ENTER -> {
             if (myList.getSelectedValue() == EXTRA_ELEM) {
               myMaximumListSizeLimit += myListSizeIncreasing;
               rebuildList(new SelectIndex(myList.getSelectedIndex()), myRebuildDelay, ModalityState.current(), null);
               e.consume();
             }
-            break;
+          }
         }
       }
     });
@@ -1638,6 +1628,11 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
       e.getPresentation().setEnabled(elements.length > 0);
     }
 
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
+
     public abstract PsiElement @NotNull [] getElements();
   }
 
@@ -1686,6 +1681,11 @@ public abstract class ChooseByNameBase implements ChooseByNameViewModel {
     @Override
     public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabled(myTextField.getSelectedText() == null && getChosenElement() instanceof PsiElement);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.EDT;
     }
 
     @Override

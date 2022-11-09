@@ -3,6 +3,7 @@ package com.intellij.psi.search;
 
 import com.intellij.core.CoreBundle;
 import com.intellij.model.ModelBranch;
+import com.intellij.notebook.editor.BackedVirtualFile;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeRegistry;
 import com.intellij.openapi.module.Module;
@@ -339,7 +340,8 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
   @NotNull
   @Contract(pure = true)
   public static GlobalSearchScope fileScope(@NotNull PsiFile psiFile) {
-    return new FileScope(psiFile.getProject(), psiFile.getVirtualFile(), null);
+    VirtualFile virtualFile = psiFile.getVirtualFile();
+    return new FileScope(psiFile.getProject(), virtualFile != null ? BackedVirtualFile.getOriginFileIfBacked(virtualFile) : null, null);
   }
 
   @NotNull
@@ -822,6 +824,11 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
     }
 
     @Override
+    public @NotNull Collection<VirtualFile> getFilesIfCollection() {
+      return Collections.singleton(myVirtualFile);
+    }
+
+    @Override
     public boolean contains(@NotNull VirtualFile file) {
       return Comparing.equal(myVirtualFile, file);
     }
@@ -892,6 +899,11 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
       myHasFilesOutOfProjectRoots = hasFilesOutOfProjectRoots;
     }
 
+    @Override
+    public @Nullable Collection<VirtualFile> getFilesIfCollection() {
+      return getFiles();
+    }
+
     abstract @NotNull VirtualFileSet getFiles();
 
     @Override
@@ -932,12 +944,12 @@ public abstract class GlobalSearchScope extends SearchScope implements ProjectAw
 
     @Override
     public boolean contains(int fileId) {
-      return ((CompactVirtualFileSet)getFiles()).containsId(fileId);
+      return ((VirtualFileSetEx)getFiles()).containsId(fileId);
     }
 
     @Override
     public int @NotNull [] asArray() {
-      return ((CompactVirtualFileSet)getFiles()).onlyInternalFileIds();
+      return ((VirtualFileSetEx)getFiles()).onlyInternalFileIds();
     }
   }
 

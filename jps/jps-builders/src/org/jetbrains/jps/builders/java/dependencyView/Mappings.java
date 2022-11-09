@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.jps.builders.java.dependencyView;
 
 import com.intellij.openapi.diagnostic.Logger;
@@ -34,7 +34,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public final class Mappings {
+// not final - used by Gosu plugin
+public class Mappings {
   private final static Logger LOG = Logger.getInstance(Mappings.class);
   public static final String PROCESS_CONSTANTS_NON_INCREMENTAL_PROPERTY = "compiler.process.constants.non.incremental";
   private boolean myProcessConstantsIncrementally = !Boolean.parseBoolean(System.getProperty(PROCESS_CONSTANTS_NON_INCREMENTAL_PROPERTY, "false"));
@@ -331,7 +332,7 @@ public final class Mappings {
       return depClasses;
     }
 
-    private IntSet propagateMemberAccessRec(final IntSet acc, final boolean isField, final boolean root, final Predicate<ProtoMember> isSame, final int reflcass) {
+    private IntSet propagateMemberAccessRec(final IntSet acc, final boolean isField, final boolean root, final Predicate<? super ProtoMember> isSame, final int reflcass) {
       if (acc.contains(reflcass)) {
         return acc; // SOE prevention
       }
@@ -361,7 +362,7 @@ public final class Mappings {
       return acc;
     }
 
-    IntSet propagateMemberAccess(final boolean isField, final Predicate<ProtoMember> isSame, final int className) {
+    IntSet propagateMemberAccess(final boolean isField, final Predicate<? super ProtoMember> isSame, final int className) {
       return propagateMemberAccessRec(new IntOpenHashSet(DEFAULT_SET_CAPACITY, DEFAULT_SET_LOAD_FACTOR), isField, true, isSame, className);
     }
 
@@ -390,7 +391,7 @@ public final class Mappings {
       };
     }
 
-    private void addOverridingMethods(final MethodRepr m, final ClassRepr fromClass, final Predicate<MethodRepr> predicate, final Collection<? super Pair<MethodRepr, ClassRepr>> container, IntSet visitedClasses) {
+    private void addOverridingMethods(final MethodRepr m, final ClassRepr fromClass, final Predicate<? super MethodRepr> predicate, final Collection<? super Pair<MethodRepr, ClassRepr>> container, IntSet visitedClasses) {
       if (m.name == myInitName) {
         return; // overriding is not defined for constructors
       }
@@ -441,7 +442,7 @@ public final class Mappings {
       return result;
     }
 
-    private boolean hasOverriddenMethods(final ClassRepr fromClass, final Predicate<MethodRepr> predicate, IntSet visitedClasses) {
+    private boolean hasOverriddenMethods(final ClassRepr fromClass, final Predicate<? super MethodRepr> predicate, IntSet visitedClasses) {
       if (visitedClasses == null) {
         visitedClasses = new IntOpenHashSet();
         visitedClasses.add(fromClass.name);
@@ -482,7 +483,7 @@ public final class Mappings {
       return false;
     }
 
-    private void addOverridenMethods(final ClassRepr fromClass, final Predicate<MethodRepr> predicate, final Collection<? super Pair<MethodRepr, ClassRepr>> container, IntSet visitedClasses) {
+    private void addOverridenMethods(final ClassRepr fromClass, final Predicate<? super MethodRepr> predicate, final Collection<? super Pair<MethodRepr, ClassRepr>> container, IntSet visitedClasses) {
       if (visitedClasses == null) {
         visitedClasses = new IntOpenHashSet();
         visitedClasses.add(fromClass.name);
@@ -576,7 +577,7 @@ public final class Mappings {
       return Iterators.flat(collectRecursively(cls, c-> c.getMethods()));
     }
 
-    private Iterable<OverloadDescriptor> findAllOverloads(final ClassRepr cls, Function<MethodRepr, Integer> correspondenceFinder) {
+    private Iterable<OverloadDescriptor> findAllOverloads(final ClassRepr cls, Function<? super MethodRepr, Integer> correspondenceFinder) {
       Function<ClassRepr, Iterable<OverloadDescriptor>> converter = c -> c == null? Collections.emptyList() : Iterators.filter(Iterators.map(c.getMethods(), m -> {
         Integer accessScope = correspondenceFinder.apply(m);
         return accessScope != null? new OverloadDescriptor(accessScope, m, c) : null;
@@ -588,7 +589,7 @@ public final class Mappings {
       ));
     }
 
-    private <T> Iterable<T> collectRecursively(ClassRepr cls, Function<ClassRepr, T> mapper) {
+    private <T> Iterable<T> collectRecursively(ClassRepr cls, Function<? super ClassRepr, ? extends T> mapper) {
       return Iterators.flat(Iterators.asIterable(mapper.apply(cls)), Iterators.flat(Iterators.map(cls.getSuperTypes(), st -> {
         final ClassRepr cr = classReprByName(st.className);
         return cr != null ? collectRecursively(cr, mapper) : Collections.emptyList();
@@ -1663,6 +1664,17 @@ public final class Mappings {
       assert myCompiledFiles != null;
       assert myAffectedFiles != null;
 
+      if (classRepr.isEnum()) {
+        debug("Constants added to enum, affecting class usages ", classRepr.name);
+        final UsageRepr.Usage usage = classRepr.createUsage();
+        state.myAffectedUsages.add(usage);
+        // only mark synthetic classes used to implement switch statements: this will limit the number of recompiled classes to those where switch statements on changed enum are used
+        state.myUsageConstraints.put(usage, residence -> {
+          final ClassRepr candidate = myPresent.classReprByName(residence);
+          return candidate != null && candidate.isSynthetic();
+        });
+      }
+      
       for (final FieldRepr f : added) {
         debug("Field: ", f.name);
 
@@ -2061,7 +2073,7 @@ public final class Mappings {
               state.myAffectedUsages.add(changedClass.createUsage());
             }
             else if (diff.targetAttributeCategoryMightChange()) {
-              debug("Annotation's attribute category in bytecode might be affected because of TYPE_USE target, adding class usage to affected usages");
+              debug("Annotation's attribute category in bytecode might be affected because of TYPE_USE or RECORD_COMPONENT target, adding class usage to affected usages");
               state.myAffectedUsages.add(changedClass.createUsage());
             }
             else {
@@ -2272,65 +2284,53 @@ public final class Mappings {
 
     private boolean calculateAffectedFiles(final DiffState state) {
       debug("Checking dependent classes:");
-      Collection<? super File> affectedFiles = myAffectedFiles;
-      assert affectedFiles != null;
-      Collection<? extends File> compiledFiles = myCompiledFiles;
-      assert compiledFiles != null;
-      final Ref<Boolean> incrementalMode = new Ref<>(Boolean.TRUE);
-
+      assert myAffectedFiles != null;
+      assert myCompiledFiles != null;
       IntIterator iterator = state.myDependants.iterator();
       while (iterator.hasNext()) {
         int depClass = iterator.nextInt();
         Iterable<File> depFiles = classToSourceFileGet(depClass);
         if (depFiles != null) {
           for (File depFile : depFiles) {
-            processDependentFile(depClass, depFile, incrementalMode, state, affectedFiles, compiledFiles);
-            if (!incrementalMode.get()) {
-              break;
+            if (!processDependentFile(depClass, depFile, state)) {
+              debug("Turning non-incremental for the BuildTarget because dependent class is annotation-processor generated");
+              return false;
             }
           }
         }
       }
-      return incrementalMode.get();
+      return true;
     }
 
-    private void processDependentFile(int depClass,
-                                      @NotNull File depFile,
-                                      Ref<Boolean> incrementalMode,
-                                      DiffState state,
-                                      Collection<? super File> affectedFiles,
-                                      Collection<? extends File> compiledFiles) {
-      if (affectedFiles.contains(depFile)) {
-        return;
-      }
-
+    @SuppressWarnings("DataFlowIssue")
+    private boolean processDependentFile(int depClass, @NotNull File depFile, DiffState state) {
       debug("Dependent class: ", depClass);
 
       final ClassFileRepr repr = getReprByName(depFile, depClass);
       if (repr == null) {
-        return;
+        return true;
       }
+      boolean isGenerated = false;
       if (repr instanceof ClassRepr) {
         final ClassRepr clsRepr = (ClassRepr)repr;
-        if (!clsRepr.hasInlinedConstants() && compiledFiles.contains(depFile)) {
+        if (!clsRepr.hasInlinedConstants() && myCompiledFiles.contains(depFile)) {
           // Classes containing inlined constants from other classes and compiled against older constant values
-          // may need to be recompiled several times within a compile session.
-          // Otherwise it is safe to skip the file if it has already been compiled in this session.
-          return;
+          // may need to be recompiled several times within compile session.
+          // Otherwise, it is safe to skip the file if it has already been compiled in this session.
+          return true;
         }
+        
         // If among affected files are annotation processor-generated, then we might need to re-generate them.
         // To achieve this, we need to recompile the whole chunk which will cause processors to re-generate these affected files
-
-        if (clsRepr.isGenerated()) {
-          debug("Turning non-incremental for the BuildTarget because dependent class is annotation-processor generated");
-          incrementalMode.set(Boolean.FALSE);
-          return;
-        }
+        isGenerated = clsRepr.isGenerated();
       }
 
+      if (myAffectedFiles.contains(depFile)) {
+        return !isGenerated;
+      }
       final Set<UsageRepr.Usage> depUsages = repr.getUsages();
       if (depUsages == null || depUsages.isEmpty()) {
-        return;
+        return !isGenerated;
       }
 
       for (UsageRepr.Usage usage : depUsages) {
@@ -2339,8 +2339,8 @@ public final class Mappings {
           for (final UsageRepr.AnnotationUsage query : state.myAnnotationQuery) {
             if (query.satisfies(annotationUsage)) {
               debug("Added file due to annotation query");
-              affectedFiles.add(depFile);
-              return;
+              myAffectedFiles.add(depFile);
+              return !isGenerated;
             }
           }
         }
@@ -2348,16 +2348,17 @@ public final class Mappings {
           final UsageConstraint constraint = state.myUsageConstraints.get(usage);
           if (constraint == null) {
             debug("Added file with no constraints");
-            affectedFiles.add(depFile);
-            return;
+            myAffectedFiles.add(depFile);
+            return !isGenerated;
           }
           if (constraint.checkResidence(depClass)) {
             debug("Added file with satisfied constraint");
-            affectedFiles.add(depFile);
-            return;
+            myAffectedFiles.add(depFile);
+            return !isGenerated;
           }
         }
       }
+      return true;
     }
 
     boolean differentiate() {
@@ -2945,7 +2946,7 @@ public final class Mappings {
         }
       }
 
-      private boolean addConstantUsages(ClassRepr repr, Collection<Callbacks.ConstantRef> cRefs) {
+      private boolean addConstantUsages(ClassRepr repr, Collection<? extends Callbacks.ConstantRef> cRefs) {
         boolean addedNewUsages = false;
         if (cRefs != null) {
           for (Callbacks.ConstantRef ref : cRefs) {
@@ -3185,7 +3186,7 @@ public final class Mappings {
     }
   }
 
-  private static <T> Supplier<T> lazy(Supplier<T> calculation) {
+  private static <T> Supplier<T> lazy(Supplier<? extends T> calculation) {
     return new Supplier<T>() {
       Ref<T> calculated;
       @Override

@@ -11,10 +11,7 @@ import com.intellij.ui.ComponentUtil;
 import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.scale.JBUIScale;
-import com.intellij.util.ui.GraphicsUtil;
-import com.intellij.util.ui.JBFont;
-import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.*;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -49,7 +46,7 @@ public class TextPanel extends NonOpaquePanel implements Accessible {
 
   @Override
   public Font getFont() {
-    return SystemInfo.isMac && !ExperimentalUI.isNewUI() ? JBUI.Fonts.label(11) : JBFont.label();
+    return SystemInfo.isMac && !ExperimentalUI.isNewUI() ? JBFont.small() : JBFont.label();
   }
 
   public void recomputeSize() {
@@ -91,11 +88,10 @@ public class TextPanel extends NonOpaquePanel implements Accessible {
     }
 
     var effect = ComponentUtil.getClientProperty(this, IdeStatusBarImpl.WIDGET_EFFECT_KEY);
-    var foreground = isEnabled() ?
-                   effect == IdeStatusBarImpl.WidgetEffect.PRESSED ? JBUI.CurrentTheme.StatusBar.Widget.PRESSED_FOREGROUND :
-                   effect == IdeStatusBarImpl.WidgetEffect.HOVER ? JBUI.CurrentTheme.StatusBar.Widget.HOVER_FOREGROUND :
-                   JBUI.CurrentTheme.StatusBar.Widget.FOREGROUND :
-                 UIUtil.getInactiveTextColor();
+    Color foreground;
+    foreground = isEnabled() ? effect == IdeStatusBarImpl.WidgetEffect.PRESSED ? JBUI.CurrentTheme.StatusBar.Widget.PRESSED_FOREGROUND :
+                               effect == IdeStatusBarImpl.WidgetEffect.HOVER ? JBUI.CurrentTheme.StatusBar.Widget.HOVER_FOREGROUND :
+                               JBUI.CurrentTheme.StatusBar.Widget.FOREGROUND : NamedColorUtil.getInactiveTextColor();
 
     g2.setColor(foreground);
     g2.drawString(s, x, y);

@@ -15,7 +15,6 @@ import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.table.TableView
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.ListTableModel
-import com.intellij.util.ui.components.BorderLayoutPanel
 import java.awt.Component
 import javax.swing.Icon
 import javax.swing.JComponent
@@ -25,7 +24,7 @@ import javax.swing.table.TableCellRenderer
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 
-internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) : BorderLayoutPanel() {
+internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) {
   val component: JComponent
 
   private val model: ListTableModel<ExternalToolConfiguration> = models.tableModel
@@ -74,7 +73,7 @@ internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) 
   }
 
   private fun addData() {
-    val fileTypes = FileTypeManager.getInstance().registeredFileTypes.map { it.displayName }.toSet()
+    val fileTypes = FileTypeManager.getInstance().registeredFileTypes.map { it.name }.toSet()
     val configuredFileTypes = models.tableModel.items.map { it.fileTypeName }.toSet()
     val availableFileTypes = fileTypes - configuredFileTypes
 
@@ -96,7 +95,6 @@ internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) 
   class FileTypeColumn(private val models: ExternalToolsModels) : ColumnInfo<ExternalToolConfiguration, String>(
     DiffBundle.message("settings.external.diff.table.filetype.column")
   ) {
-    private val fileTypes = FileTypeManager.getInstance().registeredFileTypes.map { it.displayName }.toSet()
 
     override fun valueOf(externalToolConfiguration: ExternalToolConfiguration): String {
       return externalToolConfiguration.fileTypeName
@@ -113,6 +111,7 @@ internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) 
     override fun isCellEditable(item: ExternalToolConfiguration): Boolean = true
 
     private fun createComboBoxRendererAndEditor(): ComboBoxTableRenderer<String> {
+      val fileTypes = FileTypeManager.getInstance().registeredFileTypes.map { it.name }.toSet()
       val configuredFileTypes = models.tableModel.items.map { it.fileTypeName }.toSet()
       val availableFileTypes = fileTypes - configuredFileTypes
 
@@ -120,7 +119,13 @@ internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) 
     }
 
     private class FileTypeCellComboBox(values: Array<String>) : ComboBoxTableRenderer<String>(values) {
-      private val fileTypeManager = FileTypeManager.getInstance()
+      private val fileTypes = FileTypeManager.getInstance().registeredFileTypes.associateBy { type -> type.name }
+
+      override fun getTextFor(value: String): String {
+        // renderer for DEFAULT_TOOL_NAME is overridden
+        return fileTypes[value]?.displayName
+               ?: DiffBundle.message("settings.external.diff.comboBox.value.unknown.filetype.text", value)
+      }
 
       override fun getTableCellRendererComponent(table: JTable, value: Any,
                                                  isSelected: Boolean, hasFocus: Boolean,
@@ -142,7 +147,7 @@ internal class ExternalToolsTablePanel(private val models: ExternalToolsModels) 
         return super.getTableCellEditorComponent(table, value, isSelected, row, column)
       }
 
-      override fun getIconFor(value: String): Icon? = fileTypeManager.findFileTypeByName(value)?.icon
+      override fun getIconFor(value: String): Icon? = fileTypes[value]?.icon
     }
   }
 

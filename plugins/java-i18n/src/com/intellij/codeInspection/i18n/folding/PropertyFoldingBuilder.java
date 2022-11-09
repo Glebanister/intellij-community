@@ -40,7 +40,7 @@ public class PropertyFoldingBuilder extends FoldingBuilderEx {
   @Override
   public FoldingDescriptor @NotNull [] buildFoldRegions(@NotNull PsiElement element, @NotNull Document document, boolean quick) {
     if (!(element instanceof PsiFile) || quick || !isFoldingsOn()) {
-      return FoldingDescriptor.EMPTY;
+      return FoldingDescriptor.EMPTY_ARRAY;
     }
     final PsiFile file = (PsiFile)element;
     final List<FoldingDescriptor> result = new ArrayList<>();
@@ -48,7 +48,7 @@ public class PropertyFoldingBuilder extends FoldingBuilderEx {
     //hack here because JspFile PSI elements are not threaded correctly via nextSibling/prevSibling
     file.accept(hasJsp ? new JavaRecursiveElementWalkingVisitor() {
       @Override
-      public void visitLiteralExpression(PsiLiteralExpression expression) {
+      public void visitLiteralExpression(@NotNull PsiLiteralExpression expression) {
         ProgressManager.checkCanceled();
         ULiteralExpression uLiteralExpression = UastContextKt.toUElement(expression, ULiteralExpression.class);
         if (uLiteralExpression != null) {
@@ -68,7 +68,7 @@ public class PropertyFoldingBuilder extends FoldingBuilderEx {
       }
     });
 
-    return result.toArray(FoldingDescriptor.EMPTY);
+    return result.toArray(FoldingDescriptor.EMPTY_ARRAY);
   }
 
   private static boolean isFoldingsOn() {

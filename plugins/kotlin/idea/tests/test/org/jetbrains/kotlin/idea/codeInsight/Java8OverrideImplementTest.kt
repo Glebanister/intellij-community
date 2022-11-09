@@ -25,7 +25,7 @@ abstract class Java8OverrideImplementTest<T : ClassMember> : AbstractOverrideImp
     override val testDataDirectory: File
         get() = IDEA_TEST_DATA_DIR.resolve("codeInsight/overrideImplement/jdk8")
 
-    override fun getProjectDescriptor() = KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE_FULL_JDK
+    override fun getProjectDescriptor() = KotlinWithJdkAndRuntimeLightProjectDescriptor.getInstanceFullJdk()
 
     fun testOverrideCollectionStream() = doOverrideFileTest("stream")
     
@@ -35,9 +35,9 @@ abstract class Java8OverrideImplementTest<T : ClassMember> : AbstractOverrideImp
     fun <L : T> foo(l : L)
 }"""
         )
+        val javaFile = myFixture.configureByFile(getTestName(true) + ".java")
 
         val superClass = (file as KtFile).classes[0]
-        val javaFile = myFixture.configureByFile(getTestName(true) + ".java")
         val psiClass = (javaFile as PsiJavaFile).classes[0]
         val method = superClass.methods[0]
         val substitutor = TypeConversionUtil.getSuperClassSubstitutor(superClass, psiClass, PsiSubstitutor.EMPTY)

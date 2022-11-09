@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -697,6 +697,11 @@ public abstract class FormatterTestGenerated extends AbstractFormatterTest {
             @TestMetadata("DanglingComments.after.kt")
             public void testDanglingComments() throws Exception {
                 runTest("testData/formatter/DanglingComments.after.kt");
+            }
+
+            @TestMetadata("DefinitelyNonNullTypes.after.kt")
+            public void testDefinitelyNonNullTypes() throws Exception {
+                runTest("testData/formatter/DefinitelyNonNullTypes.after.kt");
             }
 
             @TestMetadata("DelegationList.after.kt")
@@ -1754,6 +1759,11 @@ public abstract class FormatterTestGenerated extends AbstractFormatterTest {
             @TestMetadata("AnonymousInitializersLineBreak.after.inv.kt")
             public void testAnonymousInitializersLineBreak() throws Exception {
                 runTest("testData/formatter/AnonymousInitializersLineBreak.after.inv.kt");
+            }
+
+            @TestMetadata("ArrayAccess.after.inv.kt")
+            public void testArrayAccess() throws Exception {
+                runTest("testData/formatter/ArrayAccess.after.inv.kt");
             }
 
             @TestMetadata("BinaryExpressions.after.inv.kt")

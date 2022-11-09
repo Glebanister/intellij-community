@@ -1,8 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.actions
 
 import com.intellij.ide.IdeBundle
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -14,19 +15,20 @@ import com.intellij.openapi.ui.Splitter
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.ui.ClientProperty
 import com.intellij.ui.ComponentUtil
 import com.intellij.ui.DrawUtil
-import com.intellij.util.SmartList
 import com.intellij.util.animation.JBAnimator
 import com.intellij.util.animation.animation
-import com.intellij.util.ui.UIUtil
 import java.awt.Component
 
-class MaximizeEditorInSplitAction : DumbAwareAction() {
-  val myActiveAnimators = SmartList<JBAnimator>()
+internal class MaximizeEditorInSplitAction : DumbAwareAction() {
+  private val myActiveAnimators = mutableListOf<JBAnimator>()
+
   init {
     templatePresentation.text = IdeBundle.message("action.maximize.editor") + "/" +IdeBundle.message("action.normalize.splits")
   }
+
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project
     if (project == null) return
@@ -84,6 +86,8 @@ class MaximizeEditorInSplitAction : DumbAwareAction() {
     presentation.isEnabled = false
   }
 
+  override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
   companion object {
     val CURRENT_STATE_IS_MAXIMIZED_KEY = Key.create<Boolean>("CURRENT_STATE_IS_MAXIMIZED")
 
@@ -93,7 +97,7 @@ class MaximizeEditorInSplitAction : DumbAwareAction() {
       var comp = editorComponent
       while (comp != editorManager.mainSplitters && comp != null) {
         val parent = comp.parent
-        if (parent is Splitter && UIUtil.isClientPropertyTrue(parent, EditorsSplitters.SPLITTER_KEY)) {
+        if (parent is Splitter && ClientProperty.isTrue(parent, EditorsSplitters.SPLITTER_KEY)) {
           if (parent.firstComponent == comp) {
             if (parent.proportion < parent.maximumProportion) {
               set.add(Pair(parent, true))
@@ -138,8 +142,8 @@ class MaximizeEditorInSplitAction : DumbAwareAction() {
         splitters = candidate ?: break
       }
       if (splitters != null) {
-        val splitterList = UIUtil.findComponentsOfType(splitters, Splitter::class.java)
-        splitterList.removeIf { !UIUtil.isClientPropertyTrue(it, EditorsSplitters.SPLITTER_KEY) }
+        val splitterList = ComponentUtil.findComponentsOfType(splitters, Splitter::class.java)
+        splitterList.removeIf { !ClientProperty.isTrue(it, EditorsSplitters.SPLITTER_KEY) }
         set.addAll(splitterList)
       }
       return set

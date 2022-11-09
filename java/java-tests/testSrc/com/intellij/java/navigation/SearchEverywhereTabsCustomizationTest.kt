@@ -15,24 +15,19 @@ import javax.swing.ListCellRenderer
 
 class SearchEverywhereTabsCustomizationTest : LightJavaCodeInsightFixtureTestCase() {
 
-  private val contributors : Map<SearchEverywhereContributor<*>, SearchEverywhereTabDescriptor?> = mapOf(
-    dumb("c1", true) to null,
-    dumb("c2", true) to null,
-    dumb("c3", true) to null,
-    dumb("c4", false) to null,
-    dumb("c5", false) to null
+  private val contributors : List<SearchEverywhereContributor<*>> = listOf(
+    dumb("c1", true),
+    dumb("c2", true),
+    dumb("c3", true),
+    dumb("c4", false),
+    dumb("c5", false)
   )
 
-  private var ui : SearchEverywhereUI? = null
+  private lateinit var ui : SearchEverywhereUI
 
   override fun setUp() {
     super.setUp()
-    ui = SearchEverywhereUI(project, contributors)
-  }
-
-  override fun tearDown() {
-    super.tearDown()
-    ui?.let { Disposer.dispose(it) }
+    ui = SearchEverywhereUI(project, contributors).apply { Disposer.register(testRootDisposable, this) }
   }
 
   fun testFixedTabsListStrategy() {

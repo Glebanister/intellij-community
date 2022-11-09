@@ -30,8 +30,6 @@ import java.util.function.Supplier;
  * <p>
  * If you want to change the matching prefix, use {@link #withPrefixMatcher(PrefixMatcher)} or {@link #withPrefixMatcher(String)}
  * to obtain another {@link CompletionResultSet} and give your lookup elements to that one.
- *
- * @author peter
  */
 public abstract class CompletionResultSet implements Consumer<LookupElement> {
   private final PrefixMatcher myPrefixMatcher;

@@ -1,26 +1,16 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.tasks.fogbugz;
 
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.PasswordUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.tasks.Comment;
-import com.intellij.tasks.Task;
-import com.intellij.tasks.TaskRepository;
-import com.intellij.tasks.TaskRepositoryType;
-import com.intellij.tasks.TaskType;
+import com.intellij.tasks.*;
 import com.intellij.tasks.impl.BaseRepository;
 import com.intellij.tasks.impl.BaseRepositoryImpl;
 import com.intellij.util.NotNullFunction;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.xmlb.annotations.Tag;
 import icons.TasksCoreIcons;
-import java.util.Date;
-import java.util.List;
-import java.util.Objects;
-import javax.swing.Icon;
-import javax.xml.datatype.DatatypeConfigurationException;
-import javax.xml.datatype.DatatypeFactory;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.jdom.Document;
 import org.jdom.Element;
@@ -29,11 +19,18 @@ import org.jdom.xpath.XPath;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.*;
+import javax.xml.datatype.DatatypeConfigurationException;
+import javax.xml.datatype.DatatypeFactory;
+import java.util.Date;
+import java.util.List;
+import java.util.Objects;
+
 /**
  * @author mkennedy
  */
 @Tag("FogBugz")
-public class FogBugzRepository extends BaseRepositoryImpl {
+public final class FogBugzRepository extends BaseRepositoryImpl {
   private static final Logger LOG = Logger.getInstance(FogBugzRepository.class);
 
   private String myToken;
@@ -53,7 +50,7 @@ public class FogBugzRepository extends BaseRepositoryImpl {
     return super.equals(o) && Objects.equals(myToken, ((FogBugzRepository)o).myToken);
   }
 
-  @SuppressWarnings({"UnusedDeclaration"})
+  @SuppressWarnings("UnusedDeclaration")
   public FogBugzRepository() {
   }
 
@@ -209,15 +206,14 @@ public class FogBugzRepository extends BaseRepositoryImpl {
   @Override
   public Task findTask(@NotNull String id) throws Exception {
     Task[] tasks = getCases(id);
-    switch (tasks.length) {
-      case 0:
-        return null;
-      case 1:
-        return tasks[0];
-      default:
+    return switch (tasks.length) {
+      case 0 -> null;
+      case 1 -> tasks[0];
+      default -> {
         LOG.warn("Expected unique case for case id: " + id + ", got " + tasks.length + " instead. Using the first one.");
-        return tasks[0];
-    }
+        yield tasks[0];
+      }
+    };
   }
 
   @NotNull

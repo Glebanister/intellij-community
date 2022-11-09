@@ -19,8 +19,10 @@ import com.intellij.openapi.externalSystem.service.ui.util.LabeledSettingsFragme
 import com.intellij.openapi.externalSystem.service.ui.util.PathFragmentInfo
 import com.intellij.openapi.externalSystem.service.ui.util.SettingsFragmentInfo
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
-import com.intellij.openapi.observable.operations.AnonymousParallelOperationTrace
-import com.intellij.openapi.observable.operations.AnonymousParallelOperationTrace.Companion.task
+import com.intellij.openapi.observable.operation.core.AtomicOperationTrace
+import com.intellij.openapi.observable.operation.core.isOperationCompleted
+import com.intellij.openapi.observable.operation.core.traceRun
+import com.intellij.openapi.observable.operation.core.whenOperationFinished
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.roots.ui.configuration.SdkComboBox
 import com.intellij.openapi.roots.ui.configuration.SdkComboBoxModel.Companion.createProjectJdkComboBoxModel
@@ -32,7 +34,7 @@ import com.intellij.openapi.util.NlsContexts
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.columns
-import com.intellij.ui.dsl.builder.impl.CollapsibleTitledSeparator
+import com.intellij.ui.dsl.builder.impl.CollapsibleTitledSeparatorImpl
 import com.intellij.openapi.observable.util.lockOrSkip
 import com.intellij.openapi.ui.getCanonicalPath
 import com.intellij.util.ui.UIUtil
@@ -63,16 +65,16 @@ class MavenRunConfigurationSettingsEditor(
   runConfiguration,
   runConfiguration.extensionsManager
 ) {
-  private val resetOperation = AnonymousParallelOperationTrace()
+  private val resetOperation = AtomicOperationTrace()
 
   override fun resetEditorFrom(s: RunnerAndConfigurationSettingsImpl) {
-    resetOperation.task {
+    resetOperation.traceRun {
       super.resetEditorFrom(s)
     }
   }
 
   override fun resetEditorFrom(settings: MavenRunConfiguration) {
-    resetOperation.task {
+    resetOperation.traceRun {
       super.resetEditorFrom(settings)
     }
   }
@@ -149,7 +151,7 @@ class MavenRunConfigurationSettingsEditor(
     configure: SettingsFragmentsContainer<S>.() -> Unit
   ) = add(object : NestedGroupFragment<S>(id, name, group, { true }) {
 
-    private val separator = CollapsibleTitledSeparator(group)
+    private val separator = CollapsibleTitledSeparatorImpl(group)
     private val checkBox: JCheckBox
     private val checkBoxWithLink: JComponent
 
@@ -207,7 +209,7 @@ class MavenRunConfigurationSettingsEditor(
 
       init {
         children.forEach { bind(separator, it) }
-        resetOperation.afterOperation {
+        resetOperation.whenOperationFinished {
           separator.expanded = !checkBox.isSelected
         }
       }
@@ -228,7 +230,7 @@ class MavenRunConfigurationSettingsEditor(
     }
   }
 
-  private fun bind(separator: CollapsibleTitledSeparator, fragment: SettingsEditorFragment<*, *>) {
+  private fun bind(separator: CollapsibleTitledSeparatorImpl, fragment: SettingsEditorFragment<*, *>) {
     val mutex = AtomicBoolean()
     separator.onAction {
       mutex.lockOrSkip {

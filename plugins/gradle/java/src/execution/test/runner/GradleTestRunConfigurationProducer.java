@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.execution.test.runner;
 
 import com.intellij.execution.RunManager;
@@ -8,6 +8,7 @@ import com.intellij.execution.actions.ConfigurationFromContext;
 import com.intellij.execution.actions.RunConfigurationProducer;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.configurations.RunConfiguration;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.externalSystem.model.ProjectKeys;
 import com.intellij.openapi.externalSystem.model.ProjectSystemId;
@@ -180,8 +181,8 @@ public abstract class GradleTestRunConfigurationProducer extends RunConfiguratio
   @NotNull
   public static List<TasksToRun> findAllTestsTaskToRun(@NotNull VirtualFile source, @NotNull Project project) {
     String sourcePath = source.getPath();
-    ProjectFileIndex projectFileIndex = ProjectFileIndex.SERVICE.getInstance(project);
-    Module module = projectFileIndex.getModuleForFile(source);
+    ProjectFileIndex projectFileIndex = ProjectFileIndex.getInstance(project);
+    Module module = ReadAction.compute(() -> projectFileIndex.getModuleForFile(source));
     if (module == null) return Collections.emptyList();
     List<TasksToRun> testTasks = new ArrayList<>();
     for (GradleTestTasksProvider provider : GradleTestTasksProvider.EP_NAME.getExtensions()) {

@@ -25,24 +25,26 @@ import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.descriptors.annotations.KotlinTarget
 import org.jetbrains.kotlin.descriptors.resolveClassByFqName
-import org.jetbrains.kotlin.idea.KotlinBundle
 import org.jetbrains.kotlin.idea.KotlinLanguage
+import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.core.ShortenReferences
 import org.jetbrains.kotlin.idea.core.appendModifier
 import org.jetbrains.kotlin.idea.quickfix.AddModifierFixFE10
 import org.jetbrains.kotlin.idea.quickfix.MakeFieldPublicFix
+import org.jetbrains.kotlin.idea.quickfix.MakeMemberStaticFix
 import org.jetbrains.kotlin.idea.quickfix.RemoveModifierFixBase
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.callableBuilder.TypeInfo
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.idea.util.CommentSaver
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
 import org.jetbrains.kotlin.idea.util.resolveToKotlinType
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
+import org.jetbrains.kotlin.lexer.KtModifierKeywordToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.containingClass
 import org.jetbrains.kotlin.psi.psiUtil.createSmartPointer
 import org.jetbrains.kotlin.psi.psiUtil.visibilityModifierType
 import org.jetbrains.kotlin.resolve.AnnotationChecker
@@ -109,6 +111,7 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
                         addAnnotation(JVM_STATIC_ANNOTATION_FQ_NAME)
                     }
                 }
+
                 JvmModifier.ABSTRACT -> modifierList.appendModifier(KtTokens.ABSTRACT_KEYWORD)
                 JvmModifier.FINAL -> modifierList.appendModifier(KtTokens.FINAL_KEYWORD)
                 else -> return false
@@ -160,15 +163,22 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
             .toTypedArray()
     }
 
+    override fun createChangeOverrideActions(target: JvmModifiersOwner, shouldBePresent: Boolean): List<IntentionAction> {
+        val kModifierOwner = target.toKtElement<KtModifierListOwner>() ?: return emptyList()
+        return createChangeModifierActions(kModifierOwner, KtTokens.OVERRIDE_KEYWORD, shouldBePresent)
+    }
+
     override fun createChangeModifierActions(target: JvmModifiersOwner, request: ChangeModifierRequest): List<IntentionAction> {
-        val kModifierOwner =
-            target.toKtElement<KtModifierListOwner>()?.takeIf { ProjectRootsUtil.isInProjectSource(it) } ?: return emptyList()
+        val kModifierOwner = target.toKtElement<KtModifierListOwner>() ?: return emptyList()
 
         val modifier = request.modifier
         val shouldPresent = request.shouldBePresent()
 
         if (modifier == JvmModifier.PUBLIC && shouldPresent && kModifierOwner is KtProperty) {
             return listOf(MakeFieldPublicFix(kModifierOwner))
+        }
+        if (modifier == JvmModifier.STATIC && shouldPresent && kModifierOwner is KtNamedDeclaration) {
+            return listOf(MakeMemberStaticFix(kModifierOwner))
         }
 
         //TODO: make similar to `createAddMethodActions`
@@ -178,21 +188,29 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
                 kModifierOwner.visibilityModifierType()
                     ?.takeIf { it != KtTokens.DEFAULT_VISIBILITY_KEYWORD }
                     ?.let { it to false } ?: return emptyList()
+
             else -> javaPsiModifiersMapping[modifier] to shouldPresent
         }
         if (kToken == null) return emptyList()
+        return createChangeModifierActions(kModifierOwner, kToken, shouldPresentMapped)
+    }
 
-        val action = if (shouldPresentMapped) {
-            AddModifierFixFE10.createIfApplicable(kModifierOwner, kToken)
+    private fun createChangeModifierActions(
+        modifierListOwners: KtModifierListOwner,
+        token: KtModifierKeywordToken,
+        shouldBePresent: Boolean
+    ): List<IntentionAction> {
+        val action = if (shouldBePresent) {
+            AddModifierFixFE10.createIfApplicable(modifierListOwners, token)
         } else {
-            RemoveModifierFixBase(kModifierOwner, kToken, false)
+            RemoveModifierFixBase(modifierListOwners, token, false)
         }
         return listOfNotNull(action)
     }
 
     override fun createAddConstructorActions(targetClass: JvmClass, request: CreateConstructorRequest): List<IntentionAction> {
         val targetKtClass =
-            targetClass.toKtClassOrFile().safeAs<KtClass>()?.takeIf { ProjectRootsUtil.isInProjectSource(it) } ?: return emptyList()
+            targetClass.toKtClassOrFile().safeAs<KtClass>() ?: return emptyList()
         val modifierBuilder = ModifierBuilder(targetKtClass).apply { addJvmModifiers(request.modifiers) }
         if (!modifierBuilder.isValid) return emptyList()
 
@@ -270,7 +288,7 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
     }
 
     override fun createAddFieldActions(targetClass: JvmClass, request: CreateFieldRequest): List<IntentionAction> {
-        val targetContainer = targetClass.toKtClassOrFile()?.takeIf { ProjectRootsUtil.isInProjectSource(it) } ?: return emptyList()
+        val targetContainer = targetClass.toKtClassOrFile() ?: return emptyList()
 
         val writable = JvmModifier.FINAL !in request.modifiers && !request.isConstant
 
@@ -292,7 +310,7 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
     }
 
     override fun createAddMethodActions(targetClass: JvmClass, request: CreateMethodRequest): List<IntentionAction> {
-        val targetContainer = targetClass.toKtClassOrFile()?.takeIf { ProjectRootsUtil.isInProjectSource(it) } ?: return emptyList()
+        val targetContainer = targetClass.toKtClassOrFile() ?: return emptyList()
 
         val modifierBuilder = ModifierBuilder(targetContainer).apply { addJvmModifiers(request.modifiers) }
         if (!modifierBuilder.isValid) return emptyList()
@@ -345,8 +363,8 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
 
     override fun createAddAnnotationActions(target: JvmModifiersOwner, request: AnnotationRequest): List<IntentionAction> {
         val declaration = target.safeAs<KtLightElement<*, *>>()?.kotlinOrigin.safeAs<KtModifierListOwner>()?.takeIf {
-            it.language == KotlinLanguage.INSTANCE && ProjectRootsUtil.isInProjectSource(it)
-        }  ?: return emptyList()
+            it.language == KotlinLanguage.INSTANCE
+        } ?: return emptyList()
         val annotationUseSiteTarget = when (target) {
             is JvmField -> AnnotationUseSiteTarget.FIELD
             is JvmMethod -> when {
@@ -354,6 +372,7 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
                 PropertyUtil.isSimplePropertyGetter(target as? PsiMethod) -> AnnotationUseSiteTarget.PROPERTY_GETTER
                 else -> null
             }
+
             else -> null
         }
         return listOf(CreateAnnotationAction(declaration, annotationUseSiteTarget, request))
@@ -385,8 +404,32 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
     }
 
     override fun createChangeParametersActions(target: JvmMethod, request: ChangeParametersRequest): List<IntentionAction> {
-        val ktNamedFunction = (target as? KtLightElement<*, *>)?.kotlinOrigin as? KtNamedFunction ?: return emptyList()
-        return listOfNotNull(ChangeMethodParameters.create(ktNamedFunction, request))
+        return when (val kotlinOrigin = (target as? KtLightElement<*, *>)?.kotlinOrigin) {
+            is KtNamedFunction -> listOfNotNull(ChangeMethodParameters.create(kotlinOrigin, request))
+            is KtConstructor<*> -> kotlinOrigin.containingClass()?.let {
+                createChangeConstructorParametersAction(kotlinOrigin, it, request)
+            } ?: emptyList()
+            is KtClass -> createChangeConstructorParametersAction(kotlinOrigin, kotlinOrigin, request)
+            else -> emptyList()
+        }
+    }
+
+    private fun createChangeConstructorParametersAction(kotlinOrigin: PsiElement,
+                                                        targetKtClass: KtClass,
+                                                        request: ChangeParametersRequest): List<IntentionAction> {
+        return listOfNotNull(run {
+            val lightMethod = kotlinOrigin.toLightMethods().firstOrNull() ?: return@run null
+            val project = kotlinOrigin.project
+            val fakeParametersExpressions = fakeParametersExpressions(request.expectedParameters, project) ?: return@run null
+            QuickFixFactory.getInstance().createChangeMethodSignatureFromUsageFix(
+              lightMethod,
+              fakeParametersExpressions,
+              PsiSubstitutor.EMPTY,
+              targetKtClass,
+              false,
+              2
+            ).takeIf { it.isAvailable(project, null, targetKtClass.containingFile) }
+        })
     }
 
     override fun createChangeTypeActions(target: JvmMethod, request: ChangeTypeRequest): List<IntentionAction> {
@@ -400,9 +443,9 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
     }
 
     private class ChangeType(
-        target: KtCallableDeclaration, 
+        target: KtCallableDeclaration,
         private val request: ChangeTypeRequest
-        ) : IntentionAction {
+    ) : IntentionAction {
         private val pointer = target.createSmartPointer()
 
         override fun startInWriteAction(): Boolean = true
@@ -422,7 +465,7 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
             if (!request.isValid) return
             val target = pointer.element ?: return
             val oldType = target.typeReference
-            val typeName = request.qualifiedName ?: target.typeName() ?: return
+            val typeName = primitiveTypeMapping.getOrDefault(request.qualifiedName, request.qualifiedName ?: target.typeName() ?: return)
             val psiFactory = KtPsiFactory(target)
             val annotations = request.annotations.joinToString(" ") { "@${renderAnnotation(target, it, psiFactory)}" }
             val newType = psiFactory.createType("$annotations $typeName".trim())
@@ -441,6 +484,28 @@ class KotlinElementActionsFactory : JvmElementActionsFactory() {
             val descriptor = this.resolveToDescriptorIfAny() as? CallableDescriptor ?: return null
             val returnType = descriptor.returnType ?: return null
             return IdeDescriptorRenderers.SOURCE_CODE.renderType(returnType)
+        }
+
+        companion object {
+            private val primitiveTypeMapping = mapOf(
+                PsiType.VOID.name to "kotlin.Unit",
+                PsiType.BOOLEAN.name to "kotlin.Boolean",
+                PsiType.BYTE.name to "kotlin.Byte",
+                PsiType.CHAR.name to "kotlin.Char",
+                PsiType.SHORT.name to "kotlin.Short",
+                PsiType.INT.name to "kotlin.Int",
+                PsiType.FLOAT.name to "kotlin.Float",
+                PsiType.LONG.name to "kotlin.Long",
+                PsiType.DOUBLE.name to "kotlin.Double",
+                "${PsiType.BOOLEAN.name}[]" to "kotlin.BooleanArray",
+                "${PsiType.BYTE.name}[]" to "kotlin.ByteArray",
+                "${PsiType.CHAR.name}[]" to "kotlin.CharArray",
+                "${PsiType.SHORT.name}[]" to "kotlin.ShortArray",
+                "${PsiType.INT.name}[]" to "kotlin.IntArray",
+                "${PsiType.FLOAT.name}[]" to "kotlin.FloatArray",
+                "${PsiType.LONG.name}[]" to "kotlin.LongArray",
+                "${PsiType.DOUBLE.name}[]" to "kotlin.DoubleArray"
+            )
         }
     }
 }
@@ -486,7 +551,7 @@ private fun renderAnnotation(
     return "${request.qualifiedName}${
         request.attributes.takeIf { it.isNotEmpty() }?.mapIndexed { i, p ->
             if (!isKotlinAnnotation(request) && i == 0 && p.name == "value")
-                renderAttributeValue(p.value, psiFactory, isKotlinAnnotation)
+                renderAttributeValue(p.value, psiFactory, isKotlinAnnotation, isVararg = true)
             else
                 "${p.name} = ${renderAttributeValue(p.value, psiFactory, isKotlinAnnotation)}"
         }?.joinToString(", ", "(", ")") ?: ""
@@ -497,6 +562,7 @@ private fun renderAttributeValue(
     annotationAttributeRequest: AnnotationAttributeValueRequest,
     psiFactory: KtPsiFactory,
     isKotlinAnnotation: (AnnotationRequest) -> Boolean,
+    isVararg: Boolean = false,
 ): String =
     when (annotationAttributeRequest) {
         is AnnotationAttributeValueRequest.PrimitiveValue -> annotationAttributeRequest.value.toString()
@@ -505,8 +571,11 @@ private fun renderAttributeValue(
         is AnnotationAttributeValueRequest.ConstantValue -> annotationAttributeRequest.text
         is AnnotationAttributeValueRequest.NestedAnnotation ->
             renderAnnotation(annotationAttributeRequest.annotationRequest, psiFactory, isKotlinAnnotation)
-        is AnnotationAttributeValueRequest.ArrayValue ->
-            annotationAttributeRequest.members.joinToString(", ", "[", "]") { memberRequest ->
+
+        is AnnotationAttributeValueRequest.ArrayValue -> {
+            val (prefix, suffix) = if (isVararg) "" to "" else "[" to "]"
+            annotationAttributeRequest.members.joinToString(", ", prefix, suffix) { memberRequest ->
                 renderAttributeValue(memberRequest, psiFactory, isKotlinAnnotation)
             }
+        }
     }

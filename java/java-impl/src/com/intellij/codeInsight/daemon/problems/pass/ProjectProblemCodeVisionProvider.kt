@@ -28,6 +28,7 @@ import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.*
 import com.intellij.util.ObjectUtils
@@ -37,10 +38,21 @@ import java.awt.event.MouseEvent
 import java.util.function.Consumer
 
 class ProjectProblemCodeVisionProvider : JavaCodeVisionProviderBase() {
+  companion object {
+    private val PREVIEW_PROBLEMS_KEY = Key.create<Set<Problem>>("preview.problems.key")
+  }
+
   override fun computeLenses(editor: Editor, psiFile: PsiFile): List<Pair<TextRange, CodeVisionEntry>> {
     // we want to let this provider work only in tests dedicated for code vision, otherwise they harm performance
     if (ApplicationManager.getApplication().isUnitTestMode && !CodeVisionHost.isCodeLensTest(editor)) return emptyList()
     val project = editor.project ?: return emptyList()
+    val previewProblems = PREVIEW_PROBLEMS_KEY.get(editor)
+    if (previewProblems != null) {
+      val problem = previewProblems.first()
+      val lenseColor = getCodeVisionColor()
+      val lensPair = createLensPair(problem.context as PsiMethod, lenseColor, previewProblems)
+      return listOf(lensPair)
+    }
     val problems = ProjectProblemUtils.getReportedProblems(editor)
     if (!CodeVisionSettings.instance().isProviderEnabled(PlatformCodeVisionIds.PROBLEMS.key)) {
       if (!problems.isEmpty()) {
@@ -76,14 +88,27 @@ class ProjectProblemCodeVisionProvider : JavaCodeVisionProviderBase() {
         psiMember,
         PsiNameIdentifierOwner::class.java) ?: return@forEach
       val identifier = namedElement.nameIdentifier ?: return@forEach
-      val text = JavaBundle.message("project.problems.hint.text", memberProblems.size)
-      lenses.add(InlayHintsUtils.getTextRangeWithoutLeadingCommentsAndWhitespaces(psiMember) to ClickableRichTextCodeVisionEntry(id, RichText(text).apply { this.setForeColor(lenseColor) }, longPresentation = text, onClick = ClickHandler(psiMember)))
+      val lensPair = createLensPair(psiMember, lenseColor, memberProblems)
+      lenses.add(lensPair)
       highlighters.add(ProjectProblemUtils.createHighlightInfo(editor, psiMember!!, identifier))
     }
 
     updateHighlighters(project, psiFile, editor, highlighters)
 
     return lenses
+  }
+
+  private fun createLensPair(psiMember: PsiMember, lenseColor: Color, memberProblems: Set<Problem?>): Pair<TextRange, ClickableRichTextCodeVisionEntry> {
+    val text = JavaBundle.message("project.problems.hint.text", memberProblems.size)
+    val richText = RichText(text)
+    richText.setForeColor(lenseColor)
+    val entry = ClickableRichTextCodeVisionEntry(id, richText, longPresentation = text, onClick = ClickHandler(psiMember))
+    return InlayHintsUtils.getTextRangeWithoutLeadingCommentsAndWhitespaces(psiMember) to entry
+  }
+
+  override fun preparePreview(editor: Editor, file: PsiFile) {
+    val method = (file as PsiJavaFile).classes[0].methods[0]
+    editor.putUserData(PREVIEW_PROBLEMS_KEY, setOf(Problem(method, method)))
   }
 
   private fun updateHighlighters(project: Project,
@@ -142,7 +167,7 @@ class ProjectProblemCodeVisionProvider : JavaCodeVisionProviderBase() {
       val memberProblems = collect(
         prevMember,
         curMember)
-      if (memberProblems == null || memberProblems.isEmpty()) {
+      if (memberProblems.isNullOrEmpty()) {
         oldProblems.remove(curMember)
       }
       else {

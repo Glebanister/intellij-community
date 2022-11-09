@@ -16,7 +16,6 @@
 package com.siyeh.ig.style;
 
 import com.intellij.codeInspection.ProblemDescriptor;
-import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ui.SingleCheckboxOptionsPanel;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
@@ -75,7 +74,7 @@ public class UnnecessaryConstructorInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement nameIdentifier = descriptor.getPsiElement();
       final PsiElement constructor = nameIdentifier.getParent();
       assert constructor != null;
@@ -121,7 +120,7 @@ public class UnnecessaryConstructorInspection extends BaseInspection {
       final PsiCodeBlock body = constructor.getBody();
       if (ControlFlowUtils.isEmptyCodeBlock(body) ||
           isSuperConstructorInvocationWithoutArguments(ControlFlowUtils.getOnlyStatementInBlock(body))) {
-        registerError(identifier, ProblemHighlightType.LIKE_UNUSED_SYMBOL);
+        registerError(identifier);
       }
     }
 

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.codeInsight.gradle
 
@@ -8,11 +8,13 @@ import com.intellij.openapi.application.runWriteActionAndWait
 import com.intellij.openapi.externalSystem.importing.ImportSpec
 import com.intellij.openapi.externalSystem.importing.ImportSpecBuilder
 import com.intellij.openapi.projectRoots.JavaSdk
+import com.intellij.openapi.projectRoots.ProjectJdkTable
 import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.roots.OrderRootType
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.roots.impl.libraries.LibraryEx
+import com.intellij.openapi.util.io.FileUtil
 import junit.framework.TestCase
 import org.jetbrains.jps.model.java.JavaResourceRootType
 import org.jetbrains.jps.model.java.JavaSourceRootType
@@ -21,18 +23,18 @@ import org.jetbrains.kotlin.cli.common.arguments.K2JSCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.common.arguments.K2MetadataCompilerArguments
 import org.jetbrains.kotlin.config.*
-import org.jetbrains.kotlin.idea.caches.project.productionSourceInfo
-import org.jetbrains.kotlin.idea.caches.project.testSourceInfo
+import org.jetbrains.kotlin.idea.base.platforms.KotlinCommonLibraryKind
+import org.jetbrains.kotlin.idea.base.platforms.KotlinJavaScriptLibraryKind
+import org.jetbrains.kotlin.idea.base.projectStructure.ModuleSourceRootMap
+import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.projectStructure.productionSourceInfo
+import org.jetbrains.kotlin.idea.base.projectStructure.testSourceInfo
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinCommonCompilerArgumentsHolder
+import org.jetbrains.kotlin.idea.compiler.configuration.KotlinJpsPluginSettings
 import org.jetbrains.kotlin.idea.configuration.ConfigureKotlinStatus
-import org.jetbrains.kotlin.idea.configuration.ModuleSourceRootMap
 import org.jetbrains.kotlin.idea.configuration.allConfigurators
 import org.jetbrains.kotlin.idea.facet.KotlinFacet
-import org.jetbrains.kotlin.idea.framework.CommonLibraryKind
-import org.jetbrains.kotlin.idea.framework.JSLibraryKind
 import org.jetbrains.kotlin.idea.framework.KotlinSdkType
-import org.jetbrains.kotlin.idea.project.languageVersionSettings
-import org.jetbrains.kotlin.idea.util.getProjectJdkTableSafe
 import org.jetbrains.kotlin.idea.util.projectStructure.allModules
 import org.jetbrains.kotlin.idea.util.projectStructure.sdk
 import org.jetbrains.kotlin.platform.TargetPlatform
@@ -40,7 +42,6 @@ import org.jetbrains.kotlin.platform.isCommon
 import org.jetbrains.kotlin.platform.js.JsPlatforms
 import org.jetbrains.kotlin.platform.js.isJs
 import org.jetbrains.kotlin.platform.jvm.JvmPlatforms
-import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.plugins.gradle.tooling.annotation.TargetVersions
 import org.junit.Ignore
 import org.junit.Test
@@ -70,7 +71,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             assertEquals(JvmPlatforms.jvm8, targetPlatform)
             assertEquals("1.7", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             assertEquals(
-                "-Xallow-no-source-files -Xdump-declarations-to=tmp -Xsingle-module",
+                "-Xallow-no-source-files -Xdump-declarations-to=tmp",
                 compilerSettings!!.additionalArguments
             )
         }
@@ -87,6 +88,8 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
                 compilerSettings!!.additionalArguments
             )
         }
+
+        assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
 
         assertAllModulesConfigured()
 
@@ -128,7 +131,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             assertEquals(JvmPlatforms.jvm8, targetPlatform)
             assertEquals("1.7", (compilerArguments as K2JVMCompilerArguments).jvmTarget)
             assertEquals(
-                "-Xallow-no-source-files -Xdump-declarations-to=tmp -Xsingle-module",
+                "-Xallow-no-source-files -Xdump-declarations-to=tmp",
                 compilerSettings!!.additionalArguments
             )
         }
@@ -163,6 +166,27 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             ),
             getSourceRootInfos("project.test")
         )
+    }
+
+    @Test
+    @TargetVersions("6.0.1") // Gradle 4.9 isn't able to import 1.4 KGP
+    fun testJpsCompilerMultiModule() {
+        configureByFiles()
+        importProject()
+
+        with(facetSettings("project.module1.main")) {
+            assertEquals("1.3", languageLevel!!.versionString)
+            assertEquals("1.3", apiLevel!!.versionString)
+        }
+
+        with(facetSettings("project.module2.main")) {
+            assertEquals("1.4", languageLevel!!.versionString)
+            assertEquals("1.4", apiLevel!!.versionString)
+        }
+
+        assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
+
+        assertAllModulesConfigured()
     }
 
     @Test
@@ -210,7 +234,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
         val libraryEntries = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>()
         val stdlib = libraryEntries.single { it.libraryName?.contains("js") ?: false }.library
 
-        assertEquals(JSLibraryKind, (stdlib as LibraryEx).kind)
+        assertEquals(KotlinJavaScriptLibraryKind, (stdlib as LibraryEx).kind)
         assertTrue(stdlib.getFiles(OrderRootType.CLASSES).isNotEmpty())
 
         assertSameKotlinSdks("project.main", "project.test")
@@ -251,7 +275,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             .map { it.library as LibraryEx }
             .first { "kotlin-stdlib-js" in it.name!! }
 
-        assertEquals(JSLibraryKind, stdlib.kind)
+        assertEquals(KotlinJavaScriptLibraryKind, stdlib.kind)
 
         assertAllModulesConfigured()
 
@@ -373,8 +397,8 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
         val rootManager = ModuleRootManager.getInstance(getModule("project.main"))
         val libraries = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>().map { it.library as LibraryEx }
-        assertEquals(JSLibraryKind, libraries.single { it.name?.contains("kotlin-stdlib-js") == true }.kind)
-        assertEquals(CommonLibraryKind, libraries.single { it.name?.contains("kotlin-stdlib-common") == true }.kind)
+        assertEquals(KotlinJavaScriptLibraryKind, libraries.single { it.name?.contains("kotlin-stdlib-js") == true }.kind)
+        assertEquals(KotlinCommonLibraryKind, libraries.single { it.name?.contains("kotlin-stdlib-common") == true }.kind)
 
         assertEquals(
             listOf(
@@ -408,7 +432,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
         val rootManager = ModuleRootManager.getInstance(getModule("project.main"))
         val stdlib = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>().single().library
-        assertEquals(CommonLibraryKind, (stdlib as LibraryEx).kind)
+        assertEquals(KotlinCommonLibraryKind, (stdlib as LibraryEx).kind)
 
         assertEquals(
             listOf(
@@ -440,6 +464,8 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             assertEquals(JvmPlatforms.jvm6, targetPlatform)
         }
 
+        assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
+
         assertEquals(
             listOf(
                 "file:///src/main/java" to JavaSourceRootType.SOURCE,
@@ -469,6 +495,8 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             assertEquals("1.3", apiLevel!!.versionString)
             assertTrue(targetPlatform.isJs())
         }
+
+        assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
 
         assertEquals(
             listOf(
@@ -506,7 +534,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
         importProject()
 
         with(facetSettings) {
-            assertEquals("-version", compilerSettings!!.additionalArguments)
+            assertEquals("", compilerSettings!!.additionalArguments)
             assertEquals(
                 listOf(
                     "plugin:org.jetbrains.kotlin.allopen:annotation=org.springframework.stereotype.Component",
@@ -528,7 +556,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
         with(facetSettings) {
             assertEquals(
-                "-version",
+                "",
                 compilerSettings!!.additionalArguments
             )
             assertEquals(
@@ -545,6 +573,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
     @Ignore // android.sdk needed
     fun testAndroidGradleJsDetection() {
         configureByFiles()
+        @Suppress("DEPRECATION_ERROR")
         createLocalPropertiesSubFileForAndroid()
         importProject()
 
@@ -560,13 +589,14 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             .library!!
 
         assertTrue(stdlib.getFiles(OrderRootType.CLASSES).isNotEmpty())
-        assertEquals(JSLibraryKind, (stdlib as LibraryEx).kind)
+        assertEquals(KotlinJavaScriptLibraryKind, (stdlib as LibraryEx).kind)
     }
 
     @Test
     @Ignore // android.sdk needed
     fun testKotlinAndroidPluginDetection() {
         configureByFiles()
+        @Suppress("DEPRECATION_ERROR")
         createLocalPropertiesSubFileForAndroid()
         importProject()
 
@@ -607,11 +637,11 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
 
     @Test
     fun testJDKImport() {
-        val mockJdkPath = "${PathManager.getHomePath()}/community/java/mockJDK-1.8"
+        val mockJdkPath = FileUtil.toSystemDependentName("${PathManager.getHomePath()}/community/java/mockJDK-1.8")
         runWriteActionAndWait {
-            val jdk = JavaSdk.getInstance().createJdk("myJDK", mockJdkPath)
-            getProjectJdkTableSafe().addJdk(jdk)
-            ProjectRootManager.getInstance(myProject).projectSdk = jdk
+          val jdk = JavaSdk.getInstance().createJdk("myJDK", mockJdkPath)
+          runReadAction<ProjectJdkTable> { ProjectJdkTable.getInstance() }.addJdk(jdk)
+          ProjectRootManager.getInstance(myProject).projectSdk = jdk
         }
 
         try {
@@ -621,12 +651,12 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             val moduleSDK = ModuleRootManager.getInstance(getModule("project.main")).sdk!!
             assertTrue(moduleSDK.sdkType is JavaSdk)
             assertEquals("myJDK", moduleSDK.name)
-            assertEquals(mockJdkPath, moduleSDK.homePath)
+            assertEquals(mockJdkPath, moduleSDK.homePath?.let(FileUtil::toSystemDependentName))
         } finally {
             runWriteActionAndWait {
-                val jdkTable = getProjectJdkTableSafe()
-                jdkTable.removeJdk(jdkTable.findJdk("myJDK")!!)
-                ProjectRootManager.getInstance(myProject).projectSdk = null
+              val jdkTable = runReadAction<ProjectJdkTable> { ProjectJdkTable.getInstance() }
+              jdkTable.removeJdk(jdkTable.findJdk("myJDK")!!)
+              ProjectRootManager.getInstance(myProject).projectSdk = null
             }
         }
     }
@@ -710,9 +740,11 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
             assertEquals("my/test/destination", (compilerArguments as K2MetadataCompilerArguments).destination)
         }
 
+        assertEquals(KotlinJpsPluginSettings.fallbackVersionForOutdatedCompiler, KotlinJpsPluginSettings.jpsVersion(myProject))
+
         val rootManager = ModuleRootManager.getInstance(getModule("project.main"))
         val stdlib = rootManager.orderEntries.filterIsInstance<LibraryOrderEntry>().single().library
-        assertEquals(CommonLibraryKind, (stdlib as LibraryEx).kind)
+        assertEquals(KotlinCommonLibraryKind, (stdlib as LibraryEx).kind)
 
         assertSameKotlinSdks("project.main", "project.test")
 
@@ -827,7 +859,7 @@ class GradleFacetImportTest8 : KotlinGradleImportingTestCase() {
     private fun checkStableModuleName(projectName: String, expectedName: String, platform: TargetPlatform, isProduction: Boolean) {
         runReadAction {
             val module = getModule(projectName)
-            val moduleInfo = if (isProduction) module.productionSourceInfo() else module.testSourceInfo()
+            val moduleInfo = if (isProduction) module.productionSourceInfo else module.testSourceInfo
 
             val resolutionFacade = KotlinCacheService.getInstance(myProject).getResolutionFacadeByModuleInfo(moduleInfo!!, platform)!!
             val moduleDescriptor = resolutionFacade.moduleDescriptor

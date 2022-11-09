@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package training.learn
 
 import com.intellij.ide.scratch.ScratchFileService
@@ -55,7 +55,9 @@ import java.io.IOException
 internal class OpenLessonParameters(val projectWhereToStartLesson: Project,
                                     val lesson: Lesson,
                                     val forceStartLesson: Boolean,
-                                    val startingWay: LessonStartingWay)
+                                    val startingWay: LessonStartingWay,
+                                    val forceLearningProject: Boolean
+)
 
 internal object OpenLessonActivities {
   private val LOG = logger<OpenLessonActivities>()
@@ -89,7 +91,7 @@ internal object OpenLessonActivities {
       val langSupport = LangManager.getInstance().getLangSupport() ?: throw Exception("Language for learning plugin is not defined")
 
       var learnProject = LearningUiManager.learnProject
-      if (learnProject != null && !isLearningProject(learnProject, langSupport)) {
+      if (learnProject != null && !isLearningProject(learnProject, langSupport.primaryLanguage)) {
         learnProject = null // We are in the project from another course
       }
       LOG.debug("${projectWhereToStartLesson.name}: trying to get cached LearnProject ${learnProject != null}")
@@ -99,19 +101,21 @@ internal object OpenLessonActivities {
 
       val lessonType = params.lesson.lessonType
       when {
-        lessonType == LessonType.SCRATCH -> {
+        lessonType == LessonType.SCRATCH
+        && !params.forceLearningProject
+        && langSupport.isSdkConfigured(projectWhereToStartLesson) -> {
           LOG.debug("${projectWhereToStartLesson.name}: scratch based lesson")
         }
         lessonType == LessonType.USER_PROJECT -> {
           LOG.debug("The lesson opened in user project ${projectWhereToStartLesson.name}")
         }
         learnProject == null || learnProject.isDisposed -> {
-          if (!isLearningProject(projectWhereToStartLesson, langSupport)) {
+          if (!isLearningProject(projectWhereToStartLesson, langSupport.primaryLanguage)) {
             //1. learnProject == null and current project has different name then initLearnProject and register post startup open lesson
             LOG.debug("${projectWhereToStartLesson.name}: 1. learnProject is null or disposed")
             initLearnProject(projectWhereToStartLesson, null) {
               LOG.debug("${projectWhereToStartLesson.name}: 1. ... LearnProject has been started")
-              openLessonWhenLearnProjectStart(OpenLessonParameters(it, params.lesson, params.forceStartLesson, params.startingWay))
+              openLessonWhenLearnProjectStart(OpenLessonParameters(it, params.lesson, params.forceStartLesson, params.startingWay, true))
               LOG.debug("${projectWhereToStartLesson.name}: 1. ... open lesson when learn project has been started")
             }
             return
@@ -291,7 +295,7 @@ internal object OpenLessonActivities {
     val executor = LessonExecutor(lesson, projectWhereToStartLesson, textEditor?.editor, vf)
     val lessonContext = LessonContextImpl(executor)
     LessonManager.instance.initDslLesson(textEditor?.editor, lesson, executor)
-    lesson.lessonContent(lessonContext)
+    lesson.fullLessonContent(lessonContext)
     executor.startLesson()
   }
 
@@ -391,7 +395,7 @@ internal object OpenLessonActivities {
       openLesson()
     }
     else {
-      startupManager.registerPostStartupActivity {
+      startupManager.runAfterOpened {
         openLesson()
       }
     }
@@ -488,7 +492,7 @@ internal object OpenLessonActivities {
 
   private fun findLearnProjectInOpenedProjects(langSupport: LangSupport): Project? {
     val openProjects = ProjectManager.getInstance().openProjects
-    return openProjects.firstOrNull { isLearningProject(it, langSupport) }
+    return openProjects.firstOrNull { isLearningProject(it, langSupport.primaryLanguage) }
   }
 
 }

@@ -54,7 +54,7 @@ public class ConditionalCanBePushedInsideExpressionInspection extends BaseInspec
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiConditionalExpression conditionalExpression = (PsiConditionalExpression)descriptor.getPsiElement();
       final PsiExpression thenExpression = conditionalExpression.getThenExpression();
       if (thenExpression == null) {
@@ -87,7 +87,7 @@ public class ConditionalCanBePushedInsideExpressionInspection extends BaseInspec
   private  class ConditionalCanBePushedInsideExpressionVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitConditionalExpression(PsiConditionalExpression expression) {
+    public void visitConditionalExpression(@NotNull PsiConditionalExpression expression) {
       super.visitConditionalExpression(expression);
       final PsiExpression thenExpression = expression.getThenExpression();
       if (thenExpression == null) {

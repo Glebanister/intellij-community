@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.scratch;
 
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.actions.NewActionGroup;
 import com.intellij.ide.actions.RecentLocationsAction;
@@ -43,7 +42,6 @@ import com.intellij.openapi.vfs.VirtualFileVisitor;
 import com.intellij.pom.Navigatable;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiUtilCore;
-import com.intellij.ui.LayeredIcon;
 import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
@@ -52,7 +50,6 @@ import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
 import java.awt.*;
 import java.util.List;
 import java.util.*;
@@ -68,9 +65,7 @@ public final class ScratchFileActions {
   }
 
 
-  public static class NewFileAction extends DumbAwareAction implements UpdateInBackground {
-    private static final Icon ICON = LayeredIcon.create(AllIcons.FileTypes.Text, AllIcons.Actions.Scratch);
-
+  public static class NewFileAction extends DumbAwareAction {
     private static final String ACTION_ID = "NewScratchFile";
 
     private final NotNullLazyValue<@Nls String> myActionText = NotNullLazyValue.lazy(() -> {
@@ -80,7 +75,12 @@ public final class ScratchFileActions {
     });
 
     public NewFileAction() {
-      getTemplatePresentation().setIcon(ICON);
+      getTemplatePresentation().setIcon(new ScratchFileTypeIcon(AllIcons.FileTypes.Text));
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
     }
 
     @Override
@@ -159,15 +159,26 @@ public final class ScratchFileActions {
     }
 
     private void updatePresentationTextAndIcon(@NotNull AnActionEvent e, @NotNull Presentation presentation) {
-      presentation.setText(myActionText.getValue());
-      presentation.setIcon(ICON);
+      if (e.getPlace().equals(ActionPlaces.PROJECT_VIEW_POPUP)) {
+        presentation.setText(ActionsBundle.actionText(ACTION_ID));
+      }
+      else {
+        presentation.setText(myActionText.getValue());
+      }
+
+      presentation.setIcon(new ScratchFileTypeIcon(AllIcons.FileTypes.Text));
       if (ActionPlaces.MAIN_MENU.equals(e.getPlace()) && !NewActionGroup.isActionInNewPopupMenu(this)) {
         presentation.setIcon(null);
       }
     }
   }
 
-  public static class NewBufferAction extends DumbAwareAction implements UpdateInBackground {
+  public static class NewBufferAction extends DumbAwareAction {
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
 
     @Override
     public void update(@NotNull AnActionEvent e) {
@@ -213,7 +224,6 @@ public final class ScratchFileActions {
   }
 
   static @Nullable PsiFile doCreateNewScratch(@NotNull Project project, @NotNull ScratchFileCreationHelper.Context context) {
-    FeatureUsageTracker.getInstance().triggerFeatureUsed("scratch");
     if (context.fileExtension == null && context.language != null) {
       LanguageFileType fileType = context.language.getAssociatedFileType();
       if (fileType != null) {
@@ -293,7 +303,12 @@ public final class ScratchFileActions {
     checkLanguageAndTryToFixText(project, context, dataContext);
   }
 
-  public static class ChangeLanguageAction extends DumbAwareAction implements UpdateInBackground {
+  public static class ChangeLanguageAction extends DumbAwareAction {
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
+
     @Override
     public void update(@NotNull AnActionEvent e) {
       Project project = e.getProject();
@@ -374,7 +389,12 @@ public final class ScratchFileActions {
     }
   }
 
-  public static class ShowFilesPopupAction extends DumbAwareAction implements UpdateInBackground {
+  public static class ShowFilesPopupAction extends DumbAwareAction {
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
+
     @Override
     public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabledAndVisible(e.getProject() != null);
@@ -428,9 +448,14 @@ public final class ScratchFileActions {
     }
   }
 
-  public static class ExportToScratchAction extends DumbAwareAction implements UpdateInBackground {
+  public static class ExportToScratchAction extends DumbAwareAction {
     {
       setEnabledInModalContext(true);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
     }
 
     @Override

@@ -176,7 +176,7 @@ public final class TrackingRunner extends StandardDataFlowRunner {
             initialStates = Collections.singletonList(createMemoryState());
           }
           else {
-            initialStates = StreamEx.of(endOfInitializerStates).map(DfaMemoryState::createCopy).toList();
+            initialStates = ContainerUtil.map(endOfInitializerStates, DfaMemoryState::createCopy);
           }
           return analyzeBlockRecursively(ctorBody, initialStates, interceptor) == RunnerResult.OK;
         }
@@ -485,15 +485,25 @@ public final class TrackingRunner extends StandardDataFlowRunner {
     }
   }
 
-  static class RangeDfaProblemType extends DfaProblemType {
+  public static class RangeDfaProblemType extends DfaProblemType {
     final @NotNull @Nls String myTemplate;
     final @NotNull LongRangeSet myRangeSet;
     final @Nullable PsiPrimitiveType myType;
+
+    public RangeDfaProblemType(@NotNull LongRangeSet set, @Nullable PsiPrimitiveType type) {
+      this(JavaAnalysisBundle.message("dfa.find.cause.numeric.range.generic.template"), set, type);
+    }
 
     RangeDfaProblemType(@NotNull @Nls String template, @NotNull LongRangeSet set, @Nullable PsiPrimitiveType type) {
       myTemplate = template;
       myRangeSet = set;
       myType = type;
+    }
+
+    @Override
+    CauseItem[] findCauses(TrackingRunner runner, PsiExpression expression, MemoryStateChange history) {
+      CauseItem cause = findRangeCause(history, history.myTopOfStack, myRangeSet, myTemplate);
+      return cause == null ? new CauseItem[0] : new CauseItem[]{cause};
     }
 
     @Nullable
@@ -1143,16 +1153,11 @@ public final class TrackingRunner extends StandardDataFlowRunner {
       CauseItem causeItem = fromMemberNullability(nullability, method, JavaElementKind.METHOD,
                                                   call.getMethodExpression().getReferenceNameElement());
       if (causeItem == null) {
-        switch (nullability) {
-          case NULL:
-          case NULLABLE:
-            causeItem = fromCallContract(factUse, call, ContractReturnValue.returnNull());
-            break;
-          case NOT_NULL:
-            causeItem = fromCallContract(factUse, call, ContractReturnValue.returnNotNull());
-            break;
-          default:
-        }
+        causeItem = switch (nullability) {
+          case NULL, NULLABLE -> fromCallContract(factUse, call, ContractReturnValue.returnNull());
+          case NOT_NULL -> fromCallContract(factUse, call, ContractReturnValue.returnNotNull());
+          default -> null;
+        };
       }
       if (causeItem != null) {
         return causeItem;
@@ -1389,7 +1394,7 @@ public final class TrackingRunner extends StandardDataFlowRunner {
   }
 
   @Nullable
-  private PsiElement getCallAnchor(PsiCallExpression call) {
+  private static PsiElement getCallAnchor(PsiCallExpression call) {
     if (call instanceof PsiMethodCallExpression) {
       return ((PsiMethodCallExpression)call).getMethodExpression().getReferenceNameElement();
     }
@@ -1487,13 +1492,17 @@ public final class TrackingRunner extends StandardDataFlowRunner {
       VariableDescriptor descriptor = ((DfaVariableValue)value).getDescriptor();
       if (descriptor instanceof SpecialField && range.equals(JvmPsiRangeSetUtil.indexRange())) {
         switch (((SpecialField)descriptor)) {
-          case ARRAY_LENGTH:
+          case ARRAY_LENGTH -> {
             return new CauseItem(JavaAnalysisBundle.message("dfa.find.cause.array.length.is.always.non.negative"), factUse);
-          case STRING_LENGTH:
+          }
+          case STRING_LENGTH -> {
             return new CauseItem(JavaAnalysisBundle.message("dfa.find.cause.string.length.is.always.non.negative"), factUse);
-          case COLLECTION_SIZE:
+          }
+          case COLLECTION_SIZE -> {
             return new CauseItem(JavaAnalysisBundle.message("dfa.find.cause.collection.size.is.always.non.negative"), factUse);
-          default:
+          }
+          default -> {
+          }
         }
       }
     }

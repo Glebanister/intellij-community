@@ -76,7 +76,7 @@ public class IndexOfReplaceableByContainsInspection
     extends InspectionGadgetsFix {
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiBinaryExpression)) {
         return;
@@ -153,7 +153,7 @@ public class IndexOfReplaceableByContainsInspection
 
     @Override
     public void visitBinaryExpression(
-      PsiBinaryExpression expression) {
+      @NotNull PsiBinaryExpression expression) {
       super.visitBinaryExpression(expression);
       final PsiExpression rhs = PsiUtil.skipParenthesizedExprDown(expression.getROperand());
       final PsiExpression lhs = PsiUtil.skipParenthesizedExprDown(expression.getLOperand());

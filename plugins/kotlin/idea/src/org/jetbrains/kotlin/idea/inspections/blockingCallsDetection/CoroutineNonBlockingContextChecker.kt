@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.inspections.blockingCallsDetection
 
@@ -10,13 +10,15 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiRecursiveElementVisitor
 import com.intellij.psi.util.parentsOfType
-import com.intellij.util.castSafelyTo
+import com.intellij.util.asSafely
+import org.jetbrains.kotlin.idea.base.util.module
 import org.jetbrains.kotlin.builtins.getReceiverTypeFromFunctionType
 import org.jetbrains.kotlin.builtins.isBuiltinFunctionalType
 import org.jetbrains.kotlin.builtins.isSuspendFunctionType
 import org.jetbrains.kotlin.config.LanguageFeature
 import org.jetbrains.kotlin.config.LanguageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToCall
 import org.jetbrains.kotlin.idea.core.receiverValue
 import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.BLOCKING_EXECUTOR_ANNOTATION
@@ -29,10 +31,7 @@ import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlo
 import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.NONBLOCKING_EXECUTOR_ANNOTATION
 import org.jetbrains.kotlin.idea.inspections.blockingCallsDetection.CoroutineBlockingCallInspectionUtils.findFlowOnCall
 import org.jetbrains.kotlin.idea.intentions.getCallableDescriptor
-import org.jetbrains.kotlin.idea.project.getLanguageVersionSettings
-import org.jetbrains.kotlin.idea.project.languageVersionSettings
 import org.jetbrains.kotlin.idea.refactoring.fqName.fqName
-import org.jetbrains.kotlin.idea.util.projectStructure.module
 import org.jetbrains.kotlin.js.resolve.diagnostics.findPsi
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
@@ -109,7 +108,7 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
     }
 
     private fun getLanguageVersionSettings(psiElement: PsiElement): LanguageVersionSettings =
-        psiElement.module?.languageVersionSettings ?: psiElement.project.getLanguageVersionSettings()
+        psiElement.module?.languageVersionSettings ?: psiElement.project.languageVersionSettings
 
     private fun ResolvedCall<*>.getFirstArgument(): KtExpression? =
         valueArgumentsByIndex?.firstOrNull()?.arguments?.firstOrNull()?.getArgumentExpression()
@@ -124,7 +123,7 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
 
     private fun checkFunctionWithDefaultDispatcher(callExpression: KtCallExpression): ContextType {
         val classDescriptor =
-            callExpression.receiverValue().castSafelyTo<ImplicitClassReceiver>()?.classDescriptor ?: return Unsure
+            callExpression.receiverValue().asSafely<ImplicitClassReceiver>()?.classDescriptor ?: return Unsure
         if (classDescriptor.typeConstructor.supertypes.none { it.fqName?.asString() == COROUTINE_SCOPE }) return Unsure
         val propertyDescriptor = classDescriptor
             .unsubstitutedMemberScope
@@ -133,7 +132,7 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
             .singleOrNull { it.isOverridableOrOverrides && it.type.isCoroutineContext() }
             ?: return Unsure
 
-        val initializer = propertyDescriptor.findPsi().castSafelyTo<KtProperty>()?.initializer ?: return Unsure
+        val initializer = propertyDescriptor.findPsi().asSafely<KtProperty>()?.initializer ?: return Unsure
         return initializer.hasBlockFriendlyDispatcher()
     }
 
@@ -154,7 +153,7 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
             override fun visitElement(element: PsiElement) {
                 if (element is KtExpression) {
                     val callableDescriptor = element.getCallableDescriptor()
-                    val allowsBlocking = callableDescriptor.castSafelyTo<DeclarationDescriptor>()
+                    val allowsBlocking = callableDescriptor.asSafely<DeclarationDescriptor>()
                         ?.isBlockFriendlyDispatcher()
                     if (allowsBlocking != null && allowsBlocking != Unsure) {
                         this.allowsBlocking = allowsBlocking
@@ -171,7 +170,7 @@ class CoroutineNonBlockingContextChecker : NonBlockingContextChecker {
     private fun DeclarationDescriptor?.isBlockFriendlyDispatcher(): ContextType {
         if (this == null) return Unsure
 
-        val returnTypeDescriptor = this.castSafelyTo<CallableDescriptor>()?.returnType
+        val returnTypeDescriptor = this.asSafely<CallableDescriptor>()?.returnType
         val typeConstructor = returnTypeDescriptor?.constructor?.declarationDescriptor
 
         if (isTypeOrUsageAnnotatedWith(returnTypeDescriptor, typeConstructor, BLOCKING_EXECUTOR_ANNOTATION)) return Blocking

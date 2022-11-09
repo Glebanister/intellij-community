@@ -79,6 +79,11 @@ class CourseManager internal constructor() : Disposable {
       }
     }
 
+  val currentCourse: LearningCourse?
+    get() = LangManager.getInstance().getLanguageId()?.let { lang ->
+      COURSE_MODULES_EP.extensionList.find { lang.equals(it.language, ignoreCase = true) }?.instance
+    }
+
   override fun dispose() {
   }
 
@@ -102,10 +107,15 @@ class CourseManager internal constructor() : Disposable {
    * @param projectWhereToOpen -- where to open projectWhereToOpen
    * @param forceStartLesson -- force start lesson without check for passed status (passed lessons will be opened as completed text)
    */
-  fun openLesson(projectWhereToOpen: Project, lesson: Lesson?, startingWay: LessonStartingWay, forceStartLesson: Boolean = false) {
+  fun openLesson(projectWhereToOpen: Project,
+                 lesson: Lesson?,
+                 startingWay: LessonStartingWay,
+                 forceStartLesson: Boolean = false,
+                 forceOpenLearningProject: Boolean = false,
+  ) {
     LessonManager.instance.stopLesson()
     if (lesson == null) return //todo: remove null lessons
-    OpenLessonActivities.openLesson(OpenLessonParameters(projectWhereToOpen, lesson, forceStartLesson, startingWay))
+    OpenLessonActivities.openLesson(OpenLessonParameters(projectWhereToOpen, lesson, forceStartLesson, startingWay, forceOpenLearningProject))
   }
 
   fun findLessonById(lessonId: String): Lesson? {
@@ -115,6 +125,10 @@ class CourseManager internal constructor() : Disposable {
   fun findCommonModules(commonCourseId: String): Collection<IftModule> {
     if (commonCourses.isEmpty) reloadCommonModules()
     return commonCourses[commonCourseId].map(ModuleInfo::module)
+  }
+
+  fun findCommonCourseById(id: String): LearningCourse? {
+    return COMMON_COURSE_MODULES_EP.extensionList.find { it.key == id }?.instance
   }
 
   fun isModuleExternal(module: IftModule): Boolean {

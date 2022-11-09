@@ -293,6 +293,8 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
             after(DOC_COMMENT).lineBreakInCode()
 
             // =============== Spacing ================
+            aroundInside(AND, INTERSECTION_TYPE).spacesNoLineBreak(1)
+
             between(EOL_COMMENT, COMMA).lineBreakInCode()
             before(COMMA).spacesNoLineBreak(if (kotlinCommonSettings.SPACE_BEFORE_COMMA) 1 else 0)
             after(COMMA).spaceIf(kotlinCommonSettings.SPACE_AFTER_COMMA)
@@ -319,11 +321,14 @@ fun createSpacingBuilder(settings: CodeStyleSettings, builderUtil: KotlinSpacing
             before(ELVIS).spaces(1)
             after(ELVIS).spacesNoLineBreak(1)
             around(RANGE).spaceIf(kotlinCustomSettings.SPACE_AROUND_RANGE)
+            around(RANGE_UNTIL).spaceIf(kotlinCustomSettings.SPACE_AROUND_RANGE)
 
             after(MODIFIER_LIST).spaces(1)
 
             beforeInside(IDENTIFIER, CLASS).spaces(1)
             beforeInside(IDENTIFIER, OBJECT_DECLARATION).spaces(1)
+
+            after(TYPE_ALIAS_KEYWORD).spaces(1)
 
             after(VAL_KEYWORD).spaces(1)
             after(VAR_KEYWORD).spaces(1)

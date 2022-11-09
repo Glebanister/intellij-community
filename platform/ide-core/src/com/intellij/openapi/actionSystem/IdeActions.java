@@ -108,9 +108,13 @@ public interface IdeActions {
 
   String GROUP_MAIN_MENU = "MainMenu";
   String GROUP_MAIN_TOOLBAR = "MainToolBar";
-  String GROUP_EXPERIMENTAL_TOOLBAR_ACTIONS = "ExperimentalToolbarActions";
+
+  String GROUP_MAIN_TOOLBAR_LEFT = "MainToolbarLeft";
+  String GROUP_MAIN_TOOLBAR_CENTER = "MainToolbarCenter";
+  String GROUP_MAIN_TOOLBAR_RIGHT = "MainToolbarRight";
+
   String GROUP_EXPERIMENTAL_TOOLBAR = "NewToolbarActions";
-  String GROUP_EXPERIMENTAL_TOOLBAR_WITHOUT_RIGHT_PART = "NewToolbarActionsWithoutRight";
+  String GROUP_EXPERIMENTAL_TOOLBAR_XAMARIN = "NewToolbarActionsXamarin";
   String GROUP_EDITOR_POPUP = "EditorPopupMenu";
   String GROUP_BASIC_EDITOR_POPUP = "BasicEditorPopupMenu";
   String GROUP_CONSOLE_EDITOR_POPUP = "ConsoleEditorPopupMenu";
@@ -207,12 +211,6 @@ public interface IdeActions {
   String GROUP_TESTTREE_POPUP = "TestTreePopupMenu";
   String GROUP_TESTSTATISTICS_POPUP = "TestStatisticsTablePopupMenu";
 
-  String GROUP_FAVORITES_VIEW_POPUP = "FavoritesViewPopupMenu";
-  String ADD_TO_FAVORITES = "AddToFavorites";
-  String ADD_NEW_FAVORITES_LIST = "AddNewFavoritesList";
-  String REMOVE_FAVORITES_LIST = "RemoveFavoritesList";
-  String REMOVE_ALL_FAVORITES_LISTS_BUT_THIS = "RemoveAllFavoritesListsButThis";
-
   String GROUP_SCOPE_VIEW_POPUP = "ScopeViewPopupMenu";
 
   String GROUP_J2EE_VIEW_POPUP = "J2EEViewPopupMenu";
@@ -298,10 +296,6 @@ public interface IdeActions {
   String GROUP_WELCOME_SCREEN_OPTIONS = "WelcomeScreen.Options";
   String GROUP_WELCOME_SCREEN_LEARN_IDE = "WelcomeScreen.LearnIdeHelp";
 
-  /** @deprecated please use {@link #GROUP_WELCOME_SCREEN_OPTIONS} (and the corresponding action group) instead */
-  @Deprecated(forRemoval = true)
-  String GROUP_WELCOME_SCREEN_HELP = "WelcomeScreen.Help";
-
   String ACTION_KEYMAP_REFERENCE="Help.KeymapReference";
   String ACTION_MOVE = "Move";
   String ACTION_RENAME = "RenameElement";
@@ -375,4 +369,6 @@ public interface IdeActions {
   String BREADCRUMBS_HIDE_BOTH = "EditorBreadcrumbsHideBoth";
 
   String ACTION_RESTORE_FONT_PREVIEW_TEXT = "RestoreFontPreviewTextAction";
+
+  String ACTION_FOCUS_EDITOR = "FocusEditor";
 }

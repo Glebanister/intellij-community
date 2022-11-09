@@ -13,11 +13,8 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.util.ActionCallback;
-import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.Expirable;
 import com.intellij.openapi.util.ExpirableRunnable;
 import com.intellij.openapi.util.registry.Registry;
-import com.intellij.openapi.wm.FocusRequestor;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.ex.IdeFocusTraversalPolicy;
@@ -26,7 +23,7 @@ import com.intellij.ui.DirtyUI;
 import com.intellij.ui.popup.AbstractPopup;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.EDT;
-import com.intellij.util.ui.UIUtil;
+import com.intellij.util.ui.StartupUiUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,8 +31,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.FocusEvent;
 import java.awt.event.WindowEvent;
+import java.util.LinkedList;
 import java.util.List;
-import java.util.*;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class FocusManagerImpl extends IdeFocusManager implements Disposable {
@@ -46,8 +44,6 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
   private final List<FocusRequestInfo> myRequests = new LinkedList<>();
 
   private final IdeEventQueue myQueue;
-
-  private final Set<FurtherRequestor> myValidFurtherRequestors = new HashSet<>();
 
   private final Map<Window, Component> myLastFocused = ContainerUtil.createWeakValueMap();
   private final Map<Window, Component> myLastFocusedAtDeactivation = ContainerUtil.createWeakValueMap();
@@ -61,7 +57,7 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
 
     ApplicationManager.getApplication().getMessageBus().connect().subscribe(ApplicationActivationListener.TOPIC, new AppListener());
 
-    UIUtil.addAwtListener(e -> {
+    StartupUiUtil.addAwtListener(e -> {
       if (e instanceof FocusEvent) {
         final FocusEvent fe = (FocusEvent)e;
         final Component c = fe.getComponent();
@@ -74,15 +70,15 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
         }
       }
       else if (e instanceof WindowEvent) {
-        Window window = ((WindowEvent)e).getWindow();
+        Window window1 = ((WindowEvent)e).getWindow();
         if (e.getID() == WindowEvent.WINDOW_CLOSED) {
-          if (window instanceof IdeFrame) {
-            myLastFocused.remove(window);
-            myLastFocusedAtDeactivation.remove(window);
+          if (window1 instanceof IdeFrame) {
+            myLastFocused.remove(window1);
+            myLastFocusedAtDeactivation.remove(window1);
           }
         }
       }
-    }, AWTEvent.FOCUS_EVENT_MASK | AWTEvent.WINDOW_EVENT_MASK,this);
+    }, AWTEvent.FOCUS_EVENT_MASK | AWTEvent.WINDOW_EVENT_MASK, this);
 
     KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusedWindow", event -> {
       Object value = event.getNewValue();
@@ -115,7 +111,7 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
   public ActionCallback requestFocusInProject(@NotNull Component c, @Nullable Project project) {
     // if focus transfer is requested to the active project's window, we call 'requestFocus' to allow focusing detached project windows
     // (editor or tool windows), otherwise we call 'requestFocusInWindow' to avoid unexpected project switching
-    Project activeProject = ProjectUtil.getProjectForWindow(KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow());
+    Project activeProject = ProjectUtil.getActiveProject();
     if (activeProject != null) {
       if (project == null) {
         project = ProjectUtil.getProjectForComponent(c);
@@ -155,12 +151,7 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
 
   @DirtyUI
   @Override
-  public void dispose() {
-    for (FurtherRequestor requestor : myValidFurtherRequestors) {
-      Disposer.dispose(requestor);
-    }
-    myValidFurtherRequestors.clear();
-  }
+  public void dispose() {}
 
   @Override
   public void doWhenFocusSettlesDown(@NotNull ExpirableRunnable runnable) {
@@ -169,21 +160,23 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
 
   @Override
   public void doWhenFocusSettlesDown(@NotNull Runnable runnable) {
-    myQueue.executeWhenAllFocusEventsLeftTheQueue(runnable);
+    doWhenFocusSettlesDown(runnable, ModalityState.defaultModalityState());
   }
 
   @Override
   public void doWhenFocusSettlesDown(@NotNull Runnable runnable, @NotNull ModalityState modality) {
     AtomicBoolean immediate = new AtomicBoolean(true);
-    doWhenFocusSettlesDown(() -> {
+    myQueue.executeWhenAllFocusEventsLeftTheQueue(() -> {
       if (immediate.get()) {
-        if (!(runnable instanceof ExpirableRunnable) || !((ExpirableRunnable)runnable).isExpired()) {
+        boolean expired = runnable instanceof ExpirableRunnable && ((ExpirableRunnable)runnable).isExpired();
+        if (!expired) {
           runnable.run();
         }
-        return;
       }
-
-      ApplicationManager.getApplication().invokeLater(() -> doWhenFocusSettlesDown(runnable, modality), modality);
+      else {
+        // "Write-safe context" when postponed due to `TransactionGuardImpl#wrapLaterInvocation`
+        ApplicationManager.getApplication().invokeLater(() -> doWhenFocusSettlesDown(runnable, modality), modality);
+      }
     });
     immediate.set(false);
   }
@@ -215,7 +208,7 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
         result = permOwner;
       }
 
-      if (UIUtil.isMeaninglessFocusOwner(result)) {
+      if (ComponentUtil.isMeaninglessFocusOwner(result)) {
         result = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
       }
     }
@@ -275,44 +268,11 @@ public final class FocusManagerImpl extends IdeFocusManager implements Disposabl
     }
   }
 
-  private static final class FurtherRequestor implements FocusRequestor {
-    private final IdeFocusManager myManager;
-    private final Expirable myExpirable;
-    @SuppressWarnings({"FieldCanBeLocal", "unused"})
-    private Throwable myAllocation;
-    private boolean myDisposed;
-
-    private FurtherRequestor(@NotNull IdeFocusManager manager, @NotNull Expirable expirable) {
-      myManager = manager;
-      myExpirable = expirable;
-      if (Registry.is("ide.debugMode")) {
-        myAllocation = new Exception();
-      }
-    }
-
-    @Override
-    public @NotNull ActionCallback requestFocus(@NotNull Component c, boolean forced) {
-      ActionCallback result = isExpired() ? ActionCallback.REJECTED : myManager.requestFocus(c, forced);
-      result.doWhenProcessed(() -> Disposer.dispose(this));
-      return result;
-    }
-
-    private boolean isExpired() {
-      return myExpirable.isExpired() || myDisposed;
-    }
-
-    @Override
-    public void dispose() {
-      myDisposed = true;
-    }
-  }
-
   private final class AppListener implements ApplicationActivationListener {
     @Override
     public void delayedApplicationDeactivated(@NotNull Window ideFrame) {
       Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-      Component parent = UIUtil.findUltimateParent(owner);
-      if (parent == ideFrame) {
+      if (owner != null && ComponentUtil.findUltimateParent(owner) == ideFrame) {
         myLastFocusedAtDeactivation.put(ideFrame, owner);
       }
     }

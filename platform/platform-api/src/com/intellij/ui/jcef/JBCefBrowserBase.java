@@ -1,9 +1,10 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.jcef;
 
 import com.intellij.credentialStore.Credentials;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.util.Disposer;
@@ -15,16 +16,16 @@ import com.intellij.ui.scale.ScaleContext;
 import com.intellij.util.IconUtil;
 import com.intellij.util.LazyInitializer;
 import com.intellij.util.ObjectUtils;
+import com.intellij.util.net.ssl.CertificateListener;
+import com.intellij.util.net.ssl.CertificateManager;
 import com.intellij.util.ui.UIUtil;
 import org.cef.CefClient;
 import org.cef.browser.*;
-import org.cef.callback.CefAuthCallback;
-import org.cef.callback.CefContextMenuParams;
-import org.cef.callback.CefMenuModel;
-import org.cef.callback.CefNativeAdapter;
+import org.cef.callback.*;
 import org.cef.handler.*;
 import org.cef.network.CefCookieManager;
 import org.cef.network.CefRequest;
+import org.cef.security.CefSSLInfo;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -38,6 +39,8 @@ import java.beans.PropertyChangeListener;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -58,14 +61,14 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
     /**
      * Prevents the browser from providing credentials via the
      * {@link CefRequestHandler#getAuthCredentials(CefBrowser, String, boolean, String, int, String, String, CefAuthCallback)} callback.
-     * <p></p>
+     * <p>
      * Accepts {@link Boolean} values. Use the property to handle the callback on your own.
      */
     public static final @NotNull String NO_DEFAULT_AUTH_CREDENTIALS = "JBCefBrowserBase.noDefaultAuthCredentials";
 
     /**
      * Disables or enables a context menu on click.
-     * <p></p>
+     * <p>
      * Accepts {@link Boolean} values.
      */
     public static final @NotNull String NO_CONTEXT_MENU = "JBCefBrowserBase.noContextMenu";
@@ -89,6 +92,8 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   protected final @NotNull PropertiesHelper myPropertiesHelper = new PropertiesHelper();
   private final @NotNull AtomicBoolean myIsCreateStarted = new AtomicBoolean(false);
   private @Nullable CefRequestHandler myHrefProcessingRequestHandler;
+
+  private final @NotNull CertificateListener myCertificateListener;
 
   private static final LazyInitializer.LazyValue<@NotNull String> ERROR_PAGE_READER = LazyInitializer.create(() -> {
     try {
@@ -229,6 +234,24 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
           }
           return super.getAuthCredentials(browser, origin_url, isProxy, host, port, realm, scheme, callback);
         }
+
+        @Override
+        public boolean onCertificateError(CefBrowser browser,
+                                          CefLoadHandler.ErrorCode cert_error,
+                                          String request_url,
+                                          CefSSLInfo sslInfo,
+                                          CefCallback callback) {
+          ApplicationManager.getApplication().invokeLater(() -> {
+            try {
+              CertificateManager.getInstance().getTrustManager().checkServerTrusted(sslInfo.certificate.getCertificatesChain(), "UNKNOWN");
+              callback.Continue();
+            }
+            catch (CertificateException e) {
+              callback.cancel();
+            }
+          });
+          return true;
+        }
       }, getCefBrowser());
 
       myCefClient.addContextMenuHandler(myContextMenuHandler = createDefaultContextMenuHandler(), getCefBrowser());
@@ -241,6 +264,19 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
     }
 
     if (builder.myCreateImmediately) createImmediately();
+
+    myCertificateListener = new CertificateListener() {
+      @Override
+      public void certificateAdded(X509Certificate certificate) { }
+
+      @Override
+      public void certificateRemoved(X509Certificate certificate) {
+        getCefBrowser().getRequestContext().ClearCertificateExceptions(null);
+        getCefBrowser().getRequestContext().CloseAllConnections(null);
+      }
+    };
+
+    CertificateManager.getInstance().getCustomTrustManager().addListener(myCertificateListener);
   }
 
   private @NotNull CefBrowserOsrWithHandler createOsrBrowser(@NotNull JBCefOSRHandlerFactory factory,
@@ -271,7 +307,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
 
   /**
    * Creates the native browser.
-   * <p></p>
+   * <p>
    * Normally the native browser is created when the browser's component is added to a UI hierarchy.
    * <p>
    * Prefer this method to {@link CefBrowser#createImmediately}.
@@ -296,7 +332,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   }
 
   /**
-   * Loads html content.
+   * Loads HTML content.
    *
    * @param html content to load
    * @param url  a dummy URL that may affect restriction policy applied to the content
@@ -311,7 +347,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   }
 
   /**
-   * Loads html content.
+   * Loads HTML content.
    */
   public final void loadHTML(@NotNull String html) {
     loadHTML(html, BLANK_URI);
@@ -324,8 +360,8 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
 
   /**
    * Returns the browser currently in focus.
-   * <p></p>
-   * It is possible that at a certain moment the browser can be focused natively but can not yet have java focus.
+   * <p>
+   * It is possible that at a certain moment, the browser can be focused natively but can not yet have Java focus.
    */
   public static @Nullable JBCefBrowserBase getFocusedBrowser() {
     return focusedBrowser;
@@ -382,7 +418,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   }
 
   /**
-   * Adds handler that opens any links clicked by user in external browser
+   * Adds handler that opens any links clicked by user in external browser.
    */
   public void setOpenLinksInExternalBrowser(boolean openLinksInExternalBrowser) {
     if (openLinksInExternalBrowser) {
@@ -448,7 +484,7 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
 
   /**
    * Returns whether {@link #createImmediately} has been called or the browser has already been created.
-   * <p></p>
+   * <p>
    * WARNING: Returns wrong result when {@link CefBrowser#createImmediately()} is called directly.
    */
   boolean isCefBrowserCreateStarted() {
@@ -474,6 +510,8 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
       if (myRequestHandler != null) getJBCefClient().removeRequestHandler(myRequestHandler, getCefBrowser());
       if (myHrefProcessingRequestHandler != null) getJBCefClient().removeRequestHandler(myHrefProcessingRequestHandler, getCefBrowser());
       if (myContextMenuHandler != null) getJBCefClient().removeContextMenuHandler(myContextMenuHandler, getCefBrowser());
+
+      CertificateManager.getInstance().getCustomTrustManager().removeListener(myCertificateListener);
 
       myCefBrowser.stopLoad();
       myCefBrowser.setCloseAllowed();
@@ -504,11 +542,11 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
   }
 
   /**
-   * Sets (overrides) background color in the html page.
-   * <p></p>
+   * Sets (overrides) background color in the HTML page.
+   * <p>
    * The color is set for the currently displayed page and all the subsequently loaded pages.
    *
-   * @see <a href="https://www.w3schools.com/cssref/css_colors_legal.asp">css color format</a>
+   * @see <a href="https://www.w3schools.com/cssref/css_colors_legal.asp">CSS color format</a>
    * @param cssColor the color in CSS format
    */
   public void setPageBackgroundColor(@NotNull String cssColor) {
@@ -595,8 +633,8 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
     };
 
     /**
-     * Returns an error page html.
-     * <p></p>
+     * Returns an error page HTML.
+     * <p>
      * To prevent showing the error page (e.g. filter out {@link CefLoadHandler.ErrorCode#ERR_ABORTED}) just return {@code null}.
      * To fallback to default error page return {@link ErrorPage#DEFAULT#create(CefLoadHandler.ErrorCode, String, String)}.
      */
@@ -606,11 +644,11 @@ public abstract class JBCefBrowserBase implements JBCefDisposable {
 
   /**
    * Sets the error page to display in the browser on load error.
-   * <p></p>
+   * <p>
    * By default, no error page is displayed. To enable displaying default error page pass {@link ErrorPage#DEFAULT}.
    * Passing {@code null} prevents the browser from displaying an error page.
    *
-   * @param errorPage the error page producer, or null
+   * @param errorPage the error page producer, or {@code null}
    */
   public void setErrorPage(@Nullable ErrorPage errorPage) {
     myErrorPage = errorPage;

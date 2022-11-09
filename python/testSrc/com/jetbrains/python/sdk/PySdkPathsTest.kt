@@ -199,7 +199,7 @@ class PySdkPathsTest {
     val sdkModificator = editableSdk.sdkModificator
     assertThat(sdkModificator.sdkAdditionalData).isNull()
     mockPythonPluginDisposable()
-    sdkModificator.sdkAdditionalData = PythonSdkAdditionalData(null).apply {
+    sdkModificator.sdkAdditionalData = PythonSdkAdditionalData().apply {
       setAddedPathsFromVirtualFiles(setOf(userAddedPath))
     }
     runWriteActionAndWait { sdkModificator.commitChanges() }
@@ -239,7 +239,10 @@ class PySdkPathsTest {
 
     mockPythonPluginDisposable()
     updateSdkPaths(sdk)
+    checkRoots(sdk, module, listOf(moduleRoot, entryPath), emptyList())
 
+    // Subsequent updates should keep already set up source roots
+    updateSdkPaths(sdk)
     checkRoots(sdk, module, listOf(moduleRoot, entryPath), emptyList())
 
     val simpleSdk = PythonMockSdk.create().also {

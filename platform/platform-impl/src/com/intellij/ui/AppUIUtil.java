@@ -23,10 +23,14 @@ import com.intellij.ui.AppIcon.MacAppIcon;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.scale.ScaleContext;
 import com.intellij.ui.scale.ScaleContextAware;
-import com.intellij.util.*;
+import com.intellij.util.IconUtil;
+import com.intellij.util.ImageLoader;
+import com.intellij.util.JBHiDPIScaledImage;
+import com.intellij.util.PlatformUtils;
 import com.intellij.util.io.URLUtil;
 import com.intellij.util.ui.ImageUtil;
 import com.intellij.util.ui.JBImageIcon;
+import kotlin.Pair;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -225,21 +229,6 @@ public final class AppUIUtil {
     }
   }
 
-  public static void updateFrameClass() {
-    if (SystemInfoRt.isWindows || SystemInfoRt.isMac) {
-      return;
-    }
-
-    try {
-      Toolkit toolkit = Toolkit.getDefaultToolkit();
-      Class<? extends Toolkit> aClass = toolkit.getClass();
-      if ("sun.awt.X11.XToolkit".equals(aClass.getName())) {
-        ReflectionUtil.setField(aClass, toolkit, null, "awtAppClassName", getFrameClass());
-      }
-    }
-    catch (Exception ignore) { }
-  }
-
   // keep in sync with LinuxDistributionBuilder#getFrameClass
   public static String getFrameClass() {
     String name = ApplicationNamesInfo.getInstance().getFullProductNameWithEdition().toLowerCase(Locale.ENGLISH)
@@ -274,7 +263,7 @@ public final class AppUIUtil {
     return null;
   }
 
-  public static boolean showConsentsAgreementIfNeeded(@NotNull Logger log, @NotNull Predicate<Consent> filter) {
+  public static boolean showConsentsAgreementIfNeeded(@NotNull Logger log, @NotNull Predicate<? super Consent> filter) {
     Pair<List<Consent>, Boolean> consentsToShow = ConsentOptions.getInstance().getConsents(filter);
     if (!consentsToShow.getSecond()) {
       return false;

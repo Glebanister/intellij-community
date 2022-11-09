@@ -24,11 +24,18 @@ public class NestedClassLineMarkerTest extends LightJavaCodeInsightFixtureTestCa
   private final Set<RunnerAndConfigurationSettings> myTempSettings = new HashSet<>();
   @Override
   protected void tearDown() throws Exception {
-    RunManager runManager = RunManager.getInstance(getProject());
-    for (RunnerAndConfigurationSettings setting : myTempSettings) {
-      runManager.removeConfiguration(setting);
+    try {
+      RunManager runManager = RunManager.getInstance(getProject());
+      for (RunnerAndConfigurationSettings setting : myTempSettings) {
+        runManager.removeConfiguration(setting);
+      }
     }
-    super.tearDown();
+    catch (Throwable e) {
+      addSuppressedException(e);
+    }
+    finally {
+      super.tearDown();
+    }
   }
 
   @Override
@@ -39,38 +46,133 @@ public class NestedClassLineMarkerTest extends LightJavaCodeInsightFixtureTestCa
 
   public void testNestedClassInAbstractOuter() {
     myFixture.configureByText("MyTest.java",
-                              "import org.junit.jupiter.api.Nested;\n" +
-                              "import org.junit.jupiter.api.Test;\n" +
-                              "abstract class TemplateTest{\n" +
-                              "    @Nested\n" +
-                              "    class <caret>NestedTests {\n" +
-                              "       @Test void myTest() {}" +
-                              "    }\n" +
-                              "}\n" +
-                              "class ConcreteTest extends TemplateTest { }");
+                              """
+                                import org.junit.jupiter.api.Nested;
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest{
+                                    @Nested
+                                    class <caret>NestedTests {
+                                       @Test void myTest() {}    }
+                                }
+                                class ConcreteTest extends TemplateTest { }""");
     RunConfiguration configuration = startConfigurationFromGutter("Run 'TemplateTest$NestedTests'");
     assertEquals("ConcreteTest", configuration.getName());
     JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
     assertEquals(JUnitConfiguration.TEST_CLASS, data.TEST_OBJECT);
     assertEquals("ConcreteTest$NestedTests", data.MAIN_CLASS_NAME);
   }
+
+  public void testAbstractOuterWithSingleInheritor() {
+    myFixture.configureByText("MyTest.java",
+                              """
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest{
+                                   @Test void myTe<caret>st() {}}
+                                class ConcreteTest extends TemplateTest { }""");
+    RunConfiguration configuration = startConfigurationFromGutter("Run 'myTest()'");
+    assertEquals("ConcreteTest.myTest", configuration.getName());
+    JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
+    assertEquals(JUnitConfiguration.TEST_METHOD, data.TEST_OBJECT);
+    assertEquals("ConcreteTest", data.MAIN_CLASS_NAME);
+  }
+  
+  public void testAbstractOuterWithSingleInheritorInNested() {
+    myFixture.configureByText("MyTest.java",
+                              """
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest {
+                                  @Test void my<caret>Test() {}
+                                  static class ConcreteTest extends TemplateTest {}
+                                }
+                                """
+    );
+    RunConfiguration configuration = startConfigurationFromGutter("Run 'myTest()'");
+    assertEquals("TemplateTest$ConcreteTest.myTest", configuration.getName());
+    JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
+    assertEquals(JUnitConfiguration.TEST_METHOD, data.TEST_OBJECT);
+    assertEquals("TemplateTest$ConcreteTest", data.MAIN_CLASS_NAME);
+  }
+  
+  public void testMethodInStaticNestedInheritorClassInAbstractOuter() {
+    myFixture.configureByText("MyTest.java",
+                              """
+                                import org.junit.jupiter.api.Nested;
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest{
+                                    static class NestedTests extends TemplateTest {
+                                       @Test <caret> void myTest() {}
+                                    }
+                                    static class NestedTests1 extends TemplateTest {
+                                       @Test void myTest() {}
+                                    }
+                                }
+                                """);
+    RunConfiguration configuration = startConfigurationFromGutter("Run 'myTest()'");
+    assertEquals("TemplateTest$NestedTests.myTest", configuration.getName());
+    JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
+    assertEquals(JUnitConfiguration.TEST_METHOD, data.TEST_OBJECT);
+    assertEquals("TemplateTest$NestedTests", data.MAIN_CLASS_NAME);
+    assertEquals("myTest", data.METHOD_NAME);
+  }
   
   public void testMethodInNestedClassInAbstractOuter() {
     myFixture.configureByText("MyTest.java",
-                              "import org.junit.jupiter.api.Nested;\n" +
-                              "import org.junit.jupiter.api.Test;\n" +
-                              "abstract class TemplateTest{\n" +
-                              "    @Nested\n" +
-                              "    class NestedTests {\n" +
-                              "       @Test <caret> void myTest() {}" +
-                              "    }\n" +
-                              "}\n" +
-                              "class ConcreteTest extends TemplateTest { }");
+                              """
+                                import org.junit.jupiter.api.Nested;
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest{
+                                    @Nested
+                                    class NestedTests {
+                                       @Test <caret> void myTest() {}    }
+                                }
+                                class ConcreteTest extends TemplateTest { }""");
     RunConfiguration configuration = startConfigurationFromGutter("Run 'myTest()'");
     assertEquals("ConcreteTest.myTest", configuration.getName());
     JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
     assertEquals(JUnitConfiguration.TEST_METHOD, data.TEST_OBJECT);
     assertEquals("ConcreteTest$NestedTests", data.MAIN_CLASS_NAME);
+    assertEquals("myTest", data.METHOD_NAME);
+  }
+
+  public void testMethodInStaticClassInAbstractOuter() {
+    myFixture.configureByText("MyTest.java",
+                              """
+                                import org.junit.jupiter.api.Nested;
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest{
+                                    @Test void markerTest() {}
+                                    static class NestedTests {
+                                       @Test <caret> void myTest() {}    }
+                                }
+                                class ConcreteTest1 extends TemplateTest { }
+                                class ConcreteTest2 extends TemplateTest { }""");
+    RunConfiguration configuration = startConfigurationFromGutter("Run 'myTest()'");
+    assertEquals("TemplateTest$NestedTests.myTest", configuration.getName());
+    JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
+    assertEquals(JUnitConfiguration.TEST_METHOD, data.TEST_OBJECT);
+    assertEquals("TemplateTest$NestedTests", data.MAIN_CLASS_NAME);
+    assertEquals("myTest", data.METHOD_NAME);
+  }
+  
+  public void testMethodInNestedInheritorClassInAbstractOuter() {
+    myFixture.configureByText("MyTest.java",
+                              """
+                                import org.junit.jupiter.api.Nested;
+                                import org.junit.jupiter.api.Test;
+                                abstract class TemplateTest{
+                                    @Nested
+                                    class NestedTests extends TemplateTest {
+                                       @Test <caret> void myTest() {}    }
+                                    @Nested
+                                    class NestedTests1 extends TemplateTest {
+                                       @Test void myTest() {}    }
+                                }
+                                """);
+    RunConfiguration configuration = startConfigurationFromGutter("Run 'myTest()'");
+    assertEquals("TemplateTest$NestedTests.myTest", configuration.getName());
+    JUnitConfiguration.Data data = ((JUnitConfiguration)configuration).getPersistentData();
+    assertEquals(JUnitConfiguration.TEST_METHOD, data.TEST_OBJECT);
+    assertEquals("TemplateTest$NestedTests", data.MAIN_CLASS_NAME);
     assertEquals("myTest", data.METHOD_NAME);
   }
 

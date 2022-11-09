@@ -1,8 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.psi.PsiElement
@@ -10,18 +11,17 @@ import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
+import org.jetbrains.kotlin.idea.base.projectStructure.languageVersionSettings
+import org.jetbrains.kotlin.idea.base.psi.unifier.KotlinPsiRange
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.core.compareDescriptors
-import org.jetbrains.kotlin.idea.project.languageVersionSettings
 import org.jetbrains.kotlin.idea.refactoring.introduce.ExtractableSubstringInfo
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractableSubstringInfo
 import org.jetbrains.kotlin.idea.refactoring.introduce.substringContextOrThis
-import org.jetbrains.kotlin.idea.resolve.getDataFlowValueFactory
-import org.jetbrains.kotlin.idea.util.application.runReadAction
+import org.jetbrains.kotlin.idea.resolve.dataFlowValueFactory
 import org.jetbrains.kotlin.idea.util.getResolutionScope
-import org.jetbrains.kotlin.idea.util.psi.patternMatching.KotlinPsiRange
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -167,7 +167,7 @@ data class ExtractionData(
     }
 
     private fun getPossibleTypes(expression: KtExpression, resolvedCall: ResolvedCall<*>?, context: BindingContext): Set<KotlinType> {
-        val dataFlowValueFactory = expression.getResolutionFacade().getDataFlowValueFactory()
+        val dataFlowValueFactory = expression.getResolutionFacade().dataFlowValueFactory
         val dataFlowInfo = context.getDataFlowInfoAfter(expression)
 
         resolvedCall?.getImplicitReceiverValue()?.let {

@@ -10,12 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 public final class ActionGroupUtil {
 
-  /** @deprecated use {@link #isGroupEmpty(ActionGroup, AnActionEvent)} instead */
-  @Deprecated(forRemoval = true)
-  public static boolean isGroupEmpty(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent e, boolean unused) {
-    return getActiveActions(actionGroup, e).isEmpty();
-  }
-
   public static boolean isGroupEmpty(@NotNull ActionGroup actionGroup, @NotNull AnActionEvent e) {
     return getActiveActions(actionGroup, e).isEmpty();
   }
@@ -40,10 +34,14 @@ public final class ActionGroupUtil {
 
   @ApiStatus.Experimental
   public static @NotNull ActionGroup forceRecursiveUpdateInBackground(@NotNull ActionGroup actionGroup) {
-    class MyGroup extends ActionGroup implements UpdateInBackground.Recursive {
+    class MyGroup extends ActionGroup implements ActionUpdateThreadAware.Recursive {
+      {
+        setPopup(false);
+      }
+
       @Override
-      public boolean isPopup() {
-        return false;
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
       }
 
       @Override

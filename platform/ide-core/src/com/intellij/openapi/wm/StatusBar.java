@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.wm;
 
 import com.intellij.openapi.Disposable;
@@ -46,7 +46,7 @@ public interface StatusBar extends StatusBarInfo, Disposable {
           return;
         }
         if (!project.isInitialized()) {
-          StartupManager.getInstance(project).runWhenProjectIsInitialized(() -> {
+          StartupManager.getInstance(project).runAfterOpened(() -> {
             project.getMessageBus().syncPublisher(TOPIC).setInfo(text, requestor);
           });
           return;
@@ -89,21 +89,6 @@ public interface StatusBar extends StatusBarInfo, Disposable {
    */
   @ApiStatus.Internal
   void addWidget(@NotNull StatusBarWidget widget, @NonNls @NotNull String anchor, @NotNull Disposable parentDisposable);
-
-  @ApiStatus.Experimental
-  void setCentralWidget(@NotNull StatusBarCentralWidget widget);
-
-  /**
-   * @deprecated Use {@link StatusBarWidgetFactory}
-   */
-  @Deprecated(forRemoval = true)
-  void addCustomIndicationComponent(@NotNull JComponent c);
-
-  /**
-   * @deprecated Use {@link StatusBarWidgetFactory}
-   */
-  @Deprecated(forRemoval = true)
-  void removeCustomIndicationComponent(@NotNull JComponent c);
 
   /**
    * For external usages use {@link StatusBarWidgetFactory}.

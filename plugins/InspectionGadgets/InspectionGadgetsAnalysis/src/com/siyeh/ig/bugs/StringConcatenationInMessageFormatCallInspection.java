@@ -65,7 +65,7 @@ public class StringConcatenationInMessageFormatCallInspection extends BaseInspec
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiBinaryExpression)) {
         return;
@@ -140,7 +140,7 @@ public class StringConcatenationInMessageFormatCallInspection extends BaseInspec
   private static class StringConcatenationInMessageFormatCallVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethodCallExpression(PsiMethodCallExpression expression) {
+    public void visitMethodCallExpression(@NotNull PsiMethodCallExpression expression) {
       super.visitMethodCallExpression(expression);
       if (!isMessageFormatCall(expression)) {
         return;

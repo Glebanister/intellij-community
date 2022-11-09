@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.inspections
 
@@ -9,10 +9,10 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElementVisitor
-import org.jetbrains.kotlin.KtNodeTypes
-import org.jetbrains.kotlin.idea.KotlinBundle
+import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToCall
+import org.jetbrains.kotlin.idea.codeinsight.api.classic.inspections.AbstractKotlinInspection
 import org.jetbrains.kotlin.idea.refactoring.replaceWithCopyWithResolveCheck
 import org.jetbrains.kotlin.idea.search.usagesSearch.descriptor
 import org.jetbrains.kotlin.lexer.KtTokens
@@ -23,7 +23,6 @@ import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.calls.util.getResolvedCall
-import org.jetbrains.kotlin.resolve.calls.util.isSingleUnderscore
 
 class RedundantLambdaArrowInspection : AbstractKotlinInspection() {
     override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
@@ -33,14 +32,12 @@ class RedundantLambdaArrowInspection : AbstractKotlinInspection() {
             val parameters = functionLiteral.valueParameters
             val singleParameter = parameters.singleOrNull()
             if (singleParameter?.typeReference != null) return
-            if (parameters.isNotEmpty() && singleParameter?.isSingleUnderscore != true && singleParameter?.name != "it") {
+            if (parameters.isNotEmpty() && singleParameter?.name != "it") {
                 return
             }
 
             if (lambdaExpression.getStrictParentOfType<KtWhenEntry>()?.expression == lambdaExpression) return
-            if (lambdaExpression.getStrictParentOfType<KtContainerNodeForControlStructureBody>()?.let {
-                    it.node.elementType in listOf(KtNodeTypes.THEN, KtNodeTypes.ELSE) && it.expression == lambdaExpression
-                } == true) return
+            if (lambdaExpression.getStrictParentOfType<KtContainerNodeForControlStructureBody>()?.expression == lambdaExpression) return
 
             val callExpression = lambdaExpression.parent?.parent as? KtCallExpression
             if (callExpression != null) {
@@ -51,7 +48,7 @@ class RedundantLambdaArrowInspection : AbstractKotlinInspection() {
             val lambdaContext = lambdaExpression.analyze()
             if (parameters.isNotEmpty() && lambdaContext[BindingContext.EXPECTED_EXPRESSION_TYPE, lambdaExpression] == null) return
 
-            val valueArgument = lambdaExpression.getStrictParentOfType() as? KtValueArgument
+            val valueArgument = lambdaExpression.getStrictParentOfType<KtValueArgument>()
             val valueArgumentCalls = valueArgument?.parentCallExpressions().orEmpty()
             if (valueArgumentCalls.any { !it.isApplicableCall(lambdaExpression, lambdaContext) }) return
 
@@ -68,7 +65,7 @@ class RedundantLambdaArrowInspection : AbstractKotlinInspection() {
                     functionLiteral,
                     TextRange((singleParameter?.startOffset ?: arrow.startOffset) - startOffset, arrow.endOffset - startOffset),
                     KotlinBundle.message("redundant.lambda.arrow"),
-                    ProblemHighlightType.LIKE_UNUSED_SYMBOL,
+                    ProblemHighlightType.GENERIC_ERROR_OR_WARNING,
                     isOnTheFly,
                     DeleteFix()
                 )
@@ -87,8 +84,8 @@ class RedundantLambdaArrowInspection : AbstractKotlinInspection() {
 }
 
 private fun KtCallExpression.isApplicableCall(lambdaExpression: KtLambdaExpression, lambdaContext: BindingContext): Boolean {
-    val dotQualifiedExpression = parent as? KtDotQualifiedExpression
-    return if (dotQualifiedExpression == null) {
+    val qualifiedExpression = parent as? KtQualifiedExpression
+    return if (qualifiedExpression == null) {
         val offset = lambdaExpression.textOffset - textOffset
         replaceWithCopyWithResolveCheck(
             resolveStrategy = { expr, context ->
@@ -100,8 +97,8 @@ private fun KtCallExpression.isApplicableCall(lambdaExpression: KtLambdaExpressi
             }
         )
     } else {
-        val offset = lambdaExpression.textOffset - dotQualifiedExpression.textOffset
-        dotQualifiedExpression.replaceWithCopyWithResolveCheck(
+        val offset = lambdaExpression.textOffset - qualifiedExpression.textOffset
+        qualifiedExpression.replaceWithCopyWithResolveCheck(
             resolveStrategy = { expr, context ->
                 expr.selectorExpression.getResolvedCall(context)?.resultingDescriptor
             },

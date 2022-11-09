@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -223,6 +223,32 @@ public abstract class KotlinMavenInspectionTestGenerated extends AbstractKotlinM
         @TestMetadata("wrongPhaseExecution.xml")
         public void testWrongPhaseExecution() throws Exception {
             runTest("testData/maven-inspections/_16/wrongPhaseExecution.xml");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("testData/maven-inspections/_17")
+    public static class _17 extends AbstractKotlinMavenInspectionTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        @TestMetadata("ideAndMavenVersionsBackwardCompatibility.xml")
+        public void testIdeAndMavenVersionsBackwardCompatibility() throws Exception {
+            runTest("testData/maven-inspections/_17/ideAndMavenVersionsBackwardCompatibility.xml");
+        }
+    }
+
+    @RunWith(JUnit3RunnerWithInners.class)
+    @TestMetadata("testData/maven-inspections/_18")
+    public static class _18 extends AbstractKotlinMavenInspectionTest {
+        private void runTest(String testDataFilePath) throws Exception {
+            KotlinTestUtils.runTest(this::doTest, this, testDataFilePath);
+        }
+
+        @TestMetadata("ideAndMavenVersionsNoForwardCompatibility.xml")
+        public void testIdeAndMavenVersionsNoForwardCompatibility() throws Exception {
+            runTest("testData/maven-inspections/_18/ideAndMavenVersionsNoForwardCompatibility.xml");
         }
     }
 }

@@ -13,16 +13,17 @@ import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.NlsSafe
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.*
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.dsl.builder.*
 import com.intellij.ui.dsl.builder.Cell
 import com.intellij.ui.dsl.builder.Row
 import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
-import com.intellij.ui.dsl.gridLayout.VerticalAlign
 import com.intellij.ui.layout.*
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.NamedColorUtil
 import com.intellij.util.ui.UIUtil
 import java.awt.Dimension
 import javax.swing.AbstractButton
@@ -33,7 +34,8 @@ import javax.swing.event.DocumentEvent
 class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurable, Configurable.NoScroll {
 
   private class SettingsGroup(val groupRow: Row,
-                              val title: String,
+                              val title: JBLabel,
+                              val text: String,
                               val settingsRows: Collection<SettingsRow>)
 
   private class SettingsRow(val row: Row,
@@ -68,7 +70,7 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
     val result = panel {
       row {
         cell(searchField)
-          .horizontalAlign(HorizontalAlign.FILL)
+          .align(AlignX.FILL)
           .resizableColumn()
         checkBox(ApplicationBundle.message("checkbox.advanced.settings.modified"))
           .actionListener { _, component ->
@@ -79,10 +81,9 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
 
       nothingFoundRow = row {
         label(ApplicationBundle.message("search.advanced.settings.nothing.found"))
-          .horizontalAlign(HorizontalAlign.CENTER)
-          .verticalAlign(VerticalAlign.CENTER)
+          .align(Align.CENTER)
           .applyToComponent {
-            foreground = UIUtil.getInactiveTextColor()
+            foreground = NamedColorUtil.getInactiveTextColor()
           }
       }.visible(false)
 
@@ -90,11 +91,10 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
         val scrollable = ScrollPaneFactory.createScrollPane(extensionsSettings, true)
         scrollable.preferredSize = Dimension(JBUI.scale(300), JBUI.scale(200))
         cell(scrollable)
-          .horizontalAlign(HorizontalAlign.FILL)
-          .verticalAlign(VerticalAlign.FILL)
+          .align(Align.FILL)
       }.resizableRow()
     }
-    result.registerSubPanel(extensionsSettings)
+    result.registerIntegratedPanel(extensionsSettings)
     return result
   }
 
@@ -106,7 +106,8 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
     return panel {
       for ((group, extensions) in groupedExtensions) {
         val settingsRows = mutableListOf<SettingsRow>()
-        val groupRow = group(title = group) {
+        val title = JBLabel(group)
+        val groupRow = group(title = title) {
           for (extension in extensions) {
             val label = if (extension.type() == AdvancedSettingType.Bool)
               null
@@ -149,7 +150,7 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
           }
         }
 
-        settingsGroups.add(SettingsGroup(groupRow, group, settingsRows))
+        settingsGroups.add(SettingsGroup(groupRow, title, group, settingsRows))
       }
     }
   }
@@ -227,9 +228,10 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
     var matchCount = 0
 
     for (settingsGroup in settingsGroups) {
-      settingsGroup.groupRow.visible(true)
       var groupVisible = false
-      if (!onlyShowModified && isMatch(filterWords, settingsGroup.title)) {
+      val groupNameMatched = isMatch(filterWords, settingsGroup.text)
+      updateMatchText(settingsGroup.title, settingsGroup.text, searchText)
+      if (!onlyShowModified && groupNameMatched) {
         matchCount++
         groupVisible = true
       }
@@ -239,7 +241,7 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
         val textMatches = searchText == null || isMatch(filterWords, settingsRow.text)
         val idMatches = searchText == null || (filterWordsUnstemmed.isNotEmpty() && idWords.containsAll(filterWordsUnstemmed))
         val modifiedMatches = if (onlyShowModified) !settingsRow.isDefaultPredicate() else true
-        val matches = (textMatches || idMatches) && modifiedMatches
+        val matches = (groupNameMatched || textMatches || idMatches) && modifiedMatches
         settingsRow.setVisible(matches)
         if (matches) {
           matchCount++
@@ -253,9 +255,7 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
         }
       }
 
-      if (!groupVisible) {
-        settingsGroup.groupRow.visible(false)
-      }
+      settingsGroup.groupRow.visible(groupVisible)
     }
 
     nothingFoundRow.visible(matchCount == 0)
@@ -294,6 +294,9 @@ class AdvancedSettingsConfigurable : DslConfigurableBase(), SearchableConfigurab
   override fun getHelpTopic(): String = "Advanced_settings"
 
   override fun enableSearch(option: String?): Runnable {
+    if (option != null && StringUtil.startsWithIgnoreCase(displayName, option)) {
+      return Runnable { applyFilter("", false) }
+    }
     return Runnable { applyFilter(option, false) }
   }
 }

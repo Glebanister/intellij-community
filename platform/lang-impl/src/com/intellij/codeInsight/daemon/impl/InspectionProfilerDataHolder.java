@@ -8,8 +8,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.project.ProjectManagerListener;
+import com.intellij.openapi.project.ProjectCloseListener;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.profile.ProfileChangeAdapter;
@@ -64,7 +63,7 @@ final class InspectionProfilerDataHolder {
         clearProfileData();
       }
     });
-    connection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
+    connection.subscribe(ProjectCloseListener.TOPIC, new ProjectCloseListener() {
       @Override
       public void projectClosed(@NotNull Project project) {
         clearProfileData();
@@ -131,7 +130,7 @@ final class InspectionProfilerDataHolder {
   /**
    * after inspections completed, save their latencies (from corresponding {@link InspectionRunner.InspectionContext#holder}) to use later in {@link #sort(PsiFile, List)}
    */
-  public void saveStats(@NotNull PsiFile file, @NotNull List<? extends InspectionRunner.InspectionContext> contexts, long totalHighlightingNanos) {
+  void saveStats(@NotNull PsiFile file, @NotNull List<? extends InspectionRunner.InspectionContext> contexts, long totalHighlightingNanos) {
     Latencies[] latencies = new Latencies[3]; // ERROR,WARNING,OTHER
     Map<String, PsiElement> favoriteElement = new HashMap<>();
     Arrays.setAll(latencies, __ -> new Latencies());

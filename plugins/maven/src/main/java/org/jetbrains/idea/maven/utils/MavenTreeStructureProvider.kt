@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.idea.maven.utils
 
 import com.intellij.ide.projectView.PresentationData
@@ -17,8 +17,8 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.psi.PsiFile
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.SmartList
-import com.intellij.util.ui.UIUtil
-import org.jetbrains.idea.maven.importing.MavenProjectImporter.Companion.isImportToTreeStructureEnabled
+import com.intellij.util.ui.NamedColorUtil
+import org.jetbrains.idea.maven.importing.MavenProjectImporter.Companion.isLegacyImportToTreeStructureEnabled
 import org.jetbrains.idea.maven.project.MavenProjectsManager
 
 class MavenTreeStructureProvider : TreeStructureProvider, DumbAware {
@@ -43,7 +43,7 @@ class MavenTreeStructureProvider : TreeStructureProvider, DumbAware {
 
           }
         }
-        if (isImportToTreeStructureEnabled(project) && child is PsiDirectoryNode && parent is PsiDirectoryNode) {
+        if (isLegacyImportToTreeStructureEnabled(project) && child is PsiDirectoryNode && parent is PsiDirectoryNode) {
           childToAdd = getMavenModuleNode(project, child, settings) ?: child
         }
         modifiedChildren.add(childToAdd)
@@ -73,20 +73,20 @@ class MavenTreeStructureProvider : TreeStructureProvider, DumbAware {
   private fun getModuleShortName(module: Module?): String? {
     if (module != null) {
       if (module.name.endsWith(".test")) {
-        return "test";
+        return "test"
       }
       if (module.name.endsWith(".main")) {
-        return "main";
+        return "main"
       }
     }
-    return null;
+    return null
   }
 
   private inner class MavenPomFileNode(project: Project?,
                                        value: PsiFile,
                                        viewSettings: ViewSettings?,
                                        val myIgnored: Boolean) : PsiFileNode(project, value, viewSettings) {
-    val strikeAttributes = SimpleTextAttributes(SimpleTextAttributes.STYLE_STRIKEOUT, UIUtil.getInactiveTextColor())
+    val strikeAttributes = SimpleTextAttributes(SimpleTextAttributes.STYLE_STRIKEOUT, NamedColorUtil.getInactiveTextColor())
     override fun updateImpl(data: PresentationData) {
       if (myIgnored) {
         data.addText(value.name, strikeAttributes)
@@ -95,7 +95,7 @@ class MavenTreeStructureProvider : TreeStructureProvider, DumbAware {
     }
 
     @Suppress("DEPRECATION")
-    override fun getTestPresentation(): String? {
+    override fun getTestPresentation(): String {
       if (myIgnored) {
         return "-MavenPomFileNode:" + super.getTestPresentation() + " (ignored)"
       } else {

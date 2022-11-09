@@ -3,9 +3,9 @@
 
 package com.intellij.ide.plugins
 
+import com.intellij.util.Java11Shim
 import com.intellij.util.graph.DFSTBuilder
 import com.intellij.util.graph.Graph
-import com.intellij.util.lang.Java11Shim
 import org.jetbrains.annotations.ApiStatus
 import java.util.*
 
@@ -166,8 +166,7 @@ private fun getImplicitDependency(descriptor: IdeaPluginDescriptorImpl,
   }
 
   val pluginId = descriptor.pluginId
-  if (PluginManagerCore.CORE_ID == pluginId || PluginManagerCore.JAVA_PLUGIN_ID == pluginId ||
-      PluginManagerCore.hasModuleDependencies(descriptor)) {
+  if (PluginManagerCore.CORE_ID == pluginId || PluginManagerCore.JAVA_PLUGIN_ID == pluginId || hasModuleDependencies(descriptor)) {
     return null
   }
 
@@ -205,12 +204,7 @@ private fun collectDirectDependenciesInOldFormat(rootDescriptor: IdeaPluginDescr
       }
     }
 
-    if (rootDescriptor.pluginId == PluginManagerCore.JAVA_PLUGIN_ID) {
-        idMap.get(PluginManagerCore.CORE_ID.idString)!!.content.modules.firstOrNull { it.name == "intellij.platform.feedback" }?.let {
-        result.add(it.requireDescriptor())
-      }
-    }
-    else if (knownNotFullyMigratedPluginIds.contains(rootDescriptor.pluginId.idString)) {
+    if (knownNotFullyMigratedPluginIds.contains(rootDescriptor.pluginId.idString)) {
       idMap.get(PluginManagerCore.CORE_ID.idString)!!.content.modules.mapTo(result) { it.requireDescriptor() }
     }
 

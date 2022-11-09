@@ -45,6 +45,8 @@ internal class GTTDActionData(
 
   private fun typeSymbols() = targetData.typeSymbols(editor, offset)
 
+  @Suppress("DEPRECATION")
+  @Deprecated("Unused in v2 implementation")
   fun ctrlMouseInfo(): CtrlMouseInfo? {
     val typeSymbols = typeSymbols().take(2).toList()
     return when (typeSymbols.size) {
@@ -154,7 +156,7 @@ internal fun result(navigationTargets: Collection<NavigationTarget>): Navigation
       SingleTarget(request, null)
     }
     else -> MultipleTargets(navigationTargets.map { navigationTarget ->
-      LazyTargetWithPresentation(navigationTarget::navigationRequest, navigationTarget.targetPresentation, null)
+      LazyTargetWithPresentation(navigationTarget::navigationRequest, navigationTarget.presentation(), null)
     })
   }
 }

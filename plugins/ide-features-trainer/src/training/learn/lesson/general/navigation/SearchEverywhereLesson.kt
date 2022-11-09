@@ -36,6 +36,8 @@ abstract class SearchEverywhereLesson : KLesson("Search everywhere", LessonsBund
   private var backupPopupLocation: Point? = null
 
   override val lessonContent: LessonContext.() -> Unit = {
+    sdkConfigurationTasks()
+
     task("SearchEverywhere") {
       triggerAndBorderHighlight().component { ui: ExtendableTextField ->
         UIUtil.getParentOfType(SearchEverywhereUI::class.java, ui) != null
@@ -157,8 +159,6 @@ abstract class SearchEverywhereLesson : KLesson("Search everywhere", LessonsBund
   private fun TaskRuntimeContext.checkInsideSearchEverywhere(): Boolean {
     return UIUtil.getParentOfType(SearchEverywhereUI::class.java, focusOwner) != null
   }
-
-  override val suitableTips = listOf("SearchEverywhere", "GoToClass", "search_everywhere_general")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(LessonsBundle.message("help.search.everywhere"),

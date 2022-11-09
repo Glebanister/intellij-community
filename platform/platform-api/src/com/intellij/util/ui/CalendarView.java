@@ -15,10 +15,12 @@
  */
 package com.intellij.util.ui;
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.ui.ComboBox;
+import com.intellij.ui.JBIntSpinner;
 import com.intellij.util.ObjectUtils;
 import org.jetbrains.annotations.NotNull;
 
@@ -37,6 +39,19 @@ import java.util.Locale;
  * author: lesya
  */
 public class CalendarView extends JPanel {
+  public enum Mode {
+    DATE,
+    TIME,
+    DATETIME;
+
+    boolean hasDate() {
+      return this == DATE || this == DATETIME;
+    }
+
+    boolean hasTime() {
+      return this == TIME || this == DATETIME;
+    }
+  }
 
   private final static int[] DAYS_IN_THE_MONTH = new int[]{
     31,
@@ -52,18 +67,28 @@ public class CalendarView extends JPanel {
     30,
     31
   };
+  private static final String INCREASE_NUMBER_ID = "IncreaseNumber";
+  private static final String DECREASE_NUMBER_ID = "DecreaseNumber";
 
-  private final JComboBox myDays = new ComboBox();
-  private final JComboBox myMonths = new ComboBox();
-  private final JSpinner myYears = new JSpinner(new SpinnerNumberModel(2013, 0, Integer.MAX_VALUE, 1));
+  private final JComboBox<String> myDays = new ComboBox<>();
+  private final JComboBox<String> myMonths = new ComboBox<>();
+  private final JSpinner myYears = new JBIntSpinner(2022, 0, Integer.MAX_VALUE);
 
-  private final JSpinner myHours = new JSpinner(new SpinnerNumberModel(23, 0, 23, 1));
-  private final JSpinner myMinutes = new JSpinner(new SpinnerNumberModel(59, 0, 59, 1));
-  private final JSpinner mySeconds = new JSpinner(new SpinnerNumberModel(59, 0, 59, 1));
+  private final JSpinner myHours = new JBIntSpinner(23, 0, 23);
+  private final JSpinner myMinutes = new JBIntSpinner(59, 0, 59);
+  private final JSpinner mySeconds = new JBIntSpinner(59, 0, 59);
   private final Calendar myCalendar = Calendar.getInstance();
 
+  private final Mode myMode;
+
   public CalendarView() {
-    super(new GridLayout(2, 0));
+    this(Mode.DATETIME);
+  }
+
+  public CalendarView(@NotNull Mode mode) {
+    super(new GridLayout(mode == Mode.DATETIME ? 2 : 1, 0));
+
+    myMode = mode;
 
     fillMonths();
 
@@ -79,8 +104,12 @@ public class CalendarView extends JPanel {
 
     setDate(new Date());
 
-    addDateFields();
-    addTimeFields();
+    if (myMode.hasDate()) {
+      addDateFields();
+    }
+    if (myMode.hasTime()) {
+      addTimeFields();
+    }
 
     int height = Math.max(myYears.getPreferredSize().height, myDays.getPreferredSize().height);
     height = Math.max(myMonths.getPreferredSize().height, height);
@@ -98,6 +127,37 @@ public class CalendarView extends JPanel {
     selectAllOnFocusGained(myHours);
     selectAllOnFocusGained(myMinutes);
     selectAllOnFocusGained(mySeconds);
+    registerUpAndDownKeys(myYears);
+    registerUpAndDownKeys(myHours);
+    registerUpAndDownKeys(myMinutes);
+    registerUpAndDownKeys(mySeconds);
+  }
+
+  private static void registerUpAndDownKeys(@NotNull JSpinner spinner) {
+    JSpinner.DefaultEditor editor = ObjectUtils.tryCast(spinner.getEditor(), JSpinner.DefaultEditor.class);
+    if (editor == null) return;
+    JFormattedTextField field = editor.getTextField();
+    field.getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), INCREASE_NUMBER_ID);
+    field.getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), DECREASE_NUMBER_ID);
+
+    field.getActionMap().put(INCREASE_NUMBER_ID, getIncAction(spinner, field, 1));
+    field.getActionMap().put(DECREASE_NUMBER_ID, getIncAction(spinner, field, -1));
+  }
+
+  @NotNull
+  private static AbstractAction getIncAction(@NotNull JSpinner spinner, @NotNull JFormattedTextField field, int inc) {
+    return new AbstractAction() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        int newValue = getIntValue(spinner) + inc;
+        SpinnerNumberModel model = (SpinnerNumberModel)spinner.getModel();
+        if (newValue <= (Integer)model.getMaximum() && newValue >= (Integer)model.getMinimum()) {
+          boolean hasSelection = field.getSelectionStart() != field.getSelectionEnd();
+          model.setValue(newValue);
+          if (hasSelection) field.selectAll();
+        }
+      }
+    };
   }
 
   private static void selectAllOnFocusGained(@NotNull JSpinner spinner) {
@@ -215,6 +275,10 @@ public class CalendarView extends JPanel {
         e.getPresentation().setEnabled(!myMonths.isPopupVisible() && !myDays.isPopupVisible());
       }
 
+      @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
+      }
       @Override
       public void actionPerformed(@NotNull AnActionEvent e) {
         runnable.run();

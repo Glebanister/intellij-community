@@ -50,7 +50,7 @@ public class ClassNewInstanceInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement parent = element.getParent();
       if (!(parent instanceof PsiReferenceExpression)) {
@@ -135,7 +135,7 @@ public class ClassNewInstanceInspection extends BaseInspection {
   private static class ClassNewInstanceVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethodCallExpression(PsiMethodCallExpression expression) {
+    public void visitMethodCallExpression(@NotNull PsiMethodCallExpression expression) {
       final PsiReferenceExpression methodExpression = expression.getMethodExpression();
       @NonNls final String methodName = methodExpression.getReferenceName();
       if (!"newInstance".equals(methodName)) {

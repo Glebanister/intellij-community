@@ -1,7 +1,6 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.ui
 
-import com.intellij.application.options.RegistryManager
 import com.intellij.ide.ui.UISettings.Companion.setupAntialiasing
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -12,20 +11,19 @@ import com.intellij.openapi.actionSystem.impl.MouseGestureManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.advanced.AdvancedSettings
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ProjectManager
-import com.intellij.openapi.project.ProjectManagerListener
+import com.intellij.openapi.project.ProjectCloseListener
 import com.intellij.openapi.ui.popup.util.PopupUtil
 import com.intellij.openapi.util.*
-import com.intellij.openapi.wm.*
+import com.intellij.openapi.util.registry.RegistryManager
+import com.intellij.openapi.wm.IdeFocusManager
+import com.intellij.openapi.wm.IdeFrame
+import com.intellij.openapi.wm.StatusBar
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.IdeFocusTraversalPolicy
 import com.intellij.openapi.wm.ex.IdeFrameEx
 import com.intellij.openapi.wm.ex.WindowManagerEx
-import com.intellij.openapi.wm.impl.GlobalMenuLinux
-import com.intellij.openapi.wm.impl.IdeFrameDecorator
-import com.intellij.openapi.wm.impl.IdeGlassPaneImpl
-import com.intellij.openapi.wm.impl.IdeMenuBar
+import com.intellij.openapi.wm.impl.*
 import com.intellij.openapi.wm.impl.LinuxIdeMenuBar.Companion.doBindAppMenuOfParent
-import com.intellij.openapi.wm.impl.ProjectFrameHelper.appendTitlePart
 import com.intellij.openapi.wm.impl.customFrameDecorations.header.CustomFrameDialogContent
 import com.intellij.ui.*
 import com.intellij.ui.mac.touchbar.TouchbarSupport
@@ -33,18 +31,17 @@ import com.intellij.util.ui.ImageUtil
 import com.intellij.util.ui.UIUtil
 import com.jetbrains.JBR
 import org.jetbrains.annotations.NonNls
-import org.jetbrains.concurrency.Promise
-import org.jetbrains.concurrency.resolvedPromise
 import java.awt.*
 import java.awt.event.ActionListener
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.nio.file.Path
+import java.util.concurrent.CompletableFuture
 import java.util.function.Supplier
 import javax.swing.*
 
-open class FrameWrapper @JvmOverloads constructor(project: Project?,
+open class FrameWrapper @JvmOverloads constructor(private var project: Project?,
                                                   @param:NonNls protected open val dimensionKey: String? = null,
                                                   private val isDialog: Boolean = false,
                                                   @NlsContexts.DialogTitle var title: String = "",
@@ -54,7 +51,6 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
   private var isCloseOnEsc = false
   private var onCloseHandler: BooleanGetter? = null
   private var frame: Window? = null
-  private var project: Project? = null
   private var isDisposing = false
 
   var isDisposed = false
@@ -69,18 +65,19 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
     }
 
   init {
-    project?.let { setProject(it) }
+    if (project != null) {
+      ApplicationManager.getApplication().messageBus.connect(this).subscribe(ProjectCloseListener.TOPIC, object : ProjectCloseListener {
+        override fun projectClosing(project: Project) {
+          if (project === this@FrameWrapper.project) {
+            close()
+          }
+        }
+      })
+    }
   }
 
-  fun setProject(project: Project) {
-    this.project = project
-    ApplicationManager.getApplication().messageBus.connect(this).subscribe(ProjectManager.TOPIC, object : ProjectManagerListener {
-      override fun projectClosing(project: Project) {
-        if (project === this@FrameWrapper.project) {
-          close()
-        }
-      }
-    })
+  @Deprecated("Pass project to constructor")
+  fun setProject(@Suppress("UNUSED_PARAMETER") project: Project) {
   }
 
   open fun show() {
@@ -113,9 +110,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
       override fun windowOpened(e: WindowEvent) {
         val focusManager = IdeFocusManager.getInstance(project)
         val toFocus = focusManager.getLastFocusedFor(e.window) ?: preferredFocusedComponent ?: focusManager.getFocusTargetFor(component!!)
-        if (toFocus != null) {
-          focusManager.requestFocus(toFocus, true)
-        }
+        toFocus?.requestFocusInWindow()
       }
     }
     frame.addWindowListener(focusListener)
@@ -133,17 +128,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
 
     if (IdeFrameDecorator.isCustomDecorationActive()) {
       component?.let {
-
-
-        component = /*UIUtil.findComponentOfType(it, EditorsSplitters::class.java)?.let {
-          if(frame !is JFrame) null else {
-            val header = CustomHeader.createMainFrameHeader(frame, IdeMenuBar.createMenuBar())
-            getCustomContentHolder(frame, it, header)
-          }
-
-        } ?:*/
-
-          CustomFrameDialogContent.getCustomContentHolder(frame, it)
+        component = CustomFrameDialogContent.getCustomContentHolder(frame, it)
       }
     }
 
@@ -222,11 +207,11 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
       frame.isVisible = false
       val rootPane = (frame as RootPaneContainer).rootPane
       frame.removeAll()
-      DialogWrapper.cleanupRootPane(rootPane)
       if (frame is IdeFrame) {
         MouseGestureManager.getInstance().remove(frame)
       }
       frame.dispose()
+      DialogWrapper.cleanupRootPane(rootPane)
       DialogWrapper.cleanupWindowListeners(frame)
     }
   }
@@ -260,7 +245,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
 
   protected open fun createJDialog(parent: IdeFrame): JDialog = MyJDialog(this, parent)
 
-  protected open fun getNorthExtension(key: String?): IdeRootPaneNorthExtension? = null
+  protected open fun getNorthExtension(key: String?): JComponent? = null
 
   override fun getData(@NonNls dataId: String): Any? {
     return if (CommonDataKeys.PROJECT.`is`(dataId)) project else null
@@ -312,7 +297,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
       FrameState.setFrameStateListener(this)
       glassPane = IdeGlassPaneImpl(getRootPane(), true)
       if (SystemInfoRt.isMac && !(SystemInfo.isMacSystemMenu && java.lang.Boolean.getBoolean("mac.system.menu.singleton"))) {
-        jMenuBar = IdeMenuBar.createMenuBar().setFrame(this)
+        jMenuBar = IdeMenuBar.createMenuBar()
 
       }
       MouseGestureManager.getInstance().add(this)
@@ -321,7 +306,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
 
     override fun isInFullScreen() = false
 
-    override fun toggleFullScreen(state: Boolean): Promise<*> = resolvedPromise<Any>()
+    override fun toggleFullScreen(state: Boolean): CompletableFuture<*> = CompletableFuture.completedFuture(null)
 
     override fun addNotify() {
       if (IdeFrameDecorator.isCustomDecorationActive()) {
@@ -353,9 +338,7 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
       updateTitle()
     }
 
-    override fun getNorthExtension(key: String): IdeRootPaneNorthExtension? {
-      return owner.getNorthExtension(key)
-    }
+    override fun getNorthExtension(key: String): JComponent? = owner.getNorthExtension(key)
 
     override fun getBalloonLayout(): BalloonLayout? {
       return null
@@ -368,9 +351,12 @@ open class FrameWrapper @JvmOverloads constructor(project: Project?,
       }
 
       val builder = StringBuilder()
-      appendTitlePart(builder, frameTitle)
-      appendTitlePart(builder, fileTitle)
+      ProjectFrameHelper.appendTitlePart(builder, frameTitle)
+      ProjectFrameHelper.appendTitlePart(builder, fileTitle)
       title = builder.toString()
+      if (title.isNullOrEmpty()) {
+        project?.let { title = FrameTitleBuilder.getInstance().getProjectTitle(it) }
+      }
     }
 
     override fun dispose() {

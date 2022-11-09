@@ -2,15 +2,17 @@
 package com.intellij.ui.components;
 
 import com.intellij.ide.DataManager;
+import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.*;
 import com.intellij.util.NotNullFunction;
-import com.intellij.openapi.util.NlsContexts;
 import com.intellij.util.ui.*;
+import com.intellij.util.ui.accessibility.AccessibleContextDelegateWithContextMenu;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -33,7 +35,7 @@ import java.util.Collection;
  * @author Anton Makeev
  * @author Konstantin Bulenkov
  */
-public class JBList<E> extends JList<E> implements ComponentWithEmptyText, ComponentWithExpandableItems<Integer>{
+public class JBList<E> extends JList<E> implements ComponentWithEmptyText, ComponentWithExpandableItems<Integer> {
   private StatusText myEmptyText;
   private ExpandableItemsHandler<Integer> myExpandableItemsHandler;
 
@@ -74,8 +76,9 @@ public class JBList<E> extends JList<E> implements ComponentWithEmptyText, Compo
   public void removeNotify() {
     super.removeNotify();
 
-    if (!ScreenUtil.isStandardAddRemoveNotify(this))
+    if (!ScreenUtil.isStandardAddRemoveNotify(this)) {
       return;
+    }
 
     if (myBusyIcon != null) {
       remove(myBusyIcon);
@@ -187,7 +190,7 @@ public class JBList<E> extends JList<E> implements ComponentWithEmptyText, Compo
 
   private void init() {
     setSelectionBackground(UIUtil.getListSelectionBackground(true));
-    setSelectionForeground(UIUtil.getListSelectionForeground(true));
+    setSelectionForeground(NamedColorUtil.getListSelectionForeground(true));
     installDefaultCopyAction();
 
     myEmptyText = new StatusText(this) {
@@ -233,15 +236,20 @@ public class JBList<E> extends JList<E> implements ComponentWithEmptyText, Compo
     }
   }
 
-  private @Nullable String itemToText(int index, E value) {
+  protected @Nullable String itemToText(int index, E value) {
     ListCellRenderer<? super E> renderer = getCellRenderer();
     Component c = renderer == null ? null : renderer.getListCellRendererComponent(this, value, index, true, true);
+    if (c != null) {
+      c = ExpandedItemRendererComponentWrapper.unwrap(c);
+    }
+
     SimpleColoredComponent coloredComponent = null;
     if (c instanceof JComponent) {
       coloredComponent = UIUtil.findComponentOfType((JComponent)c, SimpleColoredComponent.class);
     }
     return coloredComponent != null ? coloredComponent.getCharSequence(true).toString() :
            c instanceof JTextComponent ? ((JTextComponent)c).getText() :
+           c instanceof JLabel ? ((JLabel)c).getText() :
            value != null ? value.toString() : null;
   }
 
@@ -307,6 +315,24 @@ public class JBList<E> extends JList<E> implements ComponentWithEmptyText, Compo
         setBackground(UIUtil.getDecoratedRowColor());
       }
       return this;
+    }
+
+    @Override
+    public AccessibleContext getAccessibleContext() {
+      if (accessibleContext == null) {
+        accessibleContext = new AccessibleContextDelegateWithContextMenu(super.getAccessibleContext()) {
+          @Override
+          protected void doShowContextMenu() {
+            ActionManager.getInstance().tryToExecute(ActionManager.getInstance().getAction("ShowPopupMenu"), null, null, null, true);
+          }
+
+          @Override
+          protected Container getDelegateParent() {
+            return getParent();
+          }
+        };
+      }
+      return accessibleContext;
     }
   }
 

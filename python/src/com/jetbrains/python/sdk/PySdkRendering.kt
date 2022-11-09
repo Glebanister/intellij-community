@@ -4,7 +4,6 @@ package com.jetbrains.python.sdk
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.projectRoots.Sdk
-import com.intellij.openapi.projectRoots.SdkType
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.ui.LayeredIcon
@@ -25,7 +24,7 @@ fun name(sdk: Sdk): Triple<String?, String, String?> = name(sdk, sdk.name)
  */
 fun name(sdk: Sdk, name: String): Triple<String?, String, String?> {
   val modifier = when {
-    PythonSdkUtil.isInvalid(sdk) || PythonSdkType.hasInvalidRemoteCredentials(sdk) -> "invalid"
+    !sdk.sdkSeemsValid || PythonSdkType.hasInvalidRemoteCredentials(sdk) -> "invalid"
     PythonSdkType.isIncompleteRemote(sdk) -> "incomplete"
     !LanguageLevel.SUPPORTED_LEVELS.contains(PythonSdkType.getLanguageLevelForSdk(sdk)) -> "unsupported"
     else -> null
@@ -52,7 +51,7 @@ fun path(sdk: Sdk): String? {
   val homePath = sdk.homePath ?: return null
 
   if (sdk.isTargetBased()) {
-    return homePath.removePrefix("target://")
+    return homePath
   }
 
   if (sdk.sdkAdditionalData is PyRemoteSdkAdditionalDataMarker) {
@@ -68,22 +67,20 @@ fun path(sdk: Sdk): String? {
  * Result is wrapped with [AllIcons.Actions.Cancel]
  * if the sdk is local and does not exist, or remote and incomplete or has invalid credentials, or is not supported.
  *
- * @see PythonSdkUtil.isInvalid
+ * @see com.jetbrains.python.sdk.PySdkExtKt.isValid
  * @see PythonSdkType.isIncompleteRemote
  * @see PythonSdkType.hasInvalidRemoteCredentials
  * @see LanguageLevel.SUPPORTED_LEVELS
  */
-fun icon(sdk: Sdk): Icon? {
-  val flavor: PythonSdkFlavor? = when (sdk.sdkAdditionalData) {
-    !is PyRemoteSdkAdditionalDataMarker -> PythonSdkFlavor.getPlatformIndependentFlavor(sdk.homePath)
-    else -> null
-  }
-  val icon = flavor?.icon ?: ((sdk.sdkType as? SdkType)?.icon ?: return null)
+fun icon(sdk: Sdk): Icon {
+  val flavor: PythonSdkFlavor<*> = sdk.getOrCreateAdditionalData().flavor
+
+  val icon = flavor.icon
 
   val providedIcon = PySdkProvider.EP_NAME.extensions.firstNotNullOfOrNull { it.getSdkIcon(sdk) }
 
   return when {
-    PythonSdkUtil.isInvalid(sdk) ||
+    (!sdk.sdkSeemsValid) ||
     PythonSdkType.isIncompleteRemote(sdk) ||
     PythonSdkType.hasInvalidRemoteCredentials(sdk) ||
     !LanguageLevel.SUPPORTED_LEVELS.contains(PythonSdkType.getLanguageLevelForSdk(sdk)) ->
@@ -134,13 +131,16 @@ private fun wrapIconWithWarningDecorator(icon: Icon): LayeredIcon =
     setIcon(AllIcons.Actions.Cancel, 1)
   }
 
-internal fun SimpleColoredComponent.customizeWithSdkValue(value: Any?, nullSdkName: @Nls String, nullSdkValue: Sdk?) {
+internal fun SimpleColoredComponent.customizeWithSdkValue(value: Any?,
+                                                          nullSdkName: @Nls String,
+                                                          nullSdkValue: Sdk?,
+                                                          actualSdkName: String? = null) {
   when (value) {
     is PySdkToInstall -> {
       value.renderInList(this)
     }
     is Sdk -> {
-      appendName(value, name(value))
+      appendName(value, name(value, actualSdkName ?: value.name))
       icon = icon(value)
     }
     is String -> append(value)

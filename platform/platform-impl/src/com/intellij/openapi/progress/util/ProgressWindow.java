@@ -1,18 +1,22 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.progress.util;
 
+import com.intellij.concurrency.ThreadContext;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.AccessToken;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
 import com.intellij.openapi.application.impl.LaterInvocator;
+import com.intellij.openapi.application.impl.ModalContextProjectLocator;
 import com.intellij.openapi.application.impl.ModalityStateEx;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.TaskInfo;
 import com.intellij.openapi.progress.impl.BlockingProgressIndicator;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.EmptyRunnable;
 import com.intellij.openapi.util.NlsContexts;
@@ -39,7 +43,8 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-public class ProgressWindow extends ProgressIndicatorBase implements BlockingProgressIndicator, Disposable, ProgressIndicatorWithDelayedPresentation {
+public class ProgressWindow extends ProgressIndicatorBase implements BlockingProgressIndicator, TitledIndicator, ProgressIndicatorWithDelayedPresentation, Disposable,
+                                                                     ModalContextProjectLocator {
   private static final Logger LOG = Logger.getInstance(ProgressWindow.class);
 
   private Runnable myDialogInitialization;
@@ -171,16 +176,21 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
     }, getModalityState(), myDelayInMillis, TimeUnit.MILLISECONDS);
   }
 
-  final void enterModality() {
-    if (isModalEntity() && !myModalityEntered) {
-      LaterInvocator.enterModal(this, (ModalityStateEx)getModalityState());
-      myModalityEntered = true;
+  final void executeInModalContext(@NotNull Runnable modalAction) {
+    if (!isModalEntity()) {
+      modalAction.run();
+      return;
     }
-  }
 
-  final void exitModality() {
-    if (isModalEntity() && myModalityEntered) {
-      myModalityEntered = false;
+    if (myModalityEntered) {
+      throw new IllegalStateException("Modality already entered: " + getModalityState());
+    }
+    LaterInvocator.enterModal(this, (ModalityStateEx)getModalityState());
+    myModalityEntered = true;
+    try {
+      modalAction.run();
+    }
+    finally {
       LaterInvocator.leaveModal(this);
     }
   }
@@ -194,26 +204,25 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
       LOG.assertTrue(!myStoppedAlready);
     }
 
-    enterModality();
-    init.run();
-
     try {
-      app.runUnlockingIntendedWrite(() -> {
-        initializeOnEdtIfNeeded();
-        // guarantee AWT event after the future is done will be pumped and loop exited
-        stopCondition.thenRun(() -> SwingUtilities.invokeLater(EmptyRunnable.INSTANCE));
-        IdeEventQueue.getInstance().pumpEventsForHierarchy(myDialog.getPanel(), stopCondition, event -> {
-          if (isCancellationEvent(event)) {
-            cancel();
-            return true;
+      executeInModalContext(() -> {
+        init.run();
+        app.runUnlockingIntendedWrite(() -> {
+          initializeOnEdtIfNeeded();
+          // guarantee AWT event after the future is done will be pumped and loop exited
+          stopCondition.thenRun(() -> SwingUtilities.invokeLater(EmptyRunnable.INSTANCE));
+          try (AccessToken ignored = ThreadContext.resetThreadContext()) {
+            IdeEventQueue.getInstance().pumpEventsForHierarchy(myDialog.getPanel(), stopCondition, event -> {
+              if (isCancellationEvent(event)) {
+                cancel();
+              }
+            });
           }
-          return false;
+          return null;
         });
-        return null;
       });
     }
     finally {
-      exitModality();
       // make sure focus returns to the original component (at least requested to do so)
       // before other code is executed after showing modal progress
       myDialog.hideImmediately();
@@ -325,9 +334,17 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
     }
   }
 
+  @Override
   public void setTitle(@NotNull @ProgressTitle String title) {
     if (!title.equals(myTitle)) {
       myTitle = title;
+
+      delegateProgressChange(each -> {
+        if (each instanceof TitledIndicator) {
+          ((TitledIndicator)each).setTitle(title);
+        }
+      });
+
       update();
     }
   }
@@ -357,6 +374,20 @@ public class ProgressWindow extends ProgressIndicatorBase implements BlockingPro
     if (dialog != null) {
       dialog.enableCancelButtonIfNeeded(enable);
     }
+  }
+
+  @Override
+  public boolean isPartOf(@NotNull JFrame frame, @Nullable Project project) {
+    if (project != null && myProject != null) {
+      return project == myProject;
+    }
+    if (myDialog != null) {
+      DialogWrapper popup = myDialog.getPopup();
+      if (popup != null) {
+        return UIUtil.isAncestor(frame, popup.getOwner());
+      }
+    }
+    return false;
   }
 
   @Override

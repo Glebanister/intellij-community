@@ -11,11 +11,10 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.popup.PopupFactoryImpl
 import com.intellij.ui.popup.PopupFactoryImpl.ActionItem
 import com.intellij.ui.popup.list.PopupListElementRenderer
+import com.intellij.ui.popup.util.PopupImplUtil
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
-import java.awt.event.InputEvent
-import java.awt.event.MouseEvent
 import javax.accessibility.AccessibleContext
 import javax.swing.*
 
@@ -31,6 +30,10 @@ internal class SetHeaderLevelAction: AnAction(), CustomComponentAction {
       event.presentation.isEnabled = false
       return
     }
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.BGT
   }
 
   private fun updateWithChildren(event: AnActionEvent) {
@@ -70,9 +73,15 @@ internal class SetHeaderLevelAction: AnAction(), CustomComponentAction {
     SetHeaderLevelImpl.Heading(level = 5),
     SetHeaderLevelImpl.Heading(level = 6)
   ) {
-    override fun isPopup() = true
+    init {
+      templatePresentation.isPopupGroup = true
+    }
 
     override fun displayTextInToolbar() = true
+
+    override fun getActionUpdateThread(): ActionUpdateThread {
+      return ActionUpdateThread.BGT
+    }
   }
 
   private class MyActionButton(group: ActionGroup, presentation: Presentation, place: String): ActionButtonWithText(group, presentation, place, ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE) {
@@ -143,17 +152,8 @@ internal class SetHeaderLevelAction: AnAction(), CustomComponentAction {
             }
           }
         }
-
-        override fun cancel(inputEvent: InputEvent?) {
-          super.cancel(inputEvent)
-          if (inputEvent is MouseEvent && inputEvent.getID() == MouseEvent.MOUSE_PRESSED) {
-            val target = inputEvent.component?.let { SwingUtilities.getDeepestComponentAt(it, inputEvent.x, inputEvent.y) }
-            if (target == this@MyActionButton) {
-              wasPopupJustClosedByButtonClick = true
-            }
-          }
-        }
       }
+      PopupImplUtil.setPopupToggleButton(popup, this)
       popup.setShowSubmenuOnHover(true)
       popup.showUnderneathOf(event.inputEvent.component)
       return popup

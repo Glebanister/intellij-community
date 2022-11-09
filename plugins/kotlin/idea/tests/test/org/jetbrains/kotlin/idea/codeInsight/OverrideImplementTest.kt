@@ -1,10 +1,12 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.codeInsight
 
-import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
 import com.intellij.codeInsight.generation.ClassMember
+import org.jetbrains.kotlin.config.ApiVersion
+import org.jetbrains.kotlin.config.LanguageVersion
 import org.jetbrains.kotlin.idea.core.overrideImplement.OverrideMemberChooserObject
+import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
 import org.jetbrains.kotlin.idea.test.withCustomLanguageAndApiVersion
 import org.junit.internal.runners.JUnit38ClassRunner
 import org.junit.runner.RunWith
@@ -16,6 +18,14 @@ class OldOverrideImplementTest : OverrideImplementTest<OverrideMemberChooserObje
 abstract class OverrideImplementTest<T : ClassMember> : AbstractOverrideImplementTest<T>() {
     override val testDataDirectory: File
         get() = IDEA_TEST_DATA_DIR.resolve("codeInsight/overrideImplement")
+
+    open fun testNoCallToAbstractSuper() {
+        doOverrideFileTest()
+    }
+
+    open fun testNoCallToAbstractSuper2() {
+        doOverrideFileTest()
+    }
 
    open fun testAndroidxNotNull() {
         doOverrideDirectoryTest("foo")
@@ -193,7 +203,15 @@ abstract class OverrideImplementTest<T : ClassMember> : AbstractOverrideImplemen
         doMultiOverrideFileTest()
     }
 
-   open fun testLocalClass() {
+    open fun testNoAnyMembersInValueClass() {
+        doMultiOverrideFileTest()
+    }
+
+    open fun testNoAnyMembersInValueClassWithGenerics() {
+        doMultiOverrideFileTest()
+    }
+
+    open fun testLocalClass() {
         doImplementFileTest()
     }
 
@@ -286,12 +304,16 @@ abstract class OverrideImplementTest<T : ClassMember> : AbstractOverrideImplemen
     }
 
    open fun testCopyExperimental() {
-        withCustomLanguageAndApiVersion(project, module, "1.3", "1.3") {
+        withCustomLanguageAndApiVersion(project, module, LanguageVersion.KOTLIN_1_3, ApiVersion.KOTLIN_1_3) {
             doOverrideFileTest("targetFun")
         }
     }
 
    open fun testUnresolvedType() {
+        doOverrideFileTest()
+    }
+
+   open fun testUnresolvedType2() {
         doOverrideFileTest()
     }
 

@@ -5,12 +5,14 @@ import com.intellij.execution.ExecutionBundle;
 import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.execution.ui.RunContentManager;
 import com.intellij.execution.ui.RunnerLayoutUi;
+import com.intellij.execution.ui.UIExperiment;
 import com.intellij.execution.ui.layout.*;
 import com.intellij.execution.ui.layout.actions.*;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.actions.CloseAction;
 import com.intellij.ide.actions.ShowContentAction;
+import com.intellij.ide.ui.customization.DefaultActionGroupWithDelegate;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
@@ -24,12 +26,11 @@ import com.intellij.openapi.ui.ThreeComponentsSplitter;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.*;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.Strings;
 import com.intellij.openapi.wm.*;
-import com.intellij.openapi.wm.ex.ToolWindowEx;
 import com.intellij.openapi.wm.ex.ToolWindowManagerEx;
 import com.intellij.openapi.wm.impl.content.SelectContentStep;
+import com.intellij.openapi.wm.impl.content.SingleContentSupplier;
 import com.intellij.toolWindow.InternalDecoratorImpl;
 import com.intellij.toolWindow.ToolWindowEventSource;
 import com.intellij.toolWindow.ToolWindowPane;
@@ -274,7 +275,6 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     NonOpaquePanel wrapper = new MyComponent();
     wrapper.add(myToolbar, BorderLayout.WEST);
     wrapper.add(myTabs.getComponent(), BorderLayout.CENTER);
-    wrapper.setBorder(JBUI.Borders.emptyTop(-1));
 
     myComponent = wrapper;
 
@@ -329,7 +329,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     });
 
     if (myOriginal != null) {
-      final ContentManager manager = ContentFactory.SERVICE.getInstance().createContentManager(this, false, myProject);
+      final ContentManager manager = ContentFactory.getInstance().createContentManager(this, false, myProject);
       Disposer.register((Disposable)myRunnerUi, manager);
       manager.getComponent();
     }
@@ -339,7 +339,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
         dockManager.register(this, this);
       }
     }
-    if (Registry.is("debugger.new.tool.window.layout")) {
+    if (UIExperiment.isNewDebuggerUIEnabled()) {
       MouseAdapter adapter = new MouseAdapter() {
         private Point myPressPoint = null;
 
@@ -592,7 +592,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
   }
 
   @Override
-  public JComponent getContainerComponent() {
+  public @NotNull JComponent getContainerComponent() {
     initUi();
     return myManager.getComponent();
   }
@@ -947,7 +947,16 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     myMinimizedButtonsPlaceholder.put(grid, minimizedToolbar);
 
 
-    final Wrapper searchComponent = new Wrapper();
+    final Wrapper searchComponent = new Wrapper() {
+      @Override
+      public Dimension getPreferredSize() {
+        Dimension size = super.getPreferredSize();
+        if (size.height > 0) {
+          size.height = JBRunnerTabs.getTabLabelPreferredHeight() - ((JBRunnerTabs)myTabs).getBorderThickness();
+        }
+        return size;
+      }
+    };
     if (content.getSearchComponent() != null) {
       searchComponent.setContent(content.getSearchComponent());
     }
@@ -1040,7 +1049,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
 
       TopToolbarContextActions topToolbarContextActions = myContextActions.get(entry.getKey());
 
-      DefaultActionGroup leftGroupToBuild = new DefaultActionGroup();
+      DefaultActionGroup leftGroupToBuild = new DefaultActionGroupWithDelegate(myTopLeftActions);
       if (myTopLeftActionsVisible) {
         leftGroupToBuild.addAll(myTopLeftActions);
       }
@@ -1080,7 +1089,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     ActionToolbar tb = myActionManager.createActionToolbar(place, group, true);
     tb.setReservePlaceAutoPopupIcon(false);
     // see IDEA-262878, evaluate action on the toolbar should get the editor data context
-    tb.setTargetComponent(Registry.is("debugger.new.tool.window.layout") ? myComponent : null);
+    tb.setTargetComponent(UIExperiment.isNewDebuggerUIEnabled() ? myComponent : null);
     tb.getComponent().setBorder(null);
     tb.getComponent().setOpaque(false);
 
@@ -1091,7 +1100,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     for (Map.Entry<GridImpl, Wrapper> entry : myMinimizedButtonsPlaceholder.entrySet()) {
       Wrapper eachPlaceholder = entry.getValue();
       ActionToolbar tb = myActionManager.createActionToolbar(ActionPlaces.RUNNER_LAYOUT_BUTTON_TOOLBAR, myViewActions, true);
-      tb.setSecondaryActionsIcon(AllIcons.Debugger.RestoreLayout, Registry.is("debugger.new.tool.window.layout"));
+      tb.setSecondaryActionsIcon(AllIcons.Debugger.RestoreLayout, UIExperiment.isNewDebuggerUIEnabled());
       tb.setSecondaryActionsTooltip(ExecutionBundle.message("runner.content.tooltip.layout.settings"));
       tb.setTargetComponent(myComponent);
       tb.getComponent().setOpaque(false);
@@ -1148,14 +1157,16 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     }
     usedNames.add(title);
 
-    boolean hidden = true;
-    for (Content content : contents) {
-      if (!grid.isMinimized(content)) {
-        hidden = false;
-        break;
+    if (!ClientProperty.isTrue(tab.getComponent(), SingleContentSupplier.DRAGGED_OUT_KEY)) {
+      boolean hidden = true;
+      for (Content content : contents) {
+        if (!grid.isMinimized(content)) {
+          hidden = false;
+          break;
+        }
       }
+      tab.setHidden(hidden);
     }
-    tab.setHidden(hidden);
     if (icon == null && contents.size() == 1) {
       icon = contents.get(0).getIcon();
     }
@@ -1560,21 +1571,19 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
       Dimension size = component.getSize();
       Rectangle r = new Rectangle(size);
       switch (targetPlaceInGrid) {
-        case left:
-          r.width /= 3;
-          break;
-        case center:
+        case left -> r.width /= 3;
+        case center -> {
           r.width /= 3;
           r.x += r.width;
-          break;
-        case right:
+        }
+        case right -> {
           r.width /= 3;
           r.x += 2 * r.width;
-          break;
-        case bottom:
+        }
+        case bottom -> {
           r.height /= 4;
           r.y += 3 * r.height;
-          break;
+        }
       }
       // adjust the rectangle if the target grid cell is already present and showing
       for (Content c : ui.getContentManager().getContents()) {
@@ -1598,14 +1607,13 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
       super(new BorderLayout());
       setOpaque(true);
       setFocusCycleRoot(!ScreenReader.isActive());
-      setBorder(new ToolWindowEx.Border(false, false, false, false));
-
+      setBorder();
     }
 
     @Override
     protected void paintComponent(Graphics g) {
       super.paintComponent(g);
-      if (!Registry.is("debugger.new.tool.window.layout")) return;
+      if (!UIExperiment.isNewDebuggerUIEnabled()) return;
       InternalDecoratorImpl decorator = ComponentUtil.getParentOfType(InternalDecoratorImpl.class, myComponent);
       if (decorator != null && myTabs.getTabCount() > 0 && !decorator.isHeaderVisible()) {
         UIUtil.drawHeader(g, 0, getWidth(), decorator.getHeaderHeight(), decorator.isActive(), true, false, false);
@@ -1689,6 +1697,16 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
       if (myWasEverAdded) {
         saveUiState();
       }
+    }
+
+    @Override
+    public void updateUI() {
+      super.updateUI();
+      setBorder();
+    }
+
+    private void setBorder() {
+      setBorder(JBUI.Borders.emptyTop(-1));
     }
   }
 
@@ -1868,7 +1886,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
       AnAction[] kids = myLeftToolbarActions.getChildren(null);
       ContainerUtil.addAll(result, kids);
     }
-    if (myTopLeftActions != null && Registry.is("debugger.new.tool.window.layout")) {
+    if (myTopLeftActions != null && UIExperiment.isNewDebuggerUIEnabled()) {
       AnAction[] kids = myTopLeftActions.getChildren(null);
       ContainerUtil.addAll(result, kids);
     }
@@ -2007,8 +2025,7 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
 
     public ShowDebugContentAction(RunnerContentUi runner, JComponent component, @NotNull Disposable parentDisposable) {
       myContentUi = runner;
-      AnAction original = ActionManager.getInstance().getAction(ShowContentAction.ACTION_ID);
-      new ShadowAction(this, original, component, parentDisposable);
+      new ShadowAction(this, ShowContentAction.ACTION_ID, component, parentDisposable);
       ActionUtil.copyFrom(this, ShowContentAction.ACTION_ID);
     }
 
@@ -2016,6 +2033,11 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabledAndVisible(myContentUi != null && myContentUi.getPopupContents().size() > 1);
       e.getPresentation().setText(ExecutionBundle.messagePointer("action.presentation.RunnerContentUi.text.show.list.of.tabs"));
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.EDT;
     }
 
     @Override
@@ -2039,6 +2061,11 @@ public final class RunnerContentUi implements ContentUI, Disposable, CellTransfo
     public boolean isSelected(@NotNull AnActionEvent e) {
       boolean isSelected = delegate.isSelected(e);
       return myInverted ? !isSelected : isSelected;
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return delegate.getActionUpdateThread();
     }
 
     @Override

@@ -1,9 +1,6 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project.manage;
 
-import com.intellij.diagnostic.Activity;
-import com.intellij.diagnostic.ActivityCategory;
-import com.intellij.diagnostic.StartUpMeasurer;
 import com.intellij.diagnostic.StartUpPerformanceService;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
@@ -24,6 +21,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.MultiMap;
@@ -31,6 +29,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -39,6 +39,8 @@ import java.util.function.Function;
 public final class ProjectDataManagerImpl implements ProjectDataManager {
   private static final Logger LOG = Logger.getInstance(ProjectDataManagerImpl.class);
   private static final Function<ProjectDataService<?, ?>, Key<?>> KEY_MAPPER = ProjectDataService::getTargetDataKey;
+
+  private final Lock myLock = new ReentrantLock();
 
   public static ProjectDataManagerImpl getInstance() {
     return (ProjectDataManagerImpl)ProjectDataManager.getInstance();
@@ -53,15 +55,37 @@ public final class ProjectDataManagerImpl implements ProjectDataManager {
     return result;
   }
 
+  @Override
+  public <T> void importData(@NotNull DataNode<T> node, @NotNull Project project) {
+    Application app = ApplicationManager.getApplication();
+    if (!app.isWriteThread() && app.isReadAccessAllowed()) {
+      throw new IllegalStateException("importData() must not be called with a global read lock on a background thread. " +
+                                      "It will deadlock committing project model changes in write action");
+    }
+
+    if (app.isWriteThread()) {
+      if (!myLock.tryLock()) {
+        throw new IllegalStateException("importData() can not wait on write thread for imports on background threads." +
+                                        " Consider running importData() on background thread.");
+      }
+    } else {
+      myLock.lock();
+    }
+    try {
+      importData(node, project, createModifiableModelsProvider(project));
+    } finally {
+      myLock.unlock();
+    }
+  }
+
   @SuppressWarnings("unchecked")
   @Override
-  public void importData(@NotNull Collection<? extends DataNode<?>> nodes,
-                         @NotNull Project project,
-                         @NotNull IdeModifiableModelsProvider modelsProvider,
-                         boolean synchronous) {
+  public <T> void importData(@NotNull DataNode<T> node,
+                             @NotNull Project project,
+                             @NotNull IdeModifiableModelsProvider modelsProvider) {
     if (project.isDisposed()) return;
 
-    MultiMap<Key<?>, DataNode<?>> grouped = ExternalSystemApiUtil.recursiveGroup(nodes);
+    MultiMap<Key<?>, DataNode<?>> grouped = ExternalSystemApiUtil.recursiveGroup(Collections.singletonList(node));
 
     final Collection<DataNode<?>> projects = grouped.get(ProjectKeys.PROJECT);
     // only one project(can be multi-module project) expected for per single import
@@ -99,11 +123,16 @@ public final class ProjectDataManagerImpl implements ProjectDataManager {
     }
 
     long allStartTime = System.currentTimeMillis();
-    Activity activity = StartUpMeasurer.startActivity("project data processing", ActivityCategory.GRADLE_IMPORT);
     long activityId = trace.getId();
     ExternalSystemSyncActionsCollector.logPhaseStarted(project, activityId, Phase.DATA_SERVICES);
     boolean importSucceeded = false;
     int errorsCount = 0;
+
+    String projectPath = ObjectUtils.doIfNotNull(projectData, ProjectData::getLinkedExternalProjectPath);
+    var topic = project.getMessageBus()
+      .syncPublisher(ProjectDataImportListener.TOPIC);
+
+    topic.onImportStarted(projectPath);
     try {
       // keep order of services execution
       final Set<Key<?>> allKeys = new TreeSet<>(grouped.keySet());
@@ -134,62 +163,59 @@ public final class ProjectDataManagerImpl implements ProjectDataManager {
         postImportTask.run();
       }
 
-      commit(modelsProvider, project, synchronous, "Imported data");
+      commit(modelsProvider, project, true, "Imported data");
       if (indicator != null) {
         indicator.setIndeterminate(true);
       }
 
-      project.getMessageBus().syncPublisher(ProjectDataImportListener.TOPIC)
-        .onImportFinished(projectData != null ? projectData.getLinkedExternalProjectPath() : null);
-      activity.end();
+      topic.onImportFinished(projectPath);
       importSucceeded = true;
     }
     catch (Throwable t) {
       errorsCount += 1;
-      project.getMessageBus().syncPublisher(ProjectDataImportListener.TOPIC)
-        .onImportFailed(projectData != null ? projectData.getLinkedExternalProjectPath() : null);
+      topic.onImportFailed(projectPath);
       ExternalSystemSyncActionsCollector.logError(null, activityId, t);
-      try {
-        runFinalTasks(project, synchronous, onFailureImportTasks);
-        dispose(modelsProvider, project, synchronous);
-      }
-      finally {
-        //noinspection ConstantConditions
-        ExceptionUtil.rethrowAllAsUnchecked(t);
-      }
+      //noinspection ConstantConditions
+      ExceptionUtil.rethrowAllAsUnchecked(t);
     }
     finally {
+      if (importSucceeded) {
+        runFinalTasks(project, projectPath, onSuccessImportTasks);
+      }
+      else {
+        runFinalTasks(project, projectPath, onFailureImportTasks);
+      }
+      if (!importSucceeded) {
+        dispose(modelsProvider, project, true);
+      }
+
       long timeMs = System.currentTimeMillis() - allStartTime;
       trace.logPerformance("Data import total", timeMs);
       ExternalSystemSyncActionsCollector.logPhaseFinished(project, activityId, Phase.DATA_SERVICES, timeMs, errorsCount);
       ExternalSystemSyncActionsCollector.logSyncFinished(project, activityId, importSucceeded);
-    }
-    runFinalTasks(project, synchronous, onSuccessImportTasks);
-    Application app = ApplicationManager.getApplication();
-    if (!app.isUnitTestMode() && !app.isHeadlessEnvironment()) {
-      StartUpPerformanceService.getInstance().reportStatistics(project);
+
+      Application app = ApplicationManager.getApplication();
+      if (!app.isUnitTestMode() && !app.isHeadlessEnvironment()) {
+        StartUpPerformanceService.getInstance().reportStatistics(project);
+      }
     }
   }
 
-  private static void runFinalTasks(@NotNull Project project, boolean synchronous, List<? extends Runnable> tasks) {
-    Runnable runnable = new DisposeAwareProjectChange(project) {
-      @Override
-      public void execute() {
-        for (Runnable task : ContainerUtil.reverse(tasks)) {
-          task.run();
-        }
-      }
-    };
-    if (synchronous) {
-      try {
-        runnable.run();
-      }
-      catch (Exception e) {
-        LOG.warn(e);
-      }
+  private static void runFinalTasks(
+    @NotNull Project project,
+    @Nullable String projectPath,
+    @NotNull List<Runnable> tasks
+  ) {
+    var topic = project.getMessageBus()
+      .syncPublisher(ProjectDataImportListener.TOPIC);
+
+    topic.onFinalTasksStarted(projectPath);
+    try {
+      ContainerUtil.reverse(tasks).forEach(Runnable::run);
+      topic.onFinalTasksFinished(projectPath);
     }
-    else {
-      ApplicationManager.getApplication().invokeLater(runnable);
+    catch (Exception e) {
+      LOG.warn(e);
     }
   }
 
@@ -210,30 +236,6 @@ public final class ProjectDataManagerImpl implements ProjectDataManager {
       }
     }
     return buffer.toString();
-  }
-
-  @Override
-  public <T> void importData(@NotNull Collection<? extends DataNode<T>> nodes, @NotNull Project project, boolean synchronous) {
-    Collection<DataNode<?>> dummy = new SmartList<>();
-    dummy.addAll(nodes);
-    importData(dummy, project, createModifiableModelsProvider(project), synchronous);
-  }
-
-  @Override
-  public <T> void importData(@NotNull DataNode<T> node,
-                             @NotNull Project project,
-                             @NotNull IdeModifiableModelsProvider modelsProvider,
-                             boolean synchronous) {
-    Collection<DataNode<?>> dummy = new SmartList<>();
-    dummy.add(node);
-    importData(dummy, project, modelsProvider, synchronous);
-  }
-
-  @Override
-  public <T> void importData(@NotNull DataNode<T> node,
-                             @NotNull Project project,
-                             boolean synchronous) {
-    importData(node, project, createModifiableModelsProvider(project), synchronous);
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})

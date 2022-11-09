@@ -15,9 +15,12 @@ import com.intellij.openapi.projectRoots.*;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.UserDataHolder;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.psi.JavaPsiFacade;
+import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.ProjectScope;
+import com.intellij.util.JavaModuleOptions;
+import com.intellij.util.system.OS;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -27,19 +30,15 @@ import org.jetbrains.idea.devkit.projectRoots.Sandbox;
 import org.jetbrains.idea.devkit.util.DescriptorUtil;
 import org.jetbrains.idea.devkit.util.PsiUtil;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
 final class JUnitDevKitPatcher extends JUnitPatcher {
   private static final Logger LOG = Logger.getInstance(JUnitDevKitPatcher.class);
-  private static final String SYSTEM_CL_PROPERTY = "java.system.class.loader";
+  static final String SYSTEM_CL_PROPERTY = "java.system.class.loader";
   private static final Key<Boolean> LOADER_VALID = Key.create("LOADER_VALID_9");
 
   @Override
@@ -52,8 +51,9 @@ final class JUnitDevKitPatcher extends JUnitPatcher {
     ParametersList vm = javaParameters.getVMParametersList();
 
     if (PsiUtil.isIdeaProject(project)) {
-      if (!vm.hasProperty(SYSTEM_CL_PROPERTY)) {
+      if (!vm.hasProperty(SYSTEM_CL_PROPERTY) && !vm.getList().contains("--add-modules")) {
         // check that UrlClassLoader is available in the test module classpath
+        // if module-path is used, skip custom loader
         String qualifiedName = "com.intellij.util.lang.UrlClassLoader";
         if (loaderValid(project, module, qualifiedName)) {
           vm.addProperty(SYSTEM_CL_PROPERTY, qualifiedName);
@@ -69,21 +69,7 @@ final class JUnitDevKitPatcher extends JUnitPatcher {
         vm.addProperty(PathManager.PROPERTY_CONFIG_PATH, Path.of(basePath, "config/test").toAbsolutePath().toString());
       }
 
-      JavaSdkVersion sdkVersion = ((JavaSdk)jdk.getSdkType()).getVersion(jdk);
-      if (sdkVersion != null && sdkVersion.isAtLeast(JavaSdkVersion.JDK_17)) {
-        URL resource = JUnitDevKitPatcher.class.getResource("OpenedPackages.txt");
-        if (resource != null) {
-          try (BufferedReader reader = new BufferedReader(new InputStreamReader(resource.openStream(), StandardCharsets.UTF_8))) {
-            FileUtil.loadLines(reader).forEach(l -> vm.add("--add-opens=" + l));
-          }
-          catch (ProcessCanceledException e) {
-            throw e; //unreachable
-          }
-          catch (Throwable e) {
-            LOG.error("Failed to load --add-opens list from 'OpenedPackages.txt'", e);
-          }
-        }
-      }
+      appendAddOpensWhenNeeded(project, jdk, vm);
     }
 
     jdk = IdeaJdk.findIdeaJdk(jdk);
@@ -142,7 +128,30 @@ final class JUnitDevKitPatcher extends JUnitPatcher {
     javaParameters.getClassPath().addFirst(((JavaSdkType)jdk.getSdkType()).getToolsPath(jdk));
   }
 
-  private static boolean loaderValid(Project project, Module module, String qualifiedName) {
+  static void appendAddOpensWhenNeeded(@NotNull Project project, @NotNull Sdk jdk, @NotNull ParametersList vm) {
+    var sdkVersion = ((JavaSdk)jdk.getSdkType()).getVersion(jdk);
+    if (sdkVersion != null && sdkVersion.isAtLeast(JavaSdkVersion.JDK_17)) {
+      var scope = ProjectScope.getContentScope(project);
+      var files = ReadAction.compute(() -> FilenameIndex.getVirtualFilesByName("OpenedPackages.txt", scope));
+      if (files.size() > 1) {
+        LOG.error("expecting 1 file, found: " + files);
+      }
+      else if (!files.isEmpty()) {
+        var file = files.iterator().next();
+        try (var stream = file.getInputStream()) {
+          JavaModuleOptions.readOptions(stream, OS.CURRENT).forEach(vm::add);
+        }
+        catch (ProcessCanceledException e) {
+          throw e; //unreachable
+        }
+        catch (Throwable e) {
+          LOG.error("Failed to load --add-opens list from 'OpenedPackages.txt'", e);
+        }
+      }
+    }
+  }
+
+  static boolean loaderValid(Project project, Module module, String qualifiedName) {
     UserDataHolder holder = module == null ? project : module;
     Key<Boolean> cacheKey = LOADER_VALID;
     Boolean result = holder.getUserData(cacheKey);

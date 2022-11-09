@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.jetbrains.python.inspections;
 
 import com.google.common.collect.ImmutableSet;
@@ -60,8 +60,7 @@ public class PyPackageRequirementsInspection extends PyInspection {
   public JDOMExternalizableStringList ignoredPackages = new JDOMExternalizableStringList();
 
   @NotNull
-  private static final NotificationGroup BALLOON_NOTIFICATIONS =
-    new NotificationGroup("Package requirements", NotificationDisplayType.BALLOON, false);
+  private static final NotificationGroup BALLOON_NOTIFICATIONS = NotificationGroupManager.getInstance().getNotificationGroup("Package requirements");
 
   @Override
   public JComponent createOptionsPanel() {
@@ -134,7 +133,7 @@ public class PyPackageRequirementsInspection extends PyInspection {
                                                                 requirementsList, unsatisfied.size());
             final List<LocalQuickFix> quickFixes = new ArrayList<>();
 
-            Optional<LocalQuickFix> providedFix = PySdkProvider.EP_NAME.extensions()
+            Optional<LocalQuickFix> providedFix = PySdkProvider.EP_NAME.getExtensionList().stream()
               .map(ext -> ext.createInstallPackagesQuickFix(module))
               .filter(fix -> fix != null)
               .findFirst();
@@ -352,12 +351,13 @@ public class PyPackageRequirementsInspection extends PyInspection {
     if (!PythonSdkUtil.isRemote(sdk) && PySdkExtKt.adminPermissionsNeeded(sdk)) {
       final int answer = askToConfigureInterpreter(project, sdk);
       switch (answer) {
-        case Messages.YES:
+        case Messages.YES -> {
           new PyInterpreterInspection.ConfigureInterpreterFix().applyFix(project, descriptor);
           return true;
-        case Messages.CANCEL:
-        case -1:
+        }
+        case Messages.CANCEL, -1 -> {
           return true;
+        }
       }
     }
     return false;

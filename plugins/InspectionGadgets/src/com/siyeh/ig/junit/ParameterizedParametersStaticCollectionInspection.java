@@ -54,7 +54,7 @@ public class ParameterizedParametersStaticCollectionInspection extends BaseInspe
       }
 
       @Override
-      protected void doFix(final Project project, ProblemDescriptor descriptor) {
+      protected void doFix(final @NotNull Project project, @NotNull ProblemDescriptor descriptor) {
         final PsiElement element = descriptor.getPsiElement().getParent();
         if (!(element instanceof PsiMethod)) {
           return;
@@ -103,7 +103,7 @@ public class ParameterizedParametersStaticCollectionInspection extends BaseInspe
   public BaseInspectionVisitor buildVisitor() {
     return new BaseInspectionVisitor() {
       @Override
-      public void visitClass(PsiClass aClass) {
+      public void visitClass(@NotNull PsiClass aClass) {
         if (!TestUtils.isParameterizedTest(aClass)) {
           return;
         }

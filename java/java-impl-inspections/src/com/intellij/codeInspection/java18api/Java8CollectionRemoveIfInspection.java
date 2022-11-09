@@ -94,21 +94,21 @@ public class Java8CollectionRemoveIfInspection extends AbstractBaseJavaLocalInsp
       }
 
       @Override
-      public void visitForStatement(PsiForStatement statement) {
+      public void visitForStatement(@NotNull PsiForStatement statement) {
         super.visitForStatement(statement);
         IteratorDeclaration declaration = IteratorDeclaration.fromLoop(statement);
         handleIteratorLoop(statement, statement.getRParenth(), declaration);
       }
 
       @Override
-      public void visitWhileStatement(PsiWhileStatement statement) {
+      public void visitWhileStatement(@NotNull PsiWhileStatement statement) {
         super.visitWhileStatement(statement);
         IteratorDeclaration declaration = IteratorDeclaration.fromLoop(statement);
         handleIteratorLoop(statement, statement.getRParenth(), declaration);
       }
 
       @Override
-      public void visitForeachStatement(PsiForeachStatement statement) {
+      public void visitForeachStatement(@NotNull PsiForeachStatement statement) {
         super.visitForeachStatement(statement);
         ForEachCollectionTraversal traversal = ForEachCollectionTraversal.fromLoop(statement);
         if (traversal == null) return;
@@ -152,7 +152,7 @@ public class Java8CollectionRemoveIfInspection extends AbstractBaseJavaLocalInsp
         IteratorDeclaration declaration = IteratorDeclaration.fromLoop(loop);
         if (declaration == null) return;
         switch (statements.length) {
-          case 1:
+          case 1 -> {
             PsiElement ref = declaration.findOnlyIteratorRef(condition);
             if (ref == null) return;
             PsiElement call = ref.getParent().getParent();
@@ -166,14 +166,15 @@ public class Java8CollectionRemoveIfInspection extends AbstractBaseJavaLocalInsp
             String paramName = javaCodeStyleManager.suggestUniqueVariableName(info, condition, true).names[0];
             ct.replace(call, JavaPsiFacade.getElementFactory(project).createIdentifier(paramName));
             replacement = generateRemoveIf(declaration, ct, condition, paramName);
-            break;
-          case 2:
+          }
+          case 2 -> {
             PsiVariable variable = declaration.getNextElementVariable(statements[0]);
             if (variable == null) return;
             replacement = generateRemoveIf(declaration, ct, condition, variable.getName());
-            break;
-          default:
+          }
+          default -> {
             return;
+          }
         }
         ct.delete(declaration.getIterator());
       }

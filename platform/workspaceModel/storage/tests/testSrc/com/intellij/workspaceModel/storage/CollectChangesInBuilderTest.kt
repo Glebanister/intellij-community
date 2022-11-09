@@ -1,7 +1,10 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.workspaceModel.storage
 
-import com.intellij.workspaceModel.storage.entities.*
+import com.intellij.workspaceModel.storage.entities.test.addChildEntity
+import com.intellij.workspaceModel.storage.entities.test.addParentEntity
+import com.intellij.workspaceModel.storage.entities.test.addSampleEntity
+import com.intellij.workspaceModel.storage.entities.test.api.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -9,26 +12,22 @@ import org.junit.Test
 
 @Suppress("UNCHECKED_CAST")
 class CollectChangesInBuilderTest {
-  private lateinit var initialStorage: WorkspaceEntityStorage
-  private lateinit var builder: WorkspaceEntityStorageBuilder
+  private lateinit var initialStorage: EntityStorage
+  private lateinit var builder: MutableEntityStorage
 
   @Before
   fun setUp() {
     initialStorage = createEmptyBuilder().apply {
       addSampleEntity("initial")
-      addEntity(ModifiableSecondSampleEntity::class.java, SampleEntitySource("test")) {
-        intProperty = 1
-      }
-    }.toStorage()
+      addEntity(SecondSampleEntity(1, SampleEntitySource("test")))
+    }.toSnapshot()
     builder = createBuilderFrom(initialStorage)
   }
 
   @Test
   fun `add remove entity`() {
     builder.addSampleEntity("added")
-    builder.addEntity(ModifiableSecondSampleEntity::class.java, SampleEntitySource("test")) {
-      intProperty = 2
-    }
+    builder.addEntity(SecondSampleEntity(2, SampleEntitySource("test")))
     builder.removeEntity(initialStorage.singleSampleEntity())
     builder.removeEntity(initialStorage.entities(SecondSampleEntity::class.java).single())
     val changes = builder.collectChanges(initialStorage).getValue(SampleEntity::class.java) as List<EntityChange<SampleEntity>>
@@ -40,10 +39,10 @@ class CollectChangesInBuilderTest {
 
   @Test
   fun `modify entity`() {
-    builder.modifyEntity(ModifiableSampleEntity::class.java, initialStorage.singleSampleEntity()) {
+    builder.modifyEntity(initialStorage.singleSampleEntity()) {
       stringProperty = "changed"
     }
-    builder.modifyEntity(ModifiableSecondSampleEntity::class.java, initialStorage.entities(SecondSampleEntity::class.java).single()) {
+    builder.modifyEntity(initialStorage.entities(SecondSampleEntity::class.java).single()) {
       intProperty = 2
     }
     val change = builder.collectChanges(initialStorage).getValue(SampleEntity::class.java).single() as EntityChange.Replaced<SampleEntity>
@@ -53,10 +52,10 @@ class CollectChangesInBuilderTest {
 
   @Test
   fun `modify modified entity`() {
-    builder.modifyEntity(ModifiableSampleEntity::class.java, initialStorage.singleSampleEntity()) {
+    builder.modifyEntity(initialStorage.singleSampleEntity()) {
       stringProperty = "changed"
     }
-    builder.modifyEntity(ModifiableSampleEntity::class.java, initialStorage.singleSampleEntity()) {
+    builder.modifyEntity(initialStorage.singleSampleEntity()) {
       stringProperty = "changed again"
     }
     val change = collectSampleEntityChanges().single() as EntityChange.Replaced
@@ -66,7 +65,7 @@ class CollectChangesInBuilderTest {
 
   @Test
   fun `remove modified entity`() {
-    val modified = builder.modifyEntity(ModifiableSampleEntity::class.java, initialStorage.singleSampleEntity()) {
+    val modified = builder.modifyEntity(initialStorage.singleSampleEntity()) {
       stringProperty = "changed"
     }
     builder.removeEntity(modified)
@@ -83,7 +82,7 @@ class CollectChangesInBuilderTest {
   @Test
   fun `modify added entity`() {
     val added = builder.addSampleEntity("added")
-    builder.modifyEntity(ModifiableSampleEntity::class.java, added) {
+    builder.modifyEntity(added) {
       stringProperty = "changed"
     }
     assertEquals("changed", (collectSampleEntityChanges().single() as EntityChange.Added).entity.stringProperty)
@@ -92,7 +91,7 @@ class CollectChangesInBuilderTest {
   @Test
   fun `removed modified added entity`() {
     val added = builder.addSampleEntity("added")
-    val modified = builder.modifyEntity(ModifiableSampleEntity::class.java, added) {
+    val modified = builder.modifyEntity(added) {
       stringProperty = "changed"
     }
     builder.removeEntity(modified)
@@ -104,8 +103,8 @@ class CollectChangesInBuilderTest {
     val parent = builder.addParentEntity("added")
     builder.addChildEntity(parent, "added")
     val changes = builder.collectChanges(initialStorage)
-    val childChange = changes.getValue(ChildEntity::class.java).single() as EntityChange.Added<ChildEntity>
-    val parentChange = changes.getValue(ParentEntity::class.java).single() as EntityChange.Added<ParentEntity>
+    val childChange = changes.getValue(XChildEntity::class.java).single() as EntityChange.Added<XChildEntity>
+    val parentChange = changes.getValue(XParentEntity::class.java).single() as EntityChange.Added<XParentEntity>
     assertEquals("added", childChange.entity.childProperty)
     assertEquals("added", parentChange.entity.parentProperty)
   }
@@ -114,14 +113,28 @@ class CollectChangesInBuilderTest {
   fun `remove parent with child`() {
     val parent = builder.addParentEntity("to remove")
     builder.addChildEntity(parent, "to remove")
-    val storage = builder.toStorage()
+    val storage = builder.toSnapshot()
     val newBuilder = createBuilderFrom(storage)
-    newBuilder.removeEntity(parent)
+    newBuilder.removeEntity(parent.from(newBuilder))
     val changes = newBuilder.collectChanges(storage)
-    val childChange = changes.getValue(ChildEntity::class.java).single() as EntityChange.Removed<ChildEntity>
-    val parentChange = changes.getValue(ParentEntity::class.java).single() as EntityChange.Removed<ParentEntity>
+    val childChange = changes.getValue(XChildEntity::class.java).single() as EntityChange.Removed<XChildEntity>
+    val parentChange = changes.getValue(XParentEntity::class.java).single() as EntityChange.Removed<XParentEntity>
     assertEquals("to remove", childChange.entity.childProperty)
     assertEquals("to remove", parentChange.entity.parentProperty)
+  }
+
+  @Test
+  fun `remove child by modifying parent`() {
+    val parent = builder.addParentEntity()
+    builder.addChildEntity(parent, "to remove")
+    val snapshot = builder.toSnapshot()
+    val newBuilder = createBuilderFrom(snapshot)
+    newBuilder.modifyEntity(snapshot.entities(XParentEntity::class.java).single()) {
+      children = emptyList()
+    }
+    val changes = newBuilder.collectChanges(snapshot)
+    val childChanges = changes.getValue(XChildEntity::class.java)
+    assertEquals("to remove", (childChanges.single() as EntityChange.Removed<XChildEntity>).oldEntity.childProperty)
   }
 
   private fun collectSampleEntityChanges(): List<EntityChange<SampleEntity>> {

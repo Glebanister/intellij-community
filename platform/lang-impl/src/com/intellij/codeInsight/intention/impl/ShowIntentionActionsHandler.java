@@ -85,7 +85,8 @@ public class ShowIntentionActionsHandler implements CodeInsightActionHandler {
 
     TemplateState state = TemplateManagerImpl.getTemplateState(editor);
     if (state != null && !state.isFinished()) {
-      state.gotoEnd(false);
+      CommandProcessor.getInstance().executeCommand(project, () -> state.gotoEnd(false),
+                                                    LangBundle.message("command.name.finish.template"), null);
     }
 
     editor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
@@ -119,12 +120,12 @@ public class ShowIntentionActionsHandler implements CodeInsightActionHandler {
 
   @NotNull
   @ApiStatus.Internal
-  public static ShowIntentionsPass.IntentionsInfo calcIntentions(@NotNull Project project,
-                                                                  @NotNull Editor editor,
-                                                                  @NotNull PsiFile file) {
-    ShowIntentionsPass.IntentionsInfo intentions = ActionUtil.underModalProgress(project,
-                                                                                 CodeInsightBundle.message("progress.title.searching.for.context.actions"), () ->
-      ShowIntentionsPass.getActionsToShow(editor, file, false));
+  public static ShowIntentionsPass.IntentionsInfo calcIntentions(@NotNull Project project, @NotNull Editor editor, @NotNull PsiFile file) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
+    ShowIntentionsPass.IntentionsInfo intentions = ActionUtil.underModalProgress(project, CodeInsightBundle.message("progress.title.searching.for.context.actions"), () -> {
+        DaemonCodeAnalyzerImpl.waitForUnresolvedReferencesQuickFixesUnderCaret(file, editor);
+        return ShowIntentionsPass.getActionsToShow(editor, file, false);
+      });
 
     ShowIntentionsPass.getActionsToShowSync(editor, file, intentions);
     return intentions;
@@ -219,7 +220,6 @@ public class ShowIntentionActionsHandler implements CodeInsightActionHandler {
                                               @NotNull IntentionAction action,
                                               @NotNull @NlsContexts.Command String commandName) {
     Project project = hostFile.getProject();
-    FeatureUsageTracker.getInstance().triggerFeatureUsed("codeassists.quickFix");
     ((FeatureUsageTrackerImpl)FeatureUsageTracker.getInstance()).getFixesStats().registerInvocation();
 
     PsiDocumentManager.getInstance(project).commitAllDocuments();

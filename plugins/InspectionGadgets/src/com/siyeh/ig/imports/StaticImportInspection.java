@@ -110,7 +110,7 @@ public class StaticImportInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiImportStaticStatement importStatement = (PsiImportStaticStatement)descriptor.getPsiElement();
       final PsiJavaCodeReferenceElement importReference = importStatement.getImportReference();
       if (importReference == null) {
@@ -178,7 +178,7 @@ public class StaticImportInspection extends BaseInspection {
       }
 
       @Override
-      public void visitReferenceElement(PsiJavaCodeReferenceElement reference) {
+      public void visitReferenceElement(@NotNull PsiJavaCodeReferenceElement reference) {
         super.visitReferenceElement(reference);
         if (isFullyQualifiedReference(reference)) {
           return;
@@ -271,7 +271,7 @@ public class StaticImportInspection extends BaseInspection {
   private class StaticImportVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitImportStaticStatement(PsiImportStaticStatement statement) {
+    public void visitImportStaticStatement(@NotNull PsiImportStaticStatement statement) {
       super.visitImportStaticStatement(statement);
       if (shouldReportImportStatement(statement)) {
         registerError(statement, statement);

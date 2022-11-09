@@ -29,7 +29,6 @@ import java.util.*;
 
 import static com.intellij.codeInsight.AnnotationUtil.CHECK_HIERARCHY;
 
-@SuppressWarnings({"UtilityClassWithoutPrivateConstructor"})
 public final class JUnitUtil {
   public static final String TEST_CASE_CLASS = "junit.framework.TestCase";
   private static final String TEST_INTERFACE = "junit.framework.Test";
@@ -43,7 +42,6 @@ public final class JUnitUtil {
   public static final Set<String> CUSTOM_TESTABLE_ANNOTATION_LIST = Collections.singleton(CUSTOM_TESTABLE_ANNOTATION);
   
   public static final String TEST5_FACTORY_ANNOTATION = "org.junit.jupiter.api.TestFactory";
-  public static final String IGNORE_ANNOTATION = "org.junit.Ignore";
   public static final String RUN_WITH = "org.junit.runner.RunWith";
   public static final String DATA_POINT = "org.junit.experimental.theories.DataPoint";
   public static final String SUITE_METHOD_NAME = "suite";
@@ -59,13 +57,8 @@ public final class JUnitUtil {
 
   public static final String AFTER_CLASS_ANNOTATION_NAME = "org.junit.AfterClass";
   public static final String BEFORE_CLASS_ANNOTATION_NAME = "org.junit.BeforeClass";
-  public static final Collection<String> TEST5_CONFIG_METHODS =
-    ContainerUtil.immutableList(BEFORE_EACH_ANNOTATION_NAME, AFTER_EACH_ANNOTATION_NAME);
-
   public static final String BEFORE_ALL_ANNOTATION_NAME = "org.junit.jupiter.api.BeforeAll";
   public static final String AFTER_ALL_ANNOTATION_NAME = "org.junit.jupiter.api.AfterAll";
-  public static final Collection<String> TEST5_STATIC_CONFIG_METHODS =
-    ContainerUtil.immutableList(BEFORE_ALL_ANNOTATION_NAME, AFTER_ALL_ANNOTATION_NAME);
 
   public static final Collection<String> TEST5_JUPITER_ANNOTATIONS =
     ContainerUtil.immutableList(TEST5_ANNOTATION, TEST5_FACTORY_ANNOTATION);
@@ -130,6 +123,7 @@ public final class JUnitUtil {
   }
 
   public static boolean isTestMethod(final Location<? extends PsiMethod> location, boolean checkAbstract, boolean checkRunWith, boolean checkClass) {
+    if (location == null) return false;
     final PsiMethod psiMethod = location.getPsiElement();
     final PsiClass aClass = location instanceof MethodLocation ? ((MethodLocation)location).getContainingClass() : psiMethod.getContainingClass();
     if (checkClass && (aClass == null || !isTestClass(aClass, checkAbstract, true))) return false;
@@ -155,6 +149,7 @@ public final class JUnitUtil {
     if (!psiMethod.getName().startsWith("test")) return false;
     if (checkClass) {
       PsiClass testCaseClass = getTestCaseClassOrNull(aClass);
+      if (psiMethod.getContainingClass() == null) return false;
       if (testCaseClass == null || !psiMethod.getContainingClass().isInheritor(testCaseClass, true)) return false;
     }
     return PsiType.VOID.equals(psiMethod.getReturnType());
@@ -237,7 +232,7 @@ public final class JUnitUtil {
   }
 
   public static boolean isJUnit3TestClass(final PsiClass clazz) {
-    return isTestCaseInheritor(clazz);
+    return PsiClassUtil.isRunnableClass(clazz, true, false) && isTestCaseInheritor(clazz);
   }
 
   public static boolean isJUnit4TestClass(final PsiClass psiClass) {
@@ -346,10 +341,10 @@ public final class JUnitUtil {
   }
 
   public static boolean hasPackageWithDirectories(JavaPsiFacade facade, String packageQName, GlobalSearchScope globalSearchScope) {
-    return ReadAction.compute(() -> {
+    return ReadAction.nonBlocking(() -> {
       PsiPackage aPackage = facade.findPackage(packageQName);
       return aPackage != null && aPackage.getDirectories(globalSearchScope).length > 0;
-    });
+    }).executeSynchronously();
   }
 
   public static boolean isTestAnnotated(final PsiMethod method) {
@@ -501,7 +496,7 @@ public final class JUnitUtil {
     if (value instanceof PsiClassObjectAccessExpression) {
       final PsiTypeElement operand = ((PsiClassObjectAccessExpression)value).getOperand();
       final PsiClass psiClass = PsiUtil.resolveClassInClassTypeOnly(operand.getType());
-      return psiClass != null && Arrays.stream(runners).anyMatch(runner -> InheritanceUtil.isInheritor(psiClass, runner));
+      return psiClass != null && ContainerUtil.exists(runners, runner -> InheritanceUtil.isInheritor(psiClass, runner));
     }
     return false;
   }

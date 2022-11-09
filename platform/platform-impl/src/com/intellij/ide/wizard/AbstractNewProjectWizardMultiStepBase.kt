@@ -7,7 +7,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.ui.dsl.builder.*
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
 import com.intellij.util.ui.JBUI
 
 
@@ -17,7 +16,7 @@ abstract class AbstractNewProjectWizardMultiStepBase(
 
   protected abstract val label: @NlsContexts.Label String
 
-  val stepsProperty = AtomicProperty<Map<String, NewProjectWizardStep>>(emptyMap())
+  private val stepsProperty = AtomicProperty<Map<String, NewProjectWizardStep>>(emptyMap())
   var steps: Map<String, NewProjectWizardStep> by stepsProperty
 
   val stepProperty = propertyGraph.property("")
@@ -28,27 +27,28 @@ abstract class AbstractNewProjectWizardMultiStepBase(
 
   protected open fun initSteps() = emptyMap<String, NewProjectWizardStep>()
 
-  protected open fun setupSwitcherUi(builder: Row) {
-    with(builder) {
-      val segmentedButton = segmentedButton(steps.keys) { it }
-        .bind(stepProperty)
-        .gap(RightGap.SMALL)
-      stepsProperty.afterChange {
-        segmentedButton.items(steps.keys)
-      }
-    }
+  protected open fun setupSwitcherUi(builder: Panel) {
+    builder.row(label) {
+      createAndSetupSwitcher(this@row)
+    }.bottomGap(BottomGap.SMALL)
+  }
+
+  protected open fun createAndSetupSwitcher(builder: Row): SegmentedButton<String> {
+    return builder.segmentedButton(steps.keys) { it }
+      .bind(stepProperty)
+      .gap(RightGap.SMALL)
+      .apply { stepsProperty.afterChange { items(steps.keys) } }
   }
 
   override fun setupUI(builder: Panel) {
     steps = initSteps()
 
+    setupSwitcherUi(builder)
+
     with(builder) {
-      row(label) {
-        setupSwitcherUi(this@row)
-      }.bottomGap(BottomGap.SMALL)
       row {
         val placeholder = placeholder()
-          .horizontalAlign(HorizontalAlign.FILL)
+          .align(AlignX.FILL)
 
         placeholder.component = getOrCreateStepPanel()
         stepProperty.afterChange {

@@ -52,6 +52,9 @@
 
         <extendWordSelectionHandler implementation="org.toml.ide.wordSelection.TomlStringLiteralSelectionHandler"/>
 
+        <psi.referenceContributor language="TOML"
+                                  implementation="org.toml.ide.resolve.TomlReferenceContributor"/>
+
         <localInspection language="TOML"
                          groupKey="inspection.group.toml"
                          key="inspection.toml.unresolved.reference.display.name"
@@ -59,10 +62,12 @@
                          implementationClass="org.toml.ide.inspections.TomlUnresolvedReferenceInspection"/>
 
         <intentionAction>
+            <language>TOML</language>
             <className>org.toml.ide.intentions.TomlExpandInlineTableIntention</className>
             <categoryKey>intention.category.toml</categoryKey>
         </intentionAction>
 
         <registryKey key="org.toml.json.schema" defaultValue="true" description="JSON schemas support for TOML"/>
+        <iconMapper mappingFile="TomlIconMappings.json"/>
     </extensions>
 </idea-plugin>

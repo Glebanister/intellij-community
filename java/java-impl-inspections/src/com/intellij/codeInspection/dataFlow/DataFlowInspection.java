@@ -4,9 +4,9 @@ package com.intellij.codeInspection.dataFlow;
 import com.intellij.codeInsight.NullableNotNullDialog;
 import com.intellij.codeInsight.daemon.impl.analysis.HighlightingFeature;
 import com.intellij.codeInsight.daemon.impl.quickfix.DeleteSideEffectsAwareFix;
-import com.intellij.codeInsight.daemon.impl.quickfix.SimplifyBooleanExpressionFix;
 import com.intellij.codeInsight.daemon.impl.quickfix.UnwrapSwitchLabelFix;
 import com.intellij.codeInspection.*;
+import com.intellij.codeInspection.dataFlow.fix.BoxPrimitiveInTernaryFix;
 import com.intellij.codeInspection.dataFlow.fix.FindDfaProblemCauseFix;
 import com.intellij.codeInspection.dataFlow.fix.ReplaceWithBooleanEqualsFix;
 import com.intellij.codeInspection.dataFlow.fix.SurroundWithRequireNonNullFix;
@@ -17,12 +17,11 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
-import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiPrecedenceUtil;
-import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.TypeConversionUtil;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.util.ObjectUtils;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBInsets;
@@ -51,23 +50,8 @@ public class DataFlowInspection extends DataFlowInspectionBase {
   private static final Logger LOG = Logger.getInstance(DataFlowInspection.class);
 
   @Override
-  protected LocalQuickFix[] createConditionalAssignmentFixes(boolean evaluatesToTrue, PsiAssignmentExpression assignment, final boolean onTheFly) {
-    IElementType op = assignment.getOperationTokenType();
-    boolean toRemove = op == JavaTokenType.ANDEQ && !evaluatesToTrue || op == JavaTokenType.OREQ && evaluatesToTrue;
-    if (toRemove && !onTheFly) {
-      return LocalQuickFix.EMPTY_ARRAY;
-    }
-    return new LocalQuickFix[]{toRemove ? new RemoveAssignmentFix() : createSimplifyToAssignmentFix()};
-  }
-
-  @Override
   public JComponent createOptionsPanel() {
     return new OptionsPanel();
-  }
-
-  @Override
-  protected LocalQuickFix createReplaceWithTrivialLambdaFix(Object value) {
-    return new ReplaceWithTrivialLambdaFix(value);
   }
 
   @Override
@@ -90,21 +74,6 @@ public class DataFlowInspection extends DataFlowInspectionBase {
   @Override
   protected LocalQuickFix createIntroduceVariableFix() {
     return new IntroduceVariableFix(true);
-  }
-
-  @Override
-  protected LocalQuickFixOnPsiElement createSimplifyBooleanFix(PsiElement element, boolean value) {
-    if (!(element instanceof PsiExpression)) return null;
-    if (PsiTreeUtil.findChildOfType(element, PsiAssignmentExpression.class) != null) return null;
-
-    final PsiExpression expression = (PsiExpression)element;
-    while (element.getParent() instanceof PsiExpression) {
-      element = element.getParent();
-    }
-    final SimplifyBooleanExpressionFix fix = new SimplifyBooleanExpressionFix(expression, value);
-    // simplify intention already active
-    if (!fix.isAvailable() || SimplifyBooleanExpressionFix.canBeSimplified((PsiExpression)element)) return null;
-    return fix;
   }
 
   private static boolean isVolatileFieldReference(PsiExpression qualifier) {
@@ -144,7 +113,7 @@ public class DataFlowInspection extends DataFlowInspectionBase {
       if (!alwaysFails && !SideEffectChecker.mayHaveSideEffects(operand) && CodeBlockSurrounder.canSurround(castExpression)) {
         String suffix = " instanceof " + typeElement.getText();
         fixes.add(new AddAssertStatementFix(ParenthesesUtils.getText(operand, PsiPrecedenceUtil.RELATIONAL_PRECEDENCE) + suffix));
-        if (onTheFly && SurroundWithIfFix.isAvailable(operand)) {
+        if (SurroundWithIfFix.isAvailable(operand)) {
           fixes.add(new SurroundWithIfFix(operand, suffix));
         }
       }
@@ -192,7 +161,7 @@ public class DataFlowInspection extends DataFlowInspectionBase {
           fixes.add(new AddAssertStatementFix(replacement));
         }
 
-        if (onTheFly && SurroundWithIfFix.isAvailable(qualifier)) {
+        if (SurroundWithIfFix.isAvailable(qualifier)) {
           fixes.add(new SurroundWithIfFix(qualifier, suffix));
         }
 
@@ -221,11 +190,12 @@ public class DataFlowInspection extends DataFlowInspectionBase {
   }
 
   @Override
-  protected @NotNull List<LocalQuickFix> createUnboxingNullableFixes(@NotNull PsiExpression qualifier, PsiExpression expression, boolean onTheFly) {
+  protected @NotNull List<LocalQuickFix> createUnboxingNullableFixes(@NotNull PsiExpression qualifier, PsiElement anchor, boolean onTheFly) {
     List<LocalQuickFix> result = new SmartList<>();
     if (TypeConversionUtil.isBooleanType(qualifier.getType())) {
       result.add(new ReplaceWithBooleanEqualsFix(qualifier));
     }
+    ContainerUtil.addIfNotNull(result, BoxPrimitiveInTernaryFix.makeFix(ObjectUtils.tryCast(anchor, PsiExpression.class)));
     addCreateNullBranchFix(qualifier, result);
     return result;
   }
@@ -274,17 +244,9 @@ public class DataFlowInspection extends DataFlowInspectionBase {
         message("inspection.data.flow.report.nullable.methods.that.always.return.a.non.null.value"),
         "REPORT_NULLABLE_METHODS_RETURNING_NOT_NULL");
 
-      JCheckBox dontReportTrueAsserts = createCheckBoxWithHTML(
-        message("inspection.data.flow.true.asserts.option"),
-        "DONT_REPORT_TRUE_ASSERT_STATEMENTS");
-
       JCheckBox ignoreAssertions = createCheckBoxWithHTML(
         message("inspection.data.flow.ignore.assert.statements"),
         "IGNORE_ASSERT_STATEMENTS");
-
-      JCheckBox reportConstantReferences = createCheckBoxWithHTML(
-        message("inspection.data.flow.warn.when.reading.a.value.guaranteed.to.be.constant"),
-        "REPORT_CONSTANT_REFERENCE_VALUES");
 
       JCheckBox reportUnsoundWarnings = createCheckBoxWithHTML(
         message("inspection.data.flow.report.problems.that.happen.only.on.some.code.paths"),
@@ -314,13 +276,7 @@ public class DataFlowInspection extends DataFlowInspectionBase {
       add(reportNullableMethodsReturningNotNull, gc);
 
       gc.gridy++;
-      add(dontReportTrueAsserts, gc);
-
-      gc.gridy++;
       add(ignoreAssertions, gc);
-
-      gc.gridy++;
-      add(reportConstantReferences, gc);
 
       gc.gridy++;
       add(reportUnsoundWarnings, gc);

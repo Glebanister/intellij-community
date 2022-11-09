@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.coverage;
 
 import com.intellij.history.FileRevisionTimestampComparator;
@@ -188,13 +188,7 @@ public final class CoverageEditorAnnotatorImpl implements CoverageEditorAnnotato
     final byte[] oldContent;
     synchronized (LOCK) {
       if (myOldContent == null) {
-        final LocalHistory localHistory = LocalHistory.getInstance();
-        byte[] byteContent = localHistory.getByteContent(virtualFile, new FileRevisionTimestampComparator() {
-          @Override
-          public boolean isSuitable(long revisionTimestamp) {
-            return revisionTimestamp < date;
-          }
-        });
+        byte[] byteContent = loadFromLocalHistory(date, virtualFile);
 
         if (byteContent == null && virtualFile.getTimeStamp() > date) {
           byteContent = loadFromVersionControl(date, virtualFile);
@@ -224,6 +218,16 @@ public final class CoverageEditorAnnotatorImpl implements CoverageEditorAnnotato
     return new SoftReference<>(getCoverageVersionToCurrentLineMapping(change, oldLines.length));
   }
 
+  private static byte @Nullable [] loadFromLocalHistory(long date, VirtualFile virtualFile) {
+    final LocalHistory localHistory = LocalHistory.getInstance();
+    return localHistory.getByteContent(virtualFile, new FileRevisionTimestampComparator() {
+      @Override
+      public boolean isSuitable(long revisionTimestamp) {
+        return revisionTimestamp < date;
+      }
+    });
+  }
+
   private byte @Nullable [] loadFromVersionControl(long date, VirtualFile f) {
     try {
       final AbstractVcs vcs = VcsUtil.getVcsFor(myProject, f);
@@ -232,7 +236,7 @@ public final class CoverageEditorAnnotatorImpl implements CoverageEditorAnnotato
       final VcsHistoryProvider historyProvider = vcs.getVcsHistoryProvider();
       if (historyProvider == null) return null;
 
-      final FilePath filePath = VcsContextFactory.SERVICE.getInstance().createFilePathOn(f);
+      final FilePath filePath = VcsContextFactory.getInstance().createFilePathOn(f);
       final VcsHistorySession session = historyProvider.createSessionFor(filePath);
       if (session == null) return null;
 
@@ -427,7 +431,8 @@ public final class CoverageEditorAnnotatorImpl implements CoverageEditorAnnotato
             if (newToOldLineMapping != null) {
               ApplicationManager.getApplication().invokeLater(() -> {
                 if (editorBean.isDisposed()) return;
-                for (int line = lineNumber; line <= lastLineNumber; line++) {
+                final int lastLine = Math.min(document.getLineCount() - 1, lastLineNumber);
+                for (int line = lineNumber; line <= lastLine; line++) {
                   final int oldLineNumber = newToOldLineMapping.get(line);
                   final LineData lineData = executableLines.get(oldLineNumber);
                   if (lineData != null) {
@@ -520,7 +525,7 @@ public final class CoverageEditorAnnotatorImpl implements CoverageEditorAnnotato
       final FileEditor[] editors = fileEditorManager.getAllEditors(vFile);
       for (final FileEditor editor : editors) {
         if (isCurrentEditor(editor)) {
-          final EditorNotificationPanel panel = new EditorNotificationPanel(editor) {
+          final EditorNotificationPanel panel = new EditorNotificationPanel(editor, EditorNotificationPanel.Status.Warning) {
             {
               myLabel.setIcon(AllIcons.General.ExclMark);
               myLabel.setText(message);
@@ -593,6 +598,7 @@ public final class CoverageEditorAnnotatorImpl implements CoverageEditorAnnotato
     executableLines.put(updatedLineNumber, null);
     ApplicationManager.getApplication().invokeLater(() -> {
       if (editorBean.isDisposed()) return;
+      if (updatedLineNumber >= editorBean.getDocument().getLineCount()) return;
       final RangeHighlighter highlighter =
         createRangeHighlighter(outputFile.lastModified(), markupModel, coverageByTestApplicable, executableLines, null, lineNumber,
                                updatedLineNumber, coverageSuite, null, editorBean);

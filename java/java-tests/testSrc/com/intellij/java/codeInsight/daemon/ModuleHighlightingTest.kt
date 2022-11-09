@@ -12,6 +12,7 @@ import com.intellij.java.testFramework.fixtures.MultiModuleJava9ProjectDescripto
 import com.intellij.java.testFramework.fixtures.MultiModuleJava9ProjectDescriptor.ModuleDescriptor.*
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.util.TextRange
+import com.intellij.psi.JavaCompilerConfigurationProxy
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.ProjectScope
@@ -345,6 +346,30 @@ class ModuleHighlightingTest : LightJava9ModulesCodeInsightFixtureTestCase() {
     highlight("test.java", highlightText, M_TEST, isTest = true)
   }
 
+  fun testPatchingJavaBase() {
+    highlight("Main.java", """
+      package <error descr="Package 'lang' exists in another module: java.base">java.lang</error>;
+      public class Main {}
+    """.trimIndent())
+    try {
+      JavaCompilerConfigurationProxy.setAdditionalOptions(project, module, listOf("--patch-module=java.base=/src"))
+      highlight("Main.java", """
+       package java.lang;
+       public class Main {}
+     """.trimIndent())
+    }
+    finally {
+      JavaCompilerConfigurationProxy.setAdditionalOptions(project, module, listOf())
+    }
+  }
+  
+  fun testNoModuleInfoSamePackageAsInAttachedLibraryWithModuleInfo() {
+    highlight("Main.java", """
+      package lib.named;
+      public class Main {}
+    """.trimIndent())
+  }
+
   fun testPrivateJdkPackage() {
     addFile("module-info.java", "module M { }")
     highlight("test.java", """
@@ -550,6 +575,25 @@ class ModuleHighlightingTest : LightJava9ModulesCodeInsightFixtureTestCase() {
     val classInLibrary = myFixture.javaFacade.findClass("lib.named.C", GlobalSearchScope.allScope(project))!!
     val elementInSources = classInLibrary.navigationElement
     assertThat(JavaModuleGraphUtil.findDescriptorByFile(PsiUtilCore.getVirtualFile(elementInSources), project)).isNotNull
+  }
+
+  fun testMultiReleaseJarParts() {
+    addFile("pkg/I.java", """
+      package pkg;
+      public interface I {
+        String m();
+      }""".trimIndent(), MR_MAIN)
+    addFile("pkg/Impl.java", """
+      package pkg;
+      public class Impl implements I {
+        public String m() { return "main impl"; }
+      }""".trimIndent(), MR_MAIN)
+    addFile("module-info.java", "module light.idea.test.mr { }", MR_JAVA9)
+    highlight("pkg/Impl.java", """
+      package pkg;
+      public class Impl implements I {
+        public String m() { return "alt impl"; }
+      }""".trimIndent(), MR_JAVA9)
   }
 
   //<editor-fold desc="Helpers.">

@@ -173,10 +173,16 @@ public class EnvVariablesTable extends ListTableWithButtons<EnvironmentVariable>
   }
 
   private final class CopyPasteProviderPanel extends JPanel implements DataProvider, CopyProvider, PasteProvider {
-    private CopyPasteProviderPanel(JComponent component) {
+    CopyPasteProviderPanel(JComponent component) {
       super(new GridLayout(1, 1));
       add(component);
     }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.EDT;
+    }
+
     @Nullable
     @Override
     public Object getData(@NotNull String dataId) {
@@ -286,6 +292,11 @@ public class EnvVariablesTable extends ListTableWithButtons<EnvironmentVariable>
       public boolean isEnabled() {
         return myPanel.isCopyEnabled(DataContext.EMPTY_CONTEXT);
       }
+
+      @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
+      }
     };
     AnActionButton pasteButton = new AnActionButton(ActionsBundle.message("action.EditorPaste.text"), AllIcons.Actions.MenuPaste) {
       @Override
@@ -301,6 +312,11 @@ public class EnvVariablesTable extends ListTableWithButtons<EnvironmentVariable>
       @Override
       public boolean isVisible() {
         return myPanel.isPastePossible(DataContext.EMPTY_CONTEXT);
+      }
+
+      @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
       }
     };
     return new AnActionButton[]{copyButton, pasteButton};

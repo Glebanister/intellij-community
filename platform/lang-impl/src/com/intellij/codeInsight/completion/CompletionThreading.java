@@ -17,9 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
-/**
- * @author peter
- */
 interface CompletionThreading {
 
   Future<?> startThread(final ProgressIndicator progressIndicator, Runnable runnable);

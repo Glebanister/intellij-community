@@ -3,6 +3,7 @@ package org.intellij.plugins.markdown.lang.parser
 import com.intellij.lang.PsiBuilder
 import com.intellij.lang.WhitespacesAndCommentsBinder
 import com.intellij.lang.WhitespacesBinders
+import com.intellij.openapi.progress.ProgressManager
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.LeafASTNode
@@ -11,12 +12,13 @@ import org.intellij.plugins.markdown.lang.MarkdownElementType
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypeSets
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
 
-class PsiBuilderFillingVisitor(private val builder: PsiBuilder) : RecursiveVisitor() {
+internal class PsiBuilderFillingVisitor(private val builder: PsiBuilder) : RecursiveVisitor() {
   private var seenFirstMarker = false
 
   private val HEADERS = MarkdownTokenTypeSets.HEADERS.types.map { MarkdownElementType.markdownType(it) }.toSet()
 
   override fun visitNode(node: ASTNode) {
+    ProgressManager.checkCanceled()
     if (node is LeafASTNode) {
       /* a hack for the link reference definitions:
        * they are being parsed independent of link references and
@@ -40,6 +42,10 @@ class PsiBuilderFillingVisitor(private val builder: PsiBuilder) : RecursiveVisit
 
     super.visitNode(node)
     ensureBuilderInPosition(node.endOffset)
+    if (node.type is MarkdownCollapsableElementType) {
+      marker.collapse(MarkdownElementType.platformType(node.type))
+      return
+    }
     marker.done(MarkdownElementType.platformType(node.type))
   }
 
@@ -50,7 +56,7 @@ class PsiBuilderFillingVisitor(private val builder: PsiBuilder) : RecursiveVisit
     }
   }
 
-  fun leadingWhitespaces(): WhitespacesAndCommentsBinder? {
+  private fun leadingWhitespaces(): WhitespacesAndCommentsBinder {
     return WhitespacesAndCommentsBinder { tokens, _, getter ->
       var i = 0
       while (i < tokens.size && (tokens[i] != MarkdownTokenTypes.WHITE_SPACE || getter.get(i).isNotBlank())) {

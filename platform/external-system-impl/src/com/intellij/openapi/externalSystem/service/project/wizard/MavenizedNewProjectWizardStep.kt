@@ -1,16 +1,20 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.externalSystem.service.project.wizard
 
+import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logArtifactIdChanged
+import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logGroupIdChanged
+import com.intellij.ide.projectWizard.NewProjectWizardCollector.BuildSystem.logParentChanged
 import com.intellij.ide.wizard.AbstractNewProjectWizardStep
 import com.intellij.ide.wizard.NewProjectWizardBaseData
+import com.intellij.ide.wizard.NewProjectWizardBaseData.Companion.nameProperty
 import com.intellij.ide.wizard.NewProjectWizardStep
+import com.intellij.ide.wizard.NewProjectWizardStep.Companion.GROUP_ID_PROPERTY_NAME
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle
 import com.intellij.openapi.externalSystem.util.ui.DataView
+import com.intellij.openapi.observable.util.bindStorage
 import com.intellij.openapi.observable.util.trim
 import com.intellij.openapi.ui.ValidationInfo
-import com.intellij.openapi.ui.validation.CHECK_ARTIFACT_ID_FORMAT
-import com.intellij.openapi.ui.validation.CHECK_GROUP_ID_FORMAT
-import com.intellij.openapi.ui.validation.CHECK_NON_EMPTY
+import com.intellij.openapi.ui.validation.*
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.SortedComboBoxModel
@@ -32,13 +36,14 @@ abstract class MavenizedNewProjectWizardStep<Data : Any, ParentStep>(val parentS
 
   final override val parentProperty = propertyGraph.lazyProperty(::suggestParentByPath)
   final override val groupIdProperty = propertyGraph.lazyProperty(::suggestGroupIdByParent)
+    .bindStorage(GROUP_ID_PROPERTY_NAME)
   final override val artifactIdProperty = propertyGraph.lazyProperty(::suggestArtifactIdByName)
   final override val versionProperty = propertyGraph.lazyProperty(::suggestVersionByParent)
 
   final override var parent by parentProperty
-  final override var groupId by groupIdProperty.trim()
-  final override var artifactId by artifactIdProperty.trim()
-  final override var version by versionProperty.trim()
+  final override var groupId by groupIdProperty
+  final override var artifactId by artifactIdProperty
+  final override var version by versionProperty
 
   val parents by lazy { parentsData.map(::createView) }
   val parentsData by lazy { findAllParents() }
@@ -68,6 +73,7 @@ abstract class MavenizedNewProjectWizardStep<Data : Any, ParentStep>(val parentS
           comboBox(parentComboBoxModel, ParentRenderer())
             .bindItem(parentProperty)
             .columns(COLUMNS_MEDIUM)
+            .whenItemSelectedFromUi { logParentChanged(!it.isPresent) }
         }.topGap(TopGap.SMALL)
       }
     }
@@ -77,17 +83,21 @@ abstract class MavenizedNewProjectWizardStep<Data : Any, ParentStep>(val parentS
     with(builder) {
       row(ExternalSystemBundle.message("external.system.mavenized.structure.wizard.group.id.label")) {
         textField()
-          .bindText(groupIdProperty)
+          .bindText(groupIdProperty.trim())
           .columns(COLUMNS_MEDIUM)
-          .textValidation(CHECK_NON_EMPTY, CHECK_GROUP_ID_FORMAT)
+          .trimmedTextValidation(CHECK_NON_EMPTY, CHECK_GROUP_ID)
           .validation { validateGroupId() }
+          .whenTextChangedFromUi { logGroupIdChanged() }
       }.bottomGap(BottomGap.SMALL)
       row(ExternalSystemBundle.message("external.system.mavenized.structure.wizard.artifact.id.label")) {
         textField()
-          .bindText(artifactIdProperty)
+          .bindText(artifactIdProperty.trim())
           .columns(COLUMNS_MEDIUM)
-          .textValidation(CHECK_NON_EMPTY, CHECK_ARTIFACT_ID_FORMAT)
+          .trimmedTextValidation(CHECK_NON_EMPTY, CHECK_ARTIFACT_ID)
           .validation { validateArtifactId() }
+          .validationRequestor(AFTER_PROPERTY_CHANGE(artifactIdProperty))
+          .validationRequestor(AFTER_PROPERTY_CHANGE(nameProperty))
+          .whenTextChangedFromUi { logArtifactIdChanged() }
       }.bottomGap(BottomGap.SMALL)
     }
   }
@@ -120,7 +130,7 @@ abstract class MavenizedNewProjectWizardStep<Data : Any, ParentStep>(val parentS
     return parent.version
   }
 
-  protected fun suggestPathByParent(): String {
+  private fun suggestPathByParent(): String {
     return if (parent.isPresent) parent.location else context.projectFileDirectory
   }
 

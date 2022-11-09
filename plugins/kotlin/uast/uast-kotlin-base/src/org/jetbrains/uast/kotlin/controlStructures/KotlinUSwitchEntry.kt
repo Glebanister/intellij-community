@@ -1,7 +1,8 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.uast.kotlin
 
 import com.intellij.psi.PsiElement
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtWhenEntry
@@ -9,6 +10,7 @@ import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.uast.*
 import org.jetbrains.uast.kotlin.kinds.KotlinSpecialExpressionKinds
 
+@ApiStatus.Internal
 class KotlinUSwitchEntry(
     override val sourcePsi: KtWhenEntry,
     givenParent: UElement?
@@ -17,6 +19,12 @@ class KotlinUSwitchEntry(
         sourcePsi.conditions.map {
             baseResolveProviderService.baseKotlinConverter.convertWhenCondition(it, this, DEFAULT_EXPRESSION_TYPES_LIST)
                 ?: UastEmptyExpression(null)
+        }
+    }
+
+    private val containingWhenExpression by lz {
+        baseResolveProviderService.baseKotlinConverter.unwrapElements(sourcePsi.parent)?.let { parentUnwrapped ->
+            languagePlugin?.convertElementWithParent(parentUnwrapped, null)
         }
     }
 
@@ -32,8 +40,7 @@ class KotlinUSwitchEntry(
                 appendLine("}")
             }
         }.apply KotlinUExpressionList@{
-            val exprPsi = this@KotlinUSwitchEntry.sourcePsi.expression
-            val userExpressions = when (exprPsi) {
+            val userExpressions = when (val exprPsi = this@KotlinUSwitchEntry.sourcePsi.expression) {
                 is KtBlockExpression -> exprPsi.statements.map { baseResolveProviderService.baseKotlinConverter.convertOrEmpty(it, this) }
                 else -> listOf(baseResolveProviderService.baseKotlinConverter.convertOrEmpty(exprPsi, this))
             }
@@ -59,15 +66,16 @@ class KotlinUSwitchEntry(
                                         it, this, DEFAULT_EXPRESSION_TYPES_LIST
                                     )
                                 }
+
+                        override val jumpTarget: UElement?
+                            get() = containingWhenExpression
                     }
                 else emptyList()
         }
     }
 
     override fun convertParent(): UElement? {
-        val result = baseResolveProviderService.baseKotlinConverter.unwrapElements(sourcePsi.parent)?.let { parentUnwrapped ->
-            languagePlugin?.convertElementWithParent(parentUnwrapped, null)
-        }
-        return (result as? KotlinUSwitchExpression)?.body ?: result
+        return (containingWhenExpression as? KotlinUSwitchExpression)?.body
+            ?: containingWhenExpression
     }
 }

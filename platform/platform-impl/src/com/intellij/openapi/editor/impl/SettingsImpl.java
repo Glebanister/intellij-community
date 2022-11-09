@@ -87,7 +87,6 @@ public class SettingsImpl implements EditorSettings {
   private Boolean myWrapWhenTypingReachesRightMargin;
   private Boolean myShowIntentionBulb;
   private Boolean myShowingSpecialCharacters;
-  private Boolean myShowVisualFormattingLayer;
 
   private List<Integer> mySoftMargins;
 
@@ -784,14 +783,7 @@ public class SettingsImpl implements EditorSettings {
   }
 
   @Override
-  @Nullable
-  public Boolean isShowVisualFormattingLayer() {
-    return myShowVisualFormattingLayer;
+  public boolean isInsertParenthesesAutomatically() {
+    return EditorSettingsExternalizable.getInstance().isInsertParenthesesAutomatically();
   }
-
-  @Override
-  public void setShowVisualFormattingLayer(@Nullable Boolean showVisualFormattingLayer) {
-    myShowVisualFormattingLayer = showVisualFormattingLayer;
-  }
-
 }

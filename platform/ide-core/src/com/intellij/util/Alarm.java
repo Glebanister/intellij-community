@@ -5,7 +5,6 @@ import com.intellij.codeWithMe.ClientId;
 import com.intellij.diagnostic.PluginException;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.*;
-import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.util.Disposer;
@@ -25,7 +24,6 @@ import org.jetbrains.annotations.TestOnly;
 
 import javax.swing.*;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.*;
 
@@ -42,7 +40,7 @@ public class Alarm implements Disposable {
 
   // requests scheduled to myExecutorService
   private final List<Request> myRequests = new SmartList<>(); // guarded by LOCK
-  // requests not yet scheduled to myExecutorService (because e.g. the corresponding component isn't active yet)
+  // requests not yet scheduled to myExecutorService (because e.g., the corresponding component isn't active yet)
   private final List<Request> myPendingRequests = new SmartList<>(); // guarded by LOCK
 
   private final ScheduledExecutorService myExecutorService;
@@ -279,32 +277,23 @@ public class Alarm implements Disposable {
   @TestOnly
   public void drainRequestsInTest() {
     assert ApplicationManager.getApplication().isUnitTestMode();
-    for (Runnable task : getUnfinishedRequests()) {
-      task.run();
-    }
-  }
-
-  protected @NotNull List<Runnable> getUnfinishedRequests() {
-    List<Runnable> unfinishedTasks;
+    List<Runnable> result = new ArrayList<>();
     synchronized (LOCK) {
-      if (myRequests.isEmpty()) {
-        return Collections.emptyList();
-      }
-
-      unfinishedTasks = new ArrayList<>(myRequests.size());
       for (Request request : myRequests) {
         Runnable existingTask = request.cancel();
         if (existingTask != null) {
-          unfinishedTasks.add(existingTask);
+          result.add(existingTask);
         }
       }
       myRequests.clear();
     }
-    return unfinishedTasks;
+    for (Runnable task : result) {
+      task.run();
+    }
   }
 
   /**
-   * wait for all requests to start execution (i.e. their delay elapses and their run() method, well, runs)
+   * wait for all requests to start execution (i.e., their delay elapses and their run() method, well, runs)
    * and then wait for the execution to finish.
    */
   @TestOnly
@@ -415,20 +404,7 @@ public class Alarm implements Disposable {
     private @Nullable Runnable cancel() {
       Future<?> future = myFuture;
       if (future != null) {
-        if (!future.cancel(false) && !future.isCancelled()) {
-          // the future already completed. manifest its errors if any
-          try {
-            future.get();
-          }
-          catch (InterruptedException ignored) {
-          }
-          catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            if (cause != null && !(cause instanceof ControlFlowException)) {
-              LOG.error(cause);
-            }
-          }
-        }
+        future.cancel(false);
         myFuture = null;
       }
       Runnable task = myTask;

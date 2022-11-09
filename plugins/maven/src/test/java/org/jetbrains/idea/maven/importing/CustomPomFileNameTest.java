@@ -1,9 +1,9 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.idea.maven.importing;
 
+import com.intellij.maven.testFramework.MavenDomTestCase;
 import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.maven.testFramework.MavenDomTestCase;
 import org.junit.Test;
 
 public class CustomPomFileNameTest extends MavenDomTestCase {
@@ -29,7 +29,7 @@ public class CustomPomFileNameTest extends MavenDomTestCase {
                   "  <module>m1/customName.xml</module>" +
                   "</modules>");
 
-    assertModules("project", "m1");
+    assertModules("project", mn("project", "m1"));
   }
 
   @Test
@@ -53,7 +53,7 @@ public class CustomPomFileNameTest extends MavenDomTestCase {
                   "  <module>customName.xml</module>" +
                   "</modules>");
 
-    assertModules("project", "m1");
+    assertModules("project", mn("project", "m1"));
   }
 
   @Test
@@ -170,7 +170,9 @@ public class CustomPomFileNameTest extends MavenDomTestCase {
                   "</modules>");
 
     myProjectsManager.performScheduledImportInTests();
-    assertFalse(myProjectsManager.hasScheduledImportsInTests());
+    if (!isNewImportingProcess) {
+      assertFalse(myProjectsManager.hasScheduledImportsInTests());
+    }
 
     myProjectsManager.enableAutoImportInTests();
     VirtualFile m1 = createProjectSubFile("m1/customName.xml", createPomXml(
@@ -196,7 +198,9 @@ public class CustomPomFileNameTest extends MavenDomTestCase {
     assertTrue(ExternalSystemProjectNotificationAware.getInstance(myProject).isNotificationVisible());
 
     importProject();
-    assertTrue(myProjectsManager.hasScheduledImportsInTests());
+    if (!isNewImportingProcess) {
+      assertTrue(myProjectsManager.hasScheduledImportsInTests());
+    }
   }
 
   @Test
@@ -220,6 +224,6 @@ public class CustomPomFileNameTest extends MavenDomTestCase {
                   "  <module>m1/customName.pom</module>" +
                   "</modules>");
 
-    assertModules("project", "m1");
+    assertModules("project", mn("project", "m1"));
   }
 }

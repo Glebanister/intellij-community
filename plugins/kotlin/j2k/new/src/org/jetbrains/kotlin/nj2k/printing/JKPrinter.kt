@@ -85,13 +85,14 @@ internal class JKPrinter(
         this@JKPrinter.print(elementInfoStorage.getOrCreateInfoForElement(this).render())
     }
 
-    fun renderType(type: JKType, owner: JKTreeElement?) {
+    fun renderType(type: JKType, owner: JKTreeElement? = null) {
         if (type is JKNoType) return
         if (type is JKCapturedType) {
             when (val wildcard = type.wildcardType) {
                 is JKVarianceTypeParameterType -> {
                     renderType(wildcard.boundType, owner)
                 }
+
                 is JKStarProjectionType -> {
                     type.renderTypeInfo()
                     this.print("Any?")
@@ -104,23 +105,27 @@ internal class JKPrinter(
             is JKClassType -> {
                 renderSymbol(type.classReference, owner)
             }
+
             is JKContextType -> return
             is JKStarProjectionType ->
                 this.print("*")
+
             is JKTypeParameterType ->
                 this.print(type.identifier.name)
+
             is JKVarianceTypeParameterType -> {
                 when (type.variance) {
                     JKVarianceTypeParameterType.Variance.IN -> this.print("in ")
                     JKVarianceTypeParameterType.Variance.OUT -> this.print("out ")
                 }
-                renderType(type.boundType, null)
+                renderType(type.boundType)
             }
+
             else -> this.print("Unit /* TODO: ${type::class} */")
         }
         if (type is JKParametrizedType && type.parameters.isNotEmpty()) {
             par(ParenthesisKind.ANGLE) {
-                renderList(type.parameters, renderElement = { renderType(it, null) })
+                renderList(type.parameters, renderElement = { renderType(it) })
             }
         }
         // we print undefined types as nullable because we need smartcast to work in nullability inference in post-processing

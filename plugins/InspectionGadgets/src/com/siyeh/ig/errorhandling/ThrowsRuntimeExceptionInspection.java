@@ -78,7 +78,7 @@ public class ThrowsRuntimeExceptionInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement parent = element.getParent();
       final PsiElement grandParent = parent.getParent();
@@ -177,7 +177,7 @@ public class ThrowsRuntimeExceptionInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       descriptor.getPsiElement().delete();
     }
   }
@@ -185,7 +185,7 @@ public class ThrowsRuntimeExceptionInspection extends BaseInspection {
   private static class ThrowsRuntimeExceptionVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethod(PsiMethod method) {
+    public void visitMethod(@NotNull PsiMethod method) {
       super.visitMethod(method);
       final PsiReferenceList throwsList = method.getThrowsList();
       final PsiJavaCodeReferenceElement[] referenceElements = throwsList.getReferenceElements();

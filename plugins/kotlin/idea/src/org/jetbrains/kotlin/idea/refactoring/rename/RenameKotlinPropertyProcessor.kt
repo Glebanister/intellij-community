@@ -1,8 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.refactoring.rename
 
 import com.intellij.navigation.NavigationItem
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Pass
@@ -26,13 +27,13 @@ import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.descriptors.VariableDescriptor
-import org.jetbrains.kotlin.idea.KotlinBundle
+import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
+import org.jetbrains.kotlin.idea.base.psi.unquoteKotlinIdentifier
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
 import org.jetbrains.kotlin.idea.core.getDeepestSuperDeclarations
 import org.jetbrains.kotlin.idea.core.isEnumCompanionPropertyWithEntryConflict
-import org.jetbrains.kotlin.idea.core.unquote
 import org.jetbrains.kotlin.idea.refactoring.KotlinRefactoringSettings
 import org.jetbrains.kotlin.idea.refactoring.checkSuperMethodsWithPopup
 import org.jetbrains.kotlin.idea.refactoring.dropOverrideKeywordIfNecessary
@@ -40,9 +41,8 @@ import org.jetbrains.kotlin.idea.references.KtDestructuringDeclarationReference
 import org.jetbrains.kotlin.idea.references.KtReference
 import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
 import org.jetbrains.kotlin.idea.references.mainReference
-import org.jetbrains.kotlin.idea.search.codeUsageScope
+import org.jetbrains.kotlin.idea.base.util.codeUsageScope
 import org.jetbrains.kotlin.idea.util.application.isUnitTestMode
-import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.name.Name
@@ -51,10 +51,7 @@ import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
 import org.jetbrains.kotlin.psi.psiUtil.findPropertyByName
 import org.jetbrains.kotlin.psi.psiUtil.isPrivate
 import org.jetbrains.kotlin.psi.psiUtil.quoteIfNeeded
-import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.DataClassDescriptorResolver
-import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
-import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.*
 import org.jetbrains.kotlin.resolve.source.getPsi
 import org.jetbrains.kotlin.util.findCallableMemberBySignature
 import org.jetbrains.kotlin.utils.DFS
@@ -281,7 +278,7 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
         }
 
         val superPsiMethods = listOfNotNull(deepestSuperDeclaration.getRepresentativeLightMethod())
-        checkSuperMethodsWithPopup(callableDeclaration, superPsiMethods, "rename", editor) {
+        checkSuperMethodsWithPopup(callableDeclaration, superPsiMethods, editor) {
             preprocessAndPass(if (it.size > 1) deepestSuperDeclaration else callableDeclaration)
         }
     }
@@ -443,7 +440,7 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
         usages: Array<UsageInfo>,
         listener: RefactoringElementListener?
     ) {
-        val newNameUnquoted = newName.unquote()
+        val newNameUnquoted = newName.unquoteKotlinIdentifier()
         if (element is KtLightMethod) {
             if (element.modifierList.hasAnnotation(DescriptorUtils.JVM_NAME.asString())) {
                 return super.renameElement(element, newName, usages, listener)
@@ -483,7 +480,7 @@ class RenameKotlinPropertyProcessor : RenameKotlinPsiProcessor() {
 
         val adjustedUsages = if (element is KtParameter) usages.filterNot {
             val refTarget = it.reference?.resolve()
-            refTarget is KtLightMethod && DataClassDescriptorResolver.isComponentLike(Name.guessByFirstCharacter(refTarget.name))
+            refTarget is KtLightMethod && DataClassResolver.isComponentLike(Name.guessByFirstCharacter(refTarget.name))
         } else usages.toList()
 
         val refKindUsages = adjustedUsages.groupBy { usage: UsageInfo ->

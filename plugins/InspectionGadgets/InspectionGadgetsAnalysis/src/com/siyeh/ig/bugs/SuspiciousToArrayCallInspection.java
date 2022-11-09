@@ -173,6 +173,12 @@ public class SuspiciousToArrayCallInspection extends BaseInspection {
       itemType = GenericsUtil.getVariableTypeByExpressionType(itemType);
       final PsiType componentType = arrayType.getComponentType();
       if (itemType == null || componentType.isAssignableFrom(itemType)) return null;
+      PsiClass componentClass = PsiUtil.resolveClassInClassTypeOnly(componentType);
+      if (componentClass instanceof PsiTypeParameter) {
+        final PsiReferenceList extendsList = ((PsiTypeParameter)componentClass).getExtendsList();
+        final PsiClassType[] types = extendsList.getReferencedTypes();
+        if (types.length == 0 || types.length == 1 && types[0].isAssignableFrom(itemType)) return null;
+      }
       if (itemType instanceof PsiClassType) {
         final PsiClass aClass = ((PsiClassType)itemType).resolve();
         if (aClass instanceof PsiTypeParameter) {
@@ -211,7 +217,7 @@ public class SuspiciousToArrayCallInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       PsiExpression expression = ObjectUtils.tryCast(descriptor.getStartElement(), PsiExpression.class);
       if (expression == null) return;
       new CommentTracker().replaceAndRestoreComments(expression, myReplacement);

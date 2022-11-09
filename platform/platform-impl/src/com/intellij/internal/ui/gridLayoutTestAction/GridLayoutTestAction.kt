@@ -1,6 +1,7 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.internal.ui.gridLayoutTestAction
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.DialogWrapper
@@ -15,8 +16,9 @@ import javax.swing.*
 import javax.swing.border.Border
 import kotlin.random.Random
 
+internal class GridLayoutTestAction : DumbAwareAction("Show GridLayout Test") {
 
-class GridLayoutTestAction : DumbAwareAction("Show GridLayout Test") {
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
   override fun actionPerformed(e: AnActionEvent) {
     object : DialogWrapper(e.project, null, true, IdeModalityType.IDE, false) {
@@ -36,7 +38,7 @@ class GridLayoutTestAction : DumbAwareAction("Show GridLayout Test") {
         result.addTab("TODO", createTodoPanel())
         result.addTab(
           "NoResizableCells", createTabPanel("No resizable cells",
-          createPanelLabels(3, 4) { _, _, _ -> null })
+                                             createPanelLabels(3, 4) { _, _, _ -> null })
         )
         result.addTab("ResizableCell[1, 1]", createResizableCell11Panel())
         result.addTab("CellAlignments", createCellAlignmentsPanel())
@@ -300,7 +302,7 @@ class GridLayoutTestAction : DumbAwareAction("Show GridLayout Test") {
     return result
   }
 
-  fun fillGridByLabels(
+  private fun fillGridByLabels(
     container: JComponent,
     grid: Grid,
     width: Int,
@@ -317,7 +319,7 @@ class GridLayoutTestAction : DumbAwareAction("Show GridLayout Test") {
     }
   }
 
-  fun fillGridByCompoundLabels(
+  private fun fillGridByCompoundLabels(
     container: JComponent,
     grid: Grid
   ) {
@@ -357,7 +359,7 @@ class GridLayoutTestAction : DumbAwareAction("Show GridLayout Test") {
     return JLabel("<html>$text<br>${constraintsToHtmlString(constraints)}")
   }
 
-  fun constraintsToHtmlString(constraints: Constraints): String {
+  private fun constraintsToHtmlString(constraints: Constraints): String {
     var result = "x = ${constraints.x}, y = ${constraints.y}<br>" +
                  "width = ${constraints.width}, height = ${constraints.height}<br>" +
                  "hAlign = ${constraints.horizontalAlign}, vAlign = ${constraints.verticalAlign}<br>"

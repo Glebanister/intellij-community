@@ -19,7 +19,7 @@ class DuplicateLesson(private val sample: LessonSample) :
     task("EditorDuplicate") {
       text(LessonsBundle.message("duplicate.and.delete.lines.duplicate.line", action(it)))
       trigger(it)
-      restoreIfModifiedOrMoved()
+      restoreIfModifiedOrMoved(sample)
       test { actions(it) }
     }
 
@@ -61,8 +61,6 @@ class DuplicateLesson(private val sample: LessonSample) :
     val end = model.selectionEndPosition ?: return false
     return start.column == end.column && abs(start.line - end.line) >= 2
   }
-
-  override val suitableTips = listOf("CtrlD", "DeleteLine")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(LessonsBundle.message("help.lines.of.code"),

@@ -1,16 +1,20 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.debugger.engine.dfaassist.java;
 
+import com.intellij.codeInspection.dataFlow.TypeConstraint;
+import com.intellij.codeInspection.dataFlow.TypeConstraints;
 import com.intellij.codeInspection.dataFlow.jvm.SpecialField;
 import com.intellij.codeInspection.dataFlow.jvm.descriptors.ArrayElementDescriptor;
 import com.intellij.codeInspection.dataFlow.value.DfaVariableValue;
 import com.intellij.codeInspection.dataFlow.value.VariableDescriptor;
+import com.intellij.debugger.engine.DebuggerUtils;
 import com.intellij.debugger.engine.JVMNameUtil;
 import com.intellij.debugger.engine.dfaassist.DebuggerDfaListener;
 import com.intellij.debugger.engine.dfaassist.DfaAssistProvider;
 import com.intellij.debugger.engine.evaluation.EvaluateException;
 import com.intellij.debugger.engine.evaluation.expression.CaptureTraverser;
 import com.intellij.debugger.engine.jdi.LocalVariableProxy;
+import com.intellij.debugger.impl.DebuggerUtilsEx;
 import com.intellij.debugger.jdi.StackFrameProxyEx;
 import com.intellij.psi.*;
 import com.intellij.psi.tree.IElementType;
@@ -21,6 +25,26 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public class JavaDfaAssistProvider implements DfaAssistProvider {
+  @Override
+  public boolean locationMatches(@NotNull PsiElement element, @NotNull Location location) {
+    Method method = location.method();
+    PsiElement context = DebuggerUtilsEx.getContainingMethod(element);
+    if (context instanceof PsiMethod) {
+      PsiMethod psiMethod = (PsiMethod)context;
+      String name = psiMethod.isConstructor() ? "<init>" : psiMethod.getName();
+      return name.equals(method.name()) && psiMethod.getParameterList().getParametersCount() == method.argumentTypeNames().size();
+    }
+    if (context instanceof PsiLambdaExpression) {
+      return DebuggerUtilsEx.isLambda(method) &&
+             method.argumentTypeNames().size() >= ((PsiLambdaExpression)context).getParameterList().getParametersCount();
+    }
+    if (context instanceof PsiClassInitializer) {
+      String expectedMethod = ((PsiClassInitializer)context).hasModifierProperty(PsiModifier.STATIC) ? "<clinit>" : "<init>";
+      return method.name().equals(expectedMethod);
+    }
+    return false;
+  }
+
   @Override
   public @Nullable PsiElement getAnchor(@NotNull PsiElement element) {
     while (element instanceof PsiWhiteSpace || element instanceof PsiComment) {
@@ -59,10 +83,7 @@ public class JavaDfaAssistProvider implements DfaAssistProvider {
 
   @Override
   public @Nullable PsiElement getCodeBlock(@NotNull PsiElement anchor) {
-    if (anchor instanceof PsiWhileStatement || anchor instanceof PsiDoWhileStatement) {
-      return anchor;
-    }
-    if (anchor instanceof PsiSwitchLabeledRuleStatement) {
+    if (anchor instanceof PsiSwitchLabelStatementBase) {
       return null; // unsupported yet
     }
     PsiElement e = anchor;
@@ -74,17 +95,10 @@ public class JavaDfaAssistProvider implements DfaAssistProvider {
             // We cannot properly restore context if we started from finally, so let's analyze just finally block
             parent instanceof PsiTryStatement && ((PsiTryStatement)parent).getFinallyBlock() == e ||
             parent instanceof PsiBlockStatement &&
-            (parent.getParent() instanceof PsiLoopStatement ||
-             parent.getParent() instanceof PsiSwitchLabeledRuleStatement &&
+            (parent.getParent() instanceof PsiSwitchLabeledRuleStatement &&
              ((PsiSwitchLabeledRuleStatement)parent.getParent()).getEnclosingSwitchBlock() instanceof PsiSwitchExpression)) {
-          if (parent.getParent() instanceof PsiDoWhileStatement) {
-            return parent.getParent();
-          }
           return e;
         }
-      }
-      if (e instanceof PsiDoWhileStatement) {
-        return e;
       }
     }
     return null;
@@ -131,7 +145,7 @@ public class JavaDfaAssistProvider implements DfaAssistProvider {
     }
     if (psi instanceof PsiLocalVariable || psi instanceof PsiParameter) {
       String varName = ((PsiVariable)psi).getName();
-      if (varName == null || PsiResolveHelper.SERVICE.getInstance(psi.getProject()).resolveReferencedVariable(varName, anchor) != psi) {
+      if (varName == null || PsiResolveHelper.getInstance(psi.getProject()).resolveReferencedVariable(varName, anchor) != psi) {
         // Another variable with the same name could be tracked by DFA in different code branch but not visible at current code location
         return null;
       }
@@ -175,5 +189,11 @@ public class JavaDfaAssistProvider implements DfaAssistProvider {
   @NotNull
   public DebuggerDfaListener createListener() {
     return new JavaDebuggerDfaListener();
+  }
+
+  @Override
+  public @NotNull TypeConstraint constraintFromJvmClassName(@NotNull PsiElement anchor, @NotNull String jvmClassName) {
+    PsiClass aClass = DebuggerUtils.findClass(jvmClassName.replace('/', '.'), anchor.getProject(), anchor.getResolveScope());
+    return aClass != null ? TypeConstraints.exactClass(aClass) : TypeConstraints.TOP;
   }
 }

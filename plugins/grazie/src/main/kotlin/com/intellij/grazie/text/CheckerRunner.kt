@@ -2,7 +2,8 @@
 
 package com.intellij.grazie.text
 
-import ai.grazie.nlp.tokenizer.sentence.SRXSentenceTokenizer
+import ai.grazie.nlp.tokenizer.sentence.StandardSentenceTokenizer
+import ai.grazie.utils.toLinkedSet
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemDescriptorBase
@@ -14,9 +15,9 @@ import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieCustomFixWrappe
 import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieReplaceTypoQuickFix
 import com.intellij.grazie.ide.inspection.grammar.quickfix.GrazieRuleSettingsAction
 import com.intellij.grazie.ide.language.LanguageGrammarChecking
-import com.intellij.grazie.utils.toLinkedSet
 import com.intellij.lang.LanguageExtension
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.progress.blockingContext
 import com.intellij.openapi.progress.runBlockingCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.NlsContexts
@@ -29,14 +30,17 @@ import com.intellij.refactoring.suggested.startOffset
 import kotlinx.coroutines.*
 
 class CheckerRunner(val text: TextContent) {
-  private val sentences by lazy { SRXSentenceTokenizer.tokenize(text.toString()) }
+  private val tokenizer
+    get() = StandardSentenceTokenizer.Default
+
+  private val sentences by lazy { tokenizer.tokenize(text.toString()) }
 
   fun run(checkers: List<TextChecker>, consumer: (TextProblem) -> Unit) {
     runBlockingCancellable {
       val deferred: List<Deferred<Collection<TextProblem>>> = checkers.map { checker ->
         when (checker) {
           is ExternalTextChecker -> async { checker.checkExternally(text) }
-          else -> async(start = CoroutineStart.LAZY) { checker.check(text) }
+          else -> async(start = CoroutineStart.LAZY) { blockingContext { checker.check(text) } }
         }
       }
       launch {
@@ -173,8 +177,7 @@ class CheckerRunner(val text: TextContent) {
     val spm = SmartPointerManager.getInstance(file.project)
     val underline = fileHighlightRanges(problem).map { spm.createSmartPsiFileRangePointer(file, it) }
 
-    val fixes = problem.corrections
-    if (fixes.isNotEmpty()) {
+    if (problem.suggestions.isNotEmpty()) {
       GrazieFUSCounter.typoFound(problem)
       result.addAll(GrazieReplaceTypoQuickFix.getReplacementFixes(problem, underline))
     }

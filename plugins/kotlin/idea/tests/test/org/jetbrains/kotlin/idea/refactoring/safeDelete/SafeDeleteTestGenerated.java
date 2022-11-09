@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -169,11 +169,6 @@ public abstract class SafeDeleteTestGenerated extends AbstractSafeDeleteTest {
             runTest("testData/refactoring/safeDelete/deleteObject/kotlinObject/nestedObject2.kt");
         }
 
-        @TestMetadata("nestedObject3.kt")
-        public void testNestedObject3() throws Exception {
-            runTest("testData/refactoring/safeDelete/deleteObject/kotlinObject/nestedObject3.kt");
-        }
-
         @TestMetadata("noUsages.kt")
         public void testNoUsages() throws Exception {
             runTest("testData/refactoring/safeDelete/deleteObject/kotlinObject/noUsages.kt");
@@ -285,6 +280,11 @@ public abstract class SafeDeleteTestGenerated extends AbstractSafeDeleteTest {
         @TestMetadata("overrideWithUsages.kt")
         public void testOverrideWithUsages() throws Exception {
             runTest("testData/refactoring/safeDelete/deleteFunction/kotlinFunction/overrideWithUsages.kt");
+        }
+
+        @TestMetadata("withDefinitelyNotNullType.kt")
+        public void testWithDefinitelyNotNullType() throws Exception {
+            runTest("testData/refactoring/safeDelete/deleteFunction/kotlinFunction/withDefinitelyNotNullType.kt");
         }
     }
 

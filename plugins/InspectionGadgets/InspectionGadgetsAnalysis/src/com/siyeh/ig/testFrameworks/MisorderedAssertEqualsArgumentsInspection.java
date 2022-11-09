@@ -51,7 +51,7 @@ public class MisorderedAssertEqualsArgumentsInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement methodNameIdentifier = descriptor.getPsiElement();
       final PsiElement parent = methodNameIdentifier.getParent();
       if (parent == null) {
@@ -89,7 +89,7 @@ public class MisorderedAssertEqualsArgumentsInspection extends BaseInspection {
     while (!expressions.isEmpty()) {
       expressions.remove(expressions.size() - 1).accept(new JavaRecursiveElementWalkingVisitor() {
         @Override
-        public void visitReferenceExpression(PsiReferenceExpression referenceExpression) {
+        public void visitReferenceExpression(@NotNull PsiReferenceExpression referenceExpression) {
           if (!expectedArgument.get().booleanValue()) {
             return;
           }

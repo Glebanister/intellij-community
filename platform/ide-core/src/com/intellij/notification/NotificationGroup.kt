@@ -66,7 +66,6 @@ class NotificationGroup private constructor(val displayId: String,
       registeredGroups[displayId] = this
 
       if (title == null) {
-        @Suppress("HardCodedStringLiteral")
         title = registeredTitles[displayId]
       }
     }
@@ -97,7 +96,6 @@ class NotificationGroup private constructor(val displayId: String,
     @JvmStatic
     @Deprecated("Use com.intellij.notification.impl.NotificationGroupEP and com.intellij.notification.NotificationGroupManager")
     @ApiStatus.ScheduledForRemoval
-    @Suppress("DEPRECATION")
     fun balloonGroup(displayId: String, @NotificationTitle title: String?): NotificationGroup =
       findRegisteredNotificationGroup(displayId)
       ?: NotificationGroup(displayId = displayId, displayType = NotificationDisplayType.BALLOON, title = title, registerGroup = true)
@@ -105,7 +103,6 @@ class NotificationGroup private constructor(val displayId: String,
     @JvmStatic
     @Deprecated("Use com.intellij.notification.impl.NotificationGroupEP and com.intellij.notification.NotificationGroupManager")
     @ApiStatus.ScheduledForRemoval
-    @Suppress("DEPRECATION")
     fun balloonGroup(displayId: String, pluginId: PluginId): NotificationGroup =
       findRegisteredNotificationGroup(displayId)
       ?: NotificationGroup(displayId, NotificationDisplayType.BALLOON, pluginId = pluginId, registerGroup = true)
@@ -120,7 +117,6 @@ class NotificationGroup private constructor(val displayId: String,
     @JvmStatic
     @Deprecated("Use com.intellij.notification.impl.NotificationGroupEP and com.intellij.notification.NotificationGroupManager")
     @ApiStatus.ScheduledForRemoval
-    @Suppress("DEPRECATION")
     fun logOnlyGroup(displayId: String, @NotificationTitle title: String?): NotificationGroup =
       findRegisteredNotificationGroup(displayId)
       ?: NotificationGroup(displayId, NotificationDisplayType.NONE, title = title, registerGroup = true)
@@ -128,7 +124,6 @@ class NotificationGroup private constructor(val displayId: String,
     @JvmStatic
     @Deprecated("Use com.intellij.notification.impl.NotificationGroupEP and com.intellij.notification.NotificationGroupManager")
     @ApiStatus.ScheduledForRemoval
-    @Suppress("DEPRECATION")
     fun logOnlyGroup(displayId: String, pluginId: PluginId): NotificationGroup =
       findRegisteredNotificationGroup(displayId)
       ?: NotificationGroup(displayId, NotificationDisplayType.NONE, pluginId = pluginId, registerGroup = true)
@@ -145,7 +140,6 @@ class NotificationGroup private constructor(val displayId: String,
     @JvmStatic
     @Deprecated("Use com.intellij.notification.impl.NotificationGroupEP and com.intellij.notification.NotificationGroupManager")
     @ApiStatus.ScheduledForRemoval
-    @Suppress("DEPRECATION")
     fun toolWindowGroup(displayId: String, toolWindowId: String, logByDefault: Boolean, pluginId: PluginId): NotificationGroup =
       findRegisteredNotificationGroup(displayId)
       ?: NotificationGroup(displayId, NotificationDisplayType.TOOL_WINDOW, logByDefault, toolWindowId, pluginId = pluginId, registerGroup = true)
@@ -201,18 +195,6 @@ class NotificationGroup private constructor(val displayId: String,
                          type: NotificationType = NotificationType.INFORMATION,
                          listener: NotificationListener? = null): Notification =
     createNotification(title, content, type)
-      .also { if (listener != null) it.setListener(listener) }
-
-  @Deprecated("Use `createNotification(String, String, NotificationType)` along with `Notification#setDisplayId` and `Notification#setListener`")
-  @ApiStatus.ScheduledForRemoval
-  @Suppress("DeprecatedCallableAddReplaceWith", "DEPRECATION")
-  fun createNotification(@NotificationTitle title: String,
-                         @NotificationContent content: String,
-                         type: NotificationType = NotificationType.INFORMATION,
-                         listener: NotificationListener? = null,
-                         notificationDisplayId: String? = null): Notification =
-    createNotification(title, content, type)
-      .also { if (notificationDisplayId != null) it.setDisplayId(notificationDisplayId) }
       .also { if (listener != null) it.setListener(listener) }
 
   @Deprecated("Use `createNotification(String, NotificationType)` or `createNotification(String, String, NotificationType)`")

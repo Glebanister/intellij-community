@@ -7,6 +7,9 @@
     <projectConfigurator implementation="org.jetbrains.kotlin.idea.maven.configuration.KotlinJavaMavenConfigurator"/>
     <projectConfigurator implementation="org.jetbrains.kotlin.idea.maven.configuration.KotlinJavascriptMavenConfigurator"/>
     <buildSystemTypeDetector implementation="org.jetbrains.kotlin.idea.maven.MavenDetector"/>
+
+    <failedToDownloadJpsMavenArtifactSuggestedSolutionsContributor
+            implementation="org.jetbrains.kotlin.idea.maven.MavenFailedToDownloadSuggestedSolutionsContributorImpl"/>
   </extensions>
 
   <extensions defaultExtensionNs="org.jetbrains.idea.maven">
@@ -81,25 +84,25 @@
     <localInspection implementationClass="org.jetbrains.kotlin.idea.maven.inspections.MavenCoroutinesDeprecationInspection"
                      groupPath="Kotlin,Migration"
                      groupBundle="messages.KotlinBundle" groupKey="group.names.maven"
-                     enabledByDefault="true"
+                     enabledByDefault="false"
                      language="XML"
                      hasStaticDescription="true"
                      level="ERROR" key="inspection.maven.coroutines.deprecation.display.name" bundle="messages.KotlinBundle"/>
 
     <intentionAction>
+      <language>XML</language>
       <className>org.jetbrains.kotlin.idea.maven.actions.MavenPluginSourcesMoveToBuild</className>
       <bundleName>messages.KotlinBundle</bundleName>
       <categoryKey>group.names.kotlin</categoryKey>
     </intentionAction>
     <intentionAction>
+      <language>XML</language>
       <className>org.jetbrains.kotlin.idea.maven.actions.MavenPluginSourcesMoveToExecutionIntention</className>
       <bundleName>messages.KotlinBundle</bundleName>
       <categoryKey>group.names.kotlin</categoryKey>
     </intentionAction>
     <codeInsight.unresolvedReferenceQuickFixProvider
             implementation="org.jetbrains.kotlin.idea.maven.inspections.KotlinMavenUnresolvedReferenceQuickFixProvider" />
-
-    <postStartupActivity implementation="org.jetbrains.kotlin.idea.maven.MavenImportStartupActivity"/>
 
     <moduleService serviceImplementation="org.jetbrains.kotlin.idea.maven.KotlinImporterComponent"/>
   </extensions>

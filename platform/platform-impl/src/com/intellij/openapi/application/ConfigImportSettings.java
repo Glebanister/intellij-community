@@ -2,15 +2,21 @@
 package com.intellij.openapi.application;
 
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
+import com.intellij.openapi.extensions.PluginId;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 @ApiStatus.Internal
 public interface ConfigImportSettings {
+  /**
+   * Called after configuration import is finished, even when there was nothing to import from.
+   * In the latter case, {@link ConfigImportHelper#isConfigImported()} returns {@code false}.
+   */
   void importFinished(@NotNull Path newConfigPath, @Nullable String pathSelectorOfOtherIde);
 
   /**

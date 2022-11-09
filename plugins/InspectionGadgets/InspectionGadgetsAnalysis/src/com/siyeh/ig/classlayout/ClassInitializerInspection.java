@@ -86,7 +86,7 @@ public class ClassInitializerInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement brace = descriptor.getPsiElement();
       final PsiElement parent = brace.getParent();
       if (!(parent instanceof PsiCodeBlock)) {
@@ -150,7 +150,7 @@ public class ClassInitializerInspection extends BaseInspection {
   private class ClassInitializerVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitClassInitializer(PsiClassInitializer initializer) {
+    public void visitClassInitializer(@NotNull PsiClassInitializer initializer) {
       super.visitClassInitializer(initializer);
       if (initializer.hasModifierProperty(PsiModifier.STATIC)) {
         return;

@@ -2,10 +2,11 @@
 package com.intellij.openapi.fileEditor.impl;
 
 import com.intellij.idea.ActionsBundle;
-import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.ComponentUtil;
@@ -18,7 +19,7 @@ import java.util.List;
 /**
  * @author Konstantin Bulenkov
  */
-public class ReopenClosedTabAction extends AnAction {
+public class ReopenClosedTabAction extends DumbAwareAction {
   public ReopenClosedTabAction() {
     super(ActionsBundle.messagePointer("action.ReopenClosedTabAction.text"));
   }
@@ -69,5 +70,10 @@ public class ReopenClosedTabAction extends AnAction {
     }
 
     e.getPresentation().setEnabledAndVisible(false);
+  }
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.EDT;
   }
 }

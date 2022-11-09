@@ -60,7 +60,7 @@ public class BooleanExpressionMayBeConditionalInspection extends BaseInspection 
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor)  {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor)  {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiBinaryExpression)) {
         return;
@@ -109,7 +109,7 @@ public class BooleanExpressionMayBeConditionalInspection extends BaseInspection 
   private static class BooleanExpressionMayBeConditionalVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitBinaryExpression(PsiBinaryExpression expression) {
+    public void visitBinaryExpression(@NotNull PsiBinaryExpression expression) {
       super.visitBinaryExpression(expression);
       final IElementType tokenType = expression.getOperationTokenType();
       if (!JavaTokenType.OROR.equals(tokenType)) {

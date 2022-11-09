@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.kotlin.idea.inspections.dfa
 
 import com.intellij.codeInspection.dataFlow.jvm.descriptors.JvmVariableDescriptor
@@ -12,13 +12,13 @@ import org.jetbrains.kotlin.builtins.getValueParameterTypesFromFunctionType
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithSource
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
+import org.jetbrains.kotlin.idea.core.isOverridable
 import org.jetbrains.kotlin.idea.core.resolveType
 import org.jetbrains.kotlin.idea.refactoring.move.moveMethod.type
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.references.readWriteAccess
 import org.jetbrains.kotlin.idea.references.resolveMainReferenceToDescriptors
 import org.jetbrains.kotlin.idea.util.findAnnotation
-import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClass
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
@@ -73,7 +73,9 @@ class KtVariableDescriptor(val variable: KtCallableDeclaration) : JvmVariableDes
         return variable !is KtProperty || !variable.isVar
     }
 
-    override fun getDfType(qualifier: DfaVariableValue?): DfType = variable.type().toDfType(variable)
+    override fun getPsiElement(): KtCallableDeclaration = variable
+
+    override fun getDfType(qualifier: DfaVariableValue?): DfType = variable.type().toDfType()
 
     override fun equals(other: Any?): Boolean = other is KtVariableDescriptor && other.variable == variable
 
@@ -116,13 +118,21 @@ class KtVariableDescriptor(val variable: KtCallableDeclaration) : JvmVariableDes
                     if (isTrackableProperty(target)) {
                         val parent = expr.parent
                         var qualifier: DfaVariableValue? = null
+                        if (target.parent is KtClassBody && target.parent.parent is KtObjectDeclaration) {
+                            // property in object: singleton, can track
+                            return varFactory.createVariableValue(KtVariableDescriptor(target), null)
+                        }
                         if (parent is KtQualifiedExpression && parent.selectorExpression == expr) {
                             val receiver = parent.receiverExpression
                             qualifier = createFromSimpleName(factory, receiver)
                         } else {
+                            if (target.parent is KtFile) {
+                                // top-level declaration
+                                return varFactory.createVariableValue(KtVariableDescriptor(target), null)
+                            }
                             val classOrObject = target.containingClassOrObject?.resolveToDescriptorIfAny()
                             if (classOrObject != null) {
-                                val dfType = classOrObject.defaultType.toDfType(expr)
+                                val dfType = classOrObject.defaultType.toDfType()
                                 qualifier = varFactory.createVariableValue(KtThisDescriptor(classOrObject, dfType))
                             }
                         }
@@ -148,14 +158,12 @@ class KtVariableDescriptor(val variable: KtCallableDeclaration) : JvmVariableDes
         private fun isTrackableProperty(target: PsiElement?) =
             target is KtParameter && target.ownerFunction is KtPrimaryConstructor ||
             target is KtProperty && !target.hasDelegate() && target.getter == null && target.setter == null &&
-                    !target.hasModifier(KtTokens.ABSTRACT_KEYWORD) &&
-                    target.findAnnotation(VOLATILE_ANNOTATION_FQ_NAME) == null &&
-                    target.containingClass()?.isInterface() != true &&
-                    !target.isExtensionDeclaration()
+                    !target.isOverridable && !target.isExtensionDeclaration() &&
+                    target.findAnnotation(VOLATILE_ANNOTATION_FQ_NAME) == null
     }
 }
 class KtItVariableDescriptor(val lambda: KtElement, val type: KotlinType): JvmVariableDescriptor() {
-    override fun getDfType(qualifier: DfaVariableValue?): DfType = type.toDfType(lambda)
+    override fun getDfType(qualifier: DfaVariableValue?): DfType = type.toDfType()
     override fun isStable(): Boolean = true
     override fun equals(other: Any?): Boolean = other is KtItVariableDescriptor && other.lambda == lambda
     override fun hashCode(): Int = lambda.hashCode()

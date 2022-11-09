@@ -1,8 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.gradleJava.scripting.roots
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
+import com.intellij.openapi.application.runReadAction
 import com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
@@ -24,19 +25,17 @@ import org.jetbrains.kotlin.idea.core.script.scriptingErrorLog
 import org.jetbrains.kotlin.idea.core.script.scriptingInfoLog
 import org.jetbrains.kotlin.idea.core.script.ucache.ScriptClassRootsBuilder
 import org.jetbrains.kotlin.idea.core.util.EDT
-import org.jetbrains.kotlin.idea.gradle.scripting.*
-import org.jetbrains.kotlin.idea.gradleJava.scripting.getGradleProjectSettings
+import org.jetbrains.kotlin.idea.gradle.scripting.LastModifiedFiles
+import org.jetbrains.kotlin.idea.gradleJava.scripting.*
 import org.jetbrains.kotlin.idea.gradleJava.scripting.importing.KotlinDslGradleBuildSync
 import org.jetbrains.kotlin.idea.gradleJava.scripting.roots.GradleBuildRoot.ImportingStatus.*
-import org.jetbrains.kotlin.idea.gradleJava.scripting.scriptConfigurationsAreUpToDate
-import org.jetbrains.kotlin.idea.gradleJava.scripting.getGradleVersion
-import org.jetbrains.kotlin.idea.gradleJava.scripting.kotlinDslScriptsModelImportSupported
-import org.jetbrains.kotlin.idea.gradleJava.scripting.scriptConfigurationsNeedToBeUpdated
-import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.plugins.gradle.config.GradleSettingsListenerAdapter
 import org.jetbrains.plugins.gradle.service.GradleInstallationManager
-import org.jetbrains.plugins.gradle.settings.*
+import org.jetbrains.plugins.gradle.settings.DistributionType
+import org.jetbrains.plugins.gradle.settings.GradleProjectSettings
+import org.jetbrains.plugins.gradle.settings.GradleSettings
+import org.jetbrains.plugins.gradle.settings.GradleSettingsListener
 import org.jetbrains.plugins.gradle.util.GradleConstants
 import java.nio.file.FileSystems
 import java.nio.file.Files
@@ -96,7 +95,6 @@ class GradleBuildRootsManager(val project: Project) : GradleBuildRootsLocator(pr
         return findScriptBuildRoot(file.originalFile.virtualFile)?.nearest?.isImportingInProgress() ?: return false
     }
 
-    @Suppress("MemberVisibilityCanBePrivate") // used in GradleImportHelper.kt.201
     fun isConfigurationOutOfDate(file: VirtualFile): Boolean {
         val script = getScriptInfo(file) ?: return false
         if (script.buildRoot.isImportingInProgress()) return false
@@ -204,7 +202,7 @@ class GradleBuildRootsManager(val project: Project) : GradleBuildRootsLocator(pr
     private val modifiedFilesCheckScheduled = AtomicBoolean()
     private val modifiedFiles = ConcurrentLinkedQueue<String>()
 
-    fun scheduleModifiedFilesCheck(filePath: String) {
+    private fun scheduleModifiedFilesCheck(filePath: String) {
         modifiedFiles.add(filePath)
         if (modifiedFilesCheckScheduled.compareAndSet(false, true)) {
             val disposable = KotlinPluginDisposable.getInstance(project)
@@ -401,7 +399,6 @@ class GradleBuildRootsManager(val project: Project) : GradleBuildRootsLocator(pr
         }
     }
 
-    @Suppress("MemberVisibilityCanBePrivate")
     fun updateNotifications(
         restartAnalyzer: Boolean = true,
         shouldUpdatePath: (String) -> Boolean

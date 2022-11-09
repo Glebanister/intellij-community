@@ -16,12 +16,15 @@ import com.intellij.openapi.wm.IdeFrame;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.ui.ColorUtil;
 import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBMenu;
 import com.intellij.ui.mac.foundation.NSDefaults;
 import com.intellij.ui.mac.screenmenu.Menu;
+import com.intellij.ui.plaf.beg.BegMenuItemUI;
 import com.intellij.ui.plaf.beg.IdeaMenuUI;
+import com.intellij.util.Alarm;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.ReflectionUtil;
 import com.intellij.util.SingleAlarm;
@@ -48,9 +51,14 @@ import java.util.concurrent.TimeUnit;
 
 public final class ActionMenu extends JBMenu {
   /**
-   * By default, a "performable" popup action group menu item provides a submenu.
-   * Use this key to avoid suppress that submenu for a presentation or a template presentation like this:
+   * By default, a "performable" non-empty popup action group menu item still shows a submenu.
+   * Use this key to disable the submenu and avoid children expansion on update as follows:
+   * <p>
    * {@code presentation.putClientProperty(ActionMenu.SUPPRESS_SUBMENU, true)}.
+   * <p>
+   * Both ordinary and template presentations are supported.
+   *
+   * @see Presentation#setPerformGroup(boolean)
    */
   public static final Key<Boolean> SUPPRESS_SUBMENU = Key.create("SUPPRESS_SUBMENU");
 
@@ -65,6 +73,7 @@ public final class ActionMenu extends JBMenu {
   private Disposable myDisposable;
   private final @Nullable Menu myScreenMenuPeer;
   private final @Nullable SubElementSelector mySubElementSelector;
+  private final boolean myHeaderMenuItem;
 
   public ActionMenu(@Nullable DataContext context,
                     @NotNull String place,
@@ -72,6 +81,16 @@ public final class ActionMenu extends JBMenu {
                     @NotNull PresentationFactory presentationFactory,
                     boolean enableMnemonics,
                     boolean useDarkIcons) {
+    this(context, place, group, presentationFactory, enableMnemonics, useDarkIcons, false);
+  }
+
+  public ActionMenu(@Nullable DataContext context,
+                    @NotNull String place,
+                    @NotNull ActionGroup group,
+                    @NotNull PresentationFactory presentationFactory,
+                    boolean enableMnemonics,
+                    boolean useDarkIcons,
+                    boolean headerMenuItem) {
     myContext = context;
     myPlace = place;
     myGroup = ActionRef.fromAction(group);
@@ -79,6 +98,7 @@ public final class ActionMenu extends JBMenu {
     myPresentation = myPresentationFactory.getPresentation(group);
     myMnemonicEnabled = enableMnemonics;
     myUseDarkIcons = useDarkIcons;
+    myHeaderMenuItem = headerMenuItem;
 
     if (Menu.isJbScreenMenuEnabled() && ActionPlaces.MAIN_MENU.equals(myPlace)) {
       myScreenMenuPeer = new Menu(myPresentation.getText(enableMnemonics));
@@ -95,8 +115,10 @@ public final class ActionMenu extends JBMenu {
 
     init();
 
-    // Triggering initialization of private field "popupMenu" from JMenu with our own JBPopupMenu
-    getPopupMenu();
+    // Also triggering initialization of private field "popupMenu" from JMenu with our own JBPopupMenu
+    BegMenuItemUI.registerMultiChoiceSupport(getPopupMenu(), popupMenu -> {
+      Utils.updateMenuItems(popupMenu, getDataContext(), myPlace, myPresentationFactory);
+    });
   }
 
   @Override
@@ -141,6 +163,10 @@ public final class ActionMenu extends JBMenu {
   }
 
   public @Nullable Menu getScreenMenuPeer() { return myScreenMenuPeer; }
+
+  public boolean isHeaderMenuItem() {
+    return myHeaderMenuItem;
+  }
 
   private void init() {
     boolean macSystemMenu = SystemInfo.isMacSystemMenu && isMainMenuPlace();
@@ -219,7 +245,7 @@ public final class ActionMenu extends JBMenu {
   }
 
   static boolean isShowNoIcons() {
-    return SystemInfo.isMac && Registry.get("ide.macos.main.menu.alignment.options").isOptionEnabled("No icons");
+    return SystemInfo.isMac && (Registry.get("ide.macos.main.menu.alignment.options").isOptionEnabled("No icons") || ExperimentalUI.isNewUI());
   }
 
   static boolean isAligned() {
@@ -250,13 +276,11 @@ public final class ActionMenu extends JBMenu {
 
     if (mySubElementSelector != null) {
       switch (e.getID()) {
-        case MouseEvent.MOUSE_PRESSED:
+        case MouseEvent.MOUSE_PRESSED -> {
           mySubElementSelector.ignoreNextSelectionRequest();
           shouldCancelIgnoringOfNextSelectionRequest = true;
-          break;
-        case MouseEvent.MOUSE_ENTERED:
-          mySubElementSelector.ignoreNextSelectionRequest(getDelay() * 2);
-          break;
+        }
+        case MouseEvent.MOUSE_ENTERED -> mySubElementSelector.ignoreNextSelectionRequest(getDelay() * 2);
       }
     }
 
@@ -390,7 +414,7 @@ public final class ActionMenu extends JBMenu {
     validate();
   }
 
-  public void fillMenu() {
+  private @NotNull DataContext getDataContext() {
     DataContext context;
 
     if (myContext != null) {
@@ -406,8 +430,12 @@ public final class ActionMenu extends JBMenu {
       }
       context = Utils.wrapDataContext(context);
     }
+    return context;
+  }
 
-    final boolean isDarkMenu = SystemInfo.isMacSystemMenu && NSDefaults.isDarkMenuBar();
+  public void fillMenu() {
+    DataContext context = getDataContext();
+    boolean isDarkMenu = SystemInfo.isMacSystemMenu && NSDefaults.isDarkMenuBar();
     Utils.fillMenu(myGroup.getAction(), this, myMnemonicEnabled, myPresentationFactory, context, myPlace, true, isDarkMenu,
                    RelativePoint.getNorthEastOf(this), () -> !isSelected());
   }
@@ -427,7 +455,7 @@ public final class ActionMenu extends JBMenu {
         if (myEventToRedispatch != null) {
           IdeEventQueue.getInstance().dispatchEvent(myEventToRedispatch);
         }
-      }, 50, ModalityState.any(), this);
+      }, 50, this, Alarm.ThreadToUse.SWING_THREAD, ModalityState.any());
       myComponent = component;
       PointerInfo info = MouseInfo.getPointerInfo();
       myStartMousePoint = info != null ? info.getLocation() : null;

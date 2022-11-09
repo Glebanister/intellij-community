@@ -4,11 +4,14 @@ package com.intellij.openapi.externalSystem.dependency.analyzer
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.PlatformCoreDataKeys
 import com.intellij.openapi.application.invokeLater
 import com.intellij.openapi.application.runInEdt
+import com.intellij.openapi.module.Module
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware
+import com.intellij.openapi.externalSystem.autoimport.ExternalSystemProjectNotificationAware.Companion.isNotificationVisibleProperty
 import com.intellij.openapi.externalSystem.autoimport.ProjectRefreshAction
+import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerDependency
 import com.intellij.openapi.externalSystem.dependency.analyzer.DependencyAnalyzerView.Companion.ACTION_PLACE
 import com.intellij.openapi.externalSystem.dependency.analyzer.util.*
 import com.intellij.openapi.externalSystem.dependency.analyzer.util.DependencyGroup.Companion.hasWarnings
@@ -17,14 +20,15 @@ import com.intellij.openapi.externalSystem.model.ExternalSystemDataKeys
 import com.intellij.openapi.externalSystem.model.ProjectSystemId
 import com.intellij.openapi.externalSystem.ui.ExternalSystemIconProvider
 import com.intellij.openapi.externalSystem.util.ExternalSystemBundle
-import com.intellij.openapi.observable.operations.AnonymousParallelOperationTrace
-import com.intellij.openapi.observable.operations.asProperty
-import com.intellij.openapi.observable.operations.whenOperationCompleted
+import com.intellij.openapi.observable.operation.core.AtomicOperationTrace
+import com.intellij.openapi.observable.operation.core.getOperationInProgressProperty
+import com.intellij.openapi.observable.operation.core.isOperationInProgress
+import com.intellij.openapi.observable.operation.core.withCompletedOperation
 import com.intellij.openapi.observable.properties.AtomicProperty
-import com.intellij.openapi.observable.properties.ObservableProperty
 import com.intellij.openapi.observable.util.*
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.addPreferredFocusedComponent
 import com.intellij.openapi.util.text.NaturalComparator
 import com.intellij.ui.CollectionListModel
 import com.intellij.ui.ScrollPaneFactory
@@ -45,12 +49,13 @@ class DependencyAnalyzerViewImpl(
 ) : DependencyAnalyzerView {
 
   private val iconsProvider = ExternalSystemIconProvider.getExtension(systemId)
-  private val contributor = DependencyAnalyzerExtension.EP_NAME.extensionList
-    .firstNotNullOf { it.createContributor(project, systemId, parentDisposable) }
+  private val contributor = DependencyAnalyzerExtension.getExtension(systemId)
+    .createContributor(project, parentDisposable)
+
   private val backgroundExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor("DependencyAnalyzerView.backgroundExecutor", 1)
 
-  private val dependencyLoadingOperation = AnonymousParallelOperationTrace("DA: Dependency loading")
-  private val dependencyLoadingProperty = dependencyLoadingOperation.asProperty()
+  private val dependencyLoadingOperation = AtomicOperationTrace("DA: Dependency loading")
+  private val dependencyLoadingProperty = dependencyLoadingOperation.getOperationInProgressProperty()
 
   private val externalProjectProperty = AtomicProperty<DependencyAnalyzerProject?>(null)
   private val dependencyDataFilterProperty = AtomicProperty("")
@@ -83,31 +88,37 @@ class DependencyAnalyzerViewImpl(
   private val dependencyTreeModel = DefaultTreeModel(null)
   private val usagesTreeModel = DefaultTreeModel(null)
 
-  override fun setSelectedExternalProject(externalProjectPath: String) {
-    setSelectedExternalProject(externalProjectPath) {}
+  override fun setSelectedExternalProject(module: Module) {
+    setSelectedExternalProject(module) {}
   }
 
-  override fun setSelectedDependency(externalProjectPath: String, dependency: Dependency) {
-    setSelectedExternalProject(externalProjectPath) {
-      this.dependency = dependency
-    }
-  }
-
-  override fun setSelectedDependency(externalProjectPath: String, data: Dependency.Data) {
-    setSelectedExternalProject(externalProjectPath) {
+  override fun setSelectedDependency(module: Module, data: Dependency.Data) {
+    setSelectedExternalProject(module) {
       dependency = findDependency { it.data == data } ?: dependency
     }
   }
 
-  override fun setSelectedDependency(externalProjectPath: String, data: Dependency.Data, scope: Dependency.Scope) {
-    setSelectedExternalProject(externalProjectPath) {
-      dependency = findDependency { it.data == data && it.scope == scope } ?: dependency
+  override fun setSelectedDependency(module: Module, data: Dependency.Data, scope: String) {
+    setSelectedExternalProject(module) {
+      dependency = findDependency { it.data == data && it.scope.name == scope } ?: dependency
     }
   }
 
-  private fun setSelectedExternalProject(externalProjectPath: String, onReady: () -> Unit) {
+  override fun setSelectedDependency(module: Module, path: List<DependencyAnalyzerDependency.Data>) {
+    setSelectedExternalProject(module) {
+      dependency = findDependency { d -> getTreePath(d).map { it.data } == path } ?: dependency
+    }
+  }
+
+  override fun setSelectedDependency(module: Module, path: List<DependencyAnalyzerDependency.Data>, scope: String) {
+    setSelectedExternalProject(module) {
+      dependency = findDependency { d -> d.scope.name == scope && getTreePath(d).map { it.data } == path } ?: dependency
+    }
+  }
+
+  private fun setSelectedExternalProject(module: Module, onReady: () -> Unit) {
     whenLoadingOperationCompleted {
-      externalProject = findExternalProject { it.path == externalProjectPath } ?: externalProject
+      externalProject = findExternalProject { it.module == module } ?: externalProject
       whenLoadingOperationCompleted {
         onReady()
       }
@@ -128,7 +139,7 @@ class DependencyAnalyzerViewImpl(
       DependencyAnalyzerView.VIEW.name -> this
       CommonDataKeys.PROJECT.name -> project
       ExternalSystemDataKeys.EXTERNAL_SYSTEM_ID.name -> systemId
-      DependencyAnalyzerView.EXTERNAL_PROJECT_PATH.name -> externalProject?.path
+      PlatformCoreDataKeys.MODULE.name -> externalProject?.module
       else -> null
     }
   }
@@ -168,7 +179,7 @@ class DependencyAnalyzerViewImpl(
   private fun updateScopesModel() {
     executeLoadingTask(
       onBackgroundThread = {
-        externalProject?.path?.let(contributor::getDependencyScopes) ?: emptyList()
+        externalProject?.let(contributor::getDependencyScopes) ?: emptyList()
       },
       onUiThread = { scopes ->
         val scopesIndex = dependencyScopeFilter.associate { it.scope to it.isSelected }
@@ -182,7 +193,7 @@ class DependencyAnalyzerViewImpl(
     dependencyModel = emptyList()
     executeLoadingTask(
       onBackgroundThread = {
-        externalProject?.path?.let(contributor::getDependencies) ?: emptyList()
+        externalProject?.let(contributor::getDependencies) ?: emptyList()
       },
       onUiThread = { dependencies ->
         dependencyModel = dependencies
@@ -209,7 +220,7 @@ class DependencyAnalyzerViewImpl(
 
   private fun updateDependencyEmptyState() {
     dependencyEmptyState = when {
-      !dependencyLoadingOperation.isOperationCompleted() -> ""
+      dependencyLoadingOperation.isOperationInProgress() -> ""
       else -> ExternalSystemBundle.message("external.system.dependency.analyzer.resolved.empty")
     }
   }
@@ -228,26 +239,26 @@ class DependencyAnalyzerViewImpl(
   }
 
   private fun executeLoadingTaskOnEdt(onUiThread: () -> Unit) {
-    dependencyLoadingOperation.startTask()
+    dependencyLoadingOperation.traceStart()
     runInEdt {
       onUiThread()
-      dependencyLoadingOperation.finishTask()
+      dependencyLoadingOperation.traceFinish()
     }
   }
 
   private fun <R> executeLoadingTask(onBackgroundThread: () -> R, onUiThread: (R) -> Unit) {
-    dependencyLoadingOperation.startTask()
+    dependencyLoadingOperation.traceStart()
     BackgroundTaskUtil.execute(backgroundExecutor, parentDisposable) {
       val result = onBackgroundThread()
       invokeLater {
         onUiThread(result)
-        dependencyLoadingOperation.finishTask()
+        dependencyLoadingOperation.traceFinish()
       }
     }
   }
 
   private fun whenLoadingOperationCompleted(onUiThread: () -> Unit) {
-    dependencyLoadingOperation.whenOperationCompleted(parentDisposable) {
+    dependencyLoadingOperation.withCompletedOperation(parentDisposable) {
       runInEdt {
         onUiThread()
       }
@@ -321,25 +332,25 @@ class DependencyAnalyzerViewImpl(
 
   fun createComponent(): JComponent {
     val externalProjectSelector = ExternalProjectSelector(externalProjectProperty, externalProjects, iconsProvider)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val dataFilterField = SearchTextField(SEARCH_HISTORY_PROPERTY)
       .apply { setPreferredWidth(JBUI.scale(240)) }
       .apply { textEditor.bind(dependencyDataFilterProperty) }
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val scopeFilterSelector = SearchScopeSelector(dependencyScopeFilterProperty)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val dependencyInspectionFilterButton = toggleAction(showDependencyWarningsProperty)
       .apply { templatePresentation.text = ExternalSystemBundle.message("external.system.dependency.analyzer.conflicts.show") }
       .apply { templatePresentation.icon = AllIcons.General.ShowWarning }
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val showDependencyGroupIdAction = toggleAction(showDependencyGroupIdProperty)
       .apply { templatePresentation.text = ExternalSystemBundle.message("external.system.dependency.analyzer.groupId.show") }
     val viewOptionsButton = popupActionGroup(showDependencyGroupIdAction)
       .apply { templatePresentation.icon = AllIcons.Actions.Show }
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(dependencyLoadingProperty)
-    val reloadNotificationProperty = ProjectReloadNotificationProperty()
+      .bindEnabled(!dependencyLoadingProperty)
+    val reloadNotificationProperty = isNotificationVisibleProperty(project, systemId)
     val projectReloadSeparator = separator()
       .bindVisible(reloadNotificationProperty)
     val projectReloadAction = action { ProjectRefreshAction.refreshProject(project) }
@@ -351,12 +362,12 @@ class DependencyAnalyzerViewImpl(
     val dependencyList = DependencyList(dependencyListModel, showDependencyGroupIdProperty, this)
       .bindEmptyText(dependencyEmptyTextProperty)
       .bindDependency(dependencyProperty)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val dependencyTree = DependencyTree(dependencyTreeModel, showDependencyGroupIdProperty, this)
       .bindEmptyText(dependencyEmptyTextProperty)
       .bindDependency(dependencyProperty)
-      .bindEnabled(dependencyLoadingProperty)
-    val dependencyPanel = cardPanel<Boolean> { if (it) dependencyTree else dependencyList }
+      .bindEnabled(!dependencyLoadingProperty)
+    val dependencyPanel = cardPanel<Boolean> { ScrollPaneFactory.createScrollPane(if (it) dependencyTree else dependencyList, true) }
       .bind(showDependencyTreeProperty)
     val dependencyLoadingPanel = JBLoadingPanel(BorderLayout(), parentDisposable)
       .apply { add(dependencyPanel, BorderLayout.CENTER) }
@@ -366,24 +377,24 @@ class DependencyAnalyzerViewImpl(
       .apply { templatePresentation.text = ExternalSystemBundle.message("external.system.dependency.analyzer.resolved.tree.show") }
       .apply { templatePresentation.icon = AllIcons.Actions.ShowAsTree }
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val expandDependencyTreeButton = expandTreeAction(dependencyTree)
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(showDependencyTreeProperty and dependencyLoadingProperty)
+      .bindEnabled(showDependencyTreeProperty and !dependencyLoadingProperty)
     val collapseDependencyTreeButton = collapseTreeAction(dependencyTree)
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(showDependencyTreeProperty and dependencyLoadingProperty)
+      .bindEnabled(showDependencyTreeProperty and !dependencyLoadingProperty)
 
     val usagesTitle = label(usagesTitleProperty)
     val usagesTree = UsagesTree(usagesTreeModel, showDependencyGroupIdProperty, this)
       .apply { emptyText.text = "" }
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val expandUsagesTreeButton = expandTreeAction(usagesTree)
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
     val collapseUsagesTreeButton = collapseTreeAction(usagesTree)
       .asActionButton(ACTION_PLACE)
-      .bindEnabled(dependencyLoadingProperty)
+      .bindEnabled(!dependencyLoadingProperty)
 
     return toolWindowPanel {
       toolbar = toolbarPanel {
@@ -409,7 +420,7 @@ class DependencyAnalyzerViewImpl(
               collapseDependencyTreeButton
             ))
           }
-          setContent(ScrollPaneFactory.createScrollPane(dependencyLoadingPanel, true))
+          setContent(dependencyLoadingPanel)
         }
         secondComponent = toolWindowPanel {
           toolbar = toolbarPanel {
@@ -422,6 +433,8 @@ class DependencyAnalyzerViewImpl(
           setContent(ScrollPaneFactory.createScrollPane(usagesTree, true))
         }
       })
+    }.also {
+      it.addPreferredFocusedComponent(dataFilterField)
     }
   }
 
@@ -439,22 +452,6 @@ class DependencyAnalyzerViewImpl(
     dependencyLoadingProperty.afterChange { updateDependencyEmptyState() }
     contributor.whenDataChanged(::updateViewModel, parentDisposable)
     updateViewModel()
-  }
-
-  private inner class ProjectReloadNotificationProperty : ObservableProperty<Boolean> {
-    private val notificationAware get() = ExternalSystemProjectNotificationAware.getInstance(project)
-
-    override fun get() = systemId in notificationAware.getSystemIds()
-
-    override fun afterChange(listener: (Boolean) -> Unit) =
-      ExternalSystemProjectNotificationAware.whenNotificationChanged(project) {
-        listener(get())
-      }
-
-    override fun afterChange(listener: (Boolean) -> Unit, parentDisposable: Disposable) =
-      ExternalSystemProjectNotificationAware.whenNotificationChanged(project, {
-        listener(get())
-      }, parentDisposable)
   }
 
   private class DependencyDataComparator(private val showDependencyGroupId: Boolean) : Comparator<Dependency.Data> {

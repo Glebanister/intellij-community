@@ -2,6 +2,7 @@
 package com.intellij.ide.actions;
 
 import com.intellij.ide.PowerSaveMode;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.ToggleAction;
@@ -18,7 +19,12 @@ final class TogglePowerSaveAction extends ToggleAction implements DumbAware {
   public void setSelected(@NotNull AnActionEvent e, boolean state) {
     PowerSaveMode.setEnabled(state);
     if (state) {
-      PowerSaveModeNotifier.notifyOnPowerSaveMode(e.getData(CommonDataKeys.PROJECT));
+      PowerSaveModeNotifier.Companion.notifyOnPowerSaveMode(e.getData(CommonDataKeys.PROJECT));
     }
+  }
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
   }
 }

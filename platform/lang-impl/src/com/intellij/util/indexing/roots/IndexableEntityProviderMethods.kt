@@ -2,48 +2,30 @@
 package com.intellij.util.indexing.roots
 
 import com.intellij.openapi.application.runReadAction
-import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.module.Module
-import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.roots.libraries.LibraryTable
 import com.intellij.openapi.roots.libraries.LibraryTablesRegistrar
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.containers.ContainerUtil
 import com.intellij.util.indexing.roots.builders.IndexableIteratorBuilders
 import com.intellij.workspaceModel.ide.WorkspaceModel
 import com.intellij.workspaceModel.ide.impl.legacyBridge.library.ProjectLibraryTableBridgeImpl.Companion.libraryMap
-import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl.Companion.moduleMap
-import com.intellij.workspaceModel.ide.legacyBridge.ModuleBridge
-import com.intellij.workspaceModel.storage.ExternalEntityMapping
-import com.intellij.workspaceModel.storage.WorkspaceEntityStorage
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.findModule
+import com.intellij.workspaceModel.ide.impl.legacyBridge.module.isModuleUnloaded
+import com.intellij.workspaceModel.ide.impl.virtualFile
+import com.intellij.workspaceModel.storage.EntityStorage
+import com.intellij.workspaceModel.storage.bridgeEntities.ContentRootEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.LibraryEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.ModuleEntity
 
 object IndexableEntityProviderMethods {
-  private val LOG = thisLogger()
-
-  fun findModuleForEntity(entity: ModuleEntity, storage: WorkspaceEntityStorage, project: Project): Module? =
-    findModuleForEntity(entity, storage.moduleMap, project)
-
-  fun findModuleForEntity(entity: ModuleEntity, map: ExternalEntityMapping<ModuleBridge>, project: Project): Module? {
-    val moduleName = entity.name
-    val module = ModuleManager.getInstance(project).findModuleByName(moduleName)
-    if (module == null && !isModuleUnloaded(entity, map)) {
-      LOG.error("Failed to find module $moduleName")
-    }
-    return module
-  }
-
-  fun isModuleUnloaded(entity: ModuleEntity, mapping: ExternalEntityMapping<ModuleBridge>): Boolean =
-    mapping.getDataByEntity(entity) == null
-
   fun createIterators(entity: ModuleEntity,
                       roots: List<VirtualFile>,
-                      mapping: ExternalEntityMapping<ModuleBridge>,
-                      project: Project): Collection<IndexableFilesIterator> {
+                      storage: EntityStorage): Collection<IndexableFilesIterator> {
     if (roots.isEmpty()) return emptyList()
-    val module = findModuleForEntity(entity, mapping, project) ?: return emptyList()
+    val module = entity.findModule(storage) ?: return emptyList()
     return createIterators(module, roots)
   }
 
@@ -51,10 +33,9 @@ object IndexableEntityProviderMethods {
     return setOf(ModuleIndexableFilesIteratorImpl(module, roots, true))
   }
 
-  fun createIterators(entity: ModuleEntity, entityStorage: WorkspaceEntityStorage, project: Project): Collection<IndexableFilesIterator> {
-    @Suppress("DEPRECATION")
-    if (DefaultProjectIndexableFilesContributor.indexProjectBasedOnIndexableEntityProviders()) {
-      if (isModuleUnloaded(entity, entityStorage.moduleMap)) return emptyList()
+  fun createIterators(entity: ModuleEntity, entityStorage: EntityStorage, project: Project): Collection<IndexableFilesIterator> {
+    if (shouldIndexProjectBasedOnIndexableEntityProviders()) {
+      if (entity.isModuleUnloaded(entityStorage)) return emptyList()
       val builders = mutableListOf<IndexableEntityProvider.IndexableIteratorBuilder>()
       for (provider in IndexableEntityProvider.EP_NAME.extensionList) {
         if (provider is IndexableEntityProvider.Existing) {
@@ -64,7 +45,7 @@ object IndexableEntityProviderMethods {
       return IndexableIteratorBuilders.instantiateBuilders(builders, project, entityStorage)
     }
     else {
-      val module = findModuleForEntity(entity, entityStorage, project)
+      val module = entity.findModule(entityStorage)
       if (module == null) {
         return emptyList()
       }
@@ -73,7 +54,7 @@ object IndexableEntityProviderMethods {
   }
 
   fun createIterators(sdk: Sdk): Collection<IndexableFilesIterator> {
-    return listOf(SdkIndexableFilesIteratorImpl(sdk))
+    return listOf(SdkIndexableFilesIteratorImpl.createIterator(sdk))
   }
 
   private fun getLibIteratorsByName(libraryTable: LibraryTable, name: String): List<IndexableFilesIterator>? =
@@ -91,5 +72,9 @@ object IndexableEntityProviderMethods {
     }?.run {
       LibraryIndexableFilesIteratorImpl.createIteratorList(this)
     } ?: emptyList()
+  }
+
+  fun getExcludedFiles(entity: ContentRootEntity): List<VirtualFile> {
+    return ContainerUtil.mapNotNull(entity.excludedUrls) { param -> param.url.virtualFile }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.refactoring.typeCook.deductive.builder;
 
 import com.intellij.ide.highlighter.JavaFileType;
@@ -11,15 +11,13 @@ import com.intellij.psi.search.PsiSearchHelper;
 import com.intellij.psi.search.SearchScope;
 import com.intellij.psi.search.searches.OverridingMethodsSearch;
 import com.intellij.psi.search.searches.ReferencesSearch;
-import com.intellij.psi.util.InheritanceUtil;
-import com.intellij.psi.util.PsiTreeUtil;
-import com.intellij.psi.util.PsiUtil;
-import com.intellij.psi.util.TypeConversionUtil;
+import com.intellij.psi.util.*;
 import com.intellij.refactoring.typeCook.Settings;
 import com.intellij.refactoring.typeCook.Util;
 import com.intellij.refactoring.typeCook.deductive.PsiTypeVariableFactory;
 import com.intellij.refactoring.typeCook.deductive.util.VictimCollector;
 import com.intellij.util.containers.ContainerUtil;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -467,7 +465,7 @@ public class SystemBuilder {
                       system.addSubtypeConstraint(pv, exType);
                     }
 
-                    return Util.createArrayType(pv, level);
+                    return PsiTypesUtil.createArrayType(pv, level);
                   }
 
                   final Map<PsiTypeParameter, PsiType> substitutionMap = result.getSubstitutor().getSubstitutionMap();
@@ -535,10 +533,10 @@ public class SystemBuilder {
                     }
                   }
 
-                  return Util.createArrayType(JavaPsiFacade.getElementFactory(aClass.getProject()).createType(aClass, theSubst), level);
+                  return PsiTypesUtil.createArrayType(JavaPsiFacade.getElementFactory(aClass.getProject()).createType(aClass, theSubst), level);
                 }
 
-                return Util.createArrayType(type, level);
+                return PsiTypesUtil.createArrayType(type, level);
               }
             }.introduceAdditionalTypeVariables(paramType, qualifierSubstitutor, supertypeSubstitutor);
 
@@ -678,7 +676,7 @@ public class SystemBuilder {
       final PsiType reType = getType(element);
 
       element.accept(new JavaRecursiveElementWalkingVisitor() {
-        @Override public void visitReturnStatement(final PsiReturnStatement statement) {
+        @Override public void visitReturnStatement(final @NotNull PsiReturnStatement statement) {
           super.visitReturnStatement(statement);
 
           final PsiExpression retExpr = statement.getReturnValue();
@@ -689,10 +687,10 @@ public class SystemBuilder {
         }
 
         @Override
-        public void visitClass(PsiClass aClass) {}
+        public void visitClass(@NotNull PsiClass aClass) {}
 
         @Override
-        public void visitLambdaExpression(PsiLambdaExpression expression) {}
+        public void visitLambdaExpression(@NotNull PsiLambdaExpression expression) {}
       });
 
       return;
@@ -707,14 +705,14 @@ public class SystemBuilder {
         //return from lambda is processed inside visitReturnStatement
         //noinspection UnsafeReturnStatementVisitor
         root.accept(new JavaRecursiveElementWalkingVisitor() {
-          @Override public void visitAssignmentExpression(final PsiAssignmentExpression expression) {
+          @Override public void visitAssignmentExpression(final @NotNull PsiAssignmentExpression expression) {
             super.visitAssignmentExpression(expression);
 
             system
               .addSubtypeConstraint(evaluateType(expression.getRExpression(), system), evaluateType(expression.getLExpression(), system));
           }
 
-          @Override public void visitConditionalExpression(final PsiConditionalExpression expression) {
+          @Override public void visitConditionalExpression(final @NotNull PsiConditionalExpression expression) {
             super.visitConditionalExpression(expression);
 
             system.addSubtypeConstraint(evaluateType(expression.getThenExpression(), system),
@@ -723,12 +721,12 @@ public class SystemBuilder {
                                         evaluateType(expression.getThenExpression(), system));
           }
 
-          @Override public void visitCallExpression(final PsiCallExpression expression) {
+          @Override public void visitCallExpression(final @NotNull PsiCallExpression expression) {
             super.visitCallExpression(expression);
             evaluateType(expression, system);
           }
 
-          @Override public void visitReturnStatement(final PsiReturnStatement statement) {
+          @Override public void visitReturnStatement(final @NotNull PsiReturnStatement statement) {
             super.visitReturnStatement(statement);
 
             final PsiMethod method = PsiTreeUtil.getParentOfType(statement, PsiMethod.class, true, PsiLambdaExpression.class);
@@ -737,7 +735,7 @@ public class SystemBuilder {
             }
           }
 
-          @Override public void visitTypeCastExpression(final PsiTypeCastExpression expression) {
+          @Override public void visitTypeCastExpression(final @NotNull PsiTypeCastExpression expression) {
             super.visitTypeCastExpression(expression);
 
             final PsiType operandType = evaluateType(expression.getOperand(), system);
@@ -767,7 +765,7 @@ public class SystemBuilder {
             }
           }
 
-          @Override public void visitVariable(final PsiVariable variable) {
+          @Override public void visitVariable(final @NotNull PsiVariable variable) {
             super.visitVariable(variable);
 
             final PsiExpression init = variable.getInitializer();
@@ -777,7 +775,7 @@ public class SystemBuilder {
             }
           }
 
-          @Override public void visitNewExpression(final PsiNewExpression expression) {
+          @Override public void visitNewExpression(final @NotNull PsiNewExpression expression) {
             super.visitNewExpression(expression);
 
             final PsiArrayInitializerExpression init = expression.getArrayInitializer();
@@ -792,7 +790,7 @@ public class SystemBuilder {
             }
           }
 
-          @Override public void visitReferenceExpression(final PsiReferenceExpression expression) {
+          @Override public void visitReferenceExpression(final @NotNull PsiReferenceExpression expression) {
             final PsiExpression qualifierExpression = expression.getQualifierExpression();
 
             if (qualifierExpression != null) {

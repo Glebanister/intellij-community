@@ -62,7 +62,7 @@ class PsiElementDocumentationTarget private constructor(
 
   override fun createPointer(): Pointer<out DocumentationTarget> = pointer
 
-  override val presentation: TargetPresentation get() = targetPresentation(targetElement)
+  override fun presentation(): TargetPresentation = targetPresentation(targetElement)
 
   override val navigatable: Navigatable? get() = targetElement as? Navigatable
 
@@ -77,7 +77,7 @@ class PsiElementDocumentationTarget private constructor(
       return localDoc
     }
     val urls = provider.getUrlFor(targetElement, targetElement.getUserData(DocumentationManager.ORIGINAL_ELEMENT_KEY)?.element)
-    if (urls == null || urls.isEmpty()) {
+    if (urls.isNullOrEmpty()) {
       return localDoc
     }
     return pointer.fetchExternal(targetElement, provider, urls, localDoc?.copy(links = localDoc.links.copy(linkUrls = urls)))

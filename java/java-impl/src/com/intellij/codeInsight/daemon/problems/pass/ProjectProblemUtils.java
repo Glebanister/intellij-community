@@ -4,7 +4,6 @@ package com.intellij.codeInsight.daemon.problems.pass;
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.daemon.impl.HighlightInfoType;
 import com.intellij.codeInsight.daemon.impl.JavaCodeVisionUsageCollector;
-import com.intellij.codeInsight.daemon.impl.quickfix.QuickFixAction;
 import com.intellij.codeInsight.daemon.problems.Problem;
 import com.intellij.codeInsight.hints.presentation.InlayPresentation;
 import com.intellij.codeInsight.hints.presentation.MenuOnClickPresentation;
@@ -69,6 +68,11 @@ public final class ProjectProblemUtils {
     return new MenuOnClickPresentation(problemsPresentation, project, () -> ProjectProblemHintProvider.getPopupActions());
   }
 
+  /**
+   * Show broken usages in tool window. If there's only one broken usage - just navigate to it.
+   *
+   * @param member member with broken usages
+   */
   public static void showProblems(@NotNull Editor editor, @NotNull PsiMember member) {
     JavaCodeVisionUsageCollector.RELATED_PROBLEMS_CLICKED_EVENT_ID.log(member.getProject());
     Map<PsiMember, Set<Problem>> problems = getReportedProblems(editor);
@@ -152,14 +156,12 @@ public final class ProjectProblemUtils {
     TextAttributes attributes = new TextAttributes(null, null, textColor, null, Font.PLAIN);
     String memberName = UsageViewUtil.getLongName(member);
 
-    HighlightInfo info = HighlightInfo.newHighlightInfo(HighlightInfoType.WARNING)
+    return HighlightInfo.newHighlightInfo(HighlightInfoType.WARNING)
       .range(identifier.getTextRange())
       .textAttributes(attributes)
       .descriptionAndTooltip(JavaBundle.message("project.problems.fix.description", memberName))
+      .registerFix(new ShowRelatedProblemsAction(), null, null, null, null)
       .createUnconditionally();
-
-    QuickFixAction.registerQuickFixAction(info, new ShowRelatedProblemsAction());
-    return info;
   }
 
   static boolean isProjectUpdated(@NotNull PsiJavaFile psiJavaFile, @NotNull Editor editor) {
@@ -171,7 +173,7 @@ public final class ProjectProblemUtils {
     editor.putUserData(MODIFICATION_COUNT, file.getManager().getModificationTracker().getModificationCount());
   }
 
-  public static boolean containsJvmLanguage(@NotNull VirtualFile file) {
+  static boolean containsJvmLanguage(@NotNull VirtualFile file) {
     FileTypeRegistry fileTypeRegistry = FileTypeRegistry.getInstance();
     LanguageFileType languageFileType = tryCast(fileTypeRegistry.getFileTypeByFileName(file.getName()), LanguageFileType.class);
     return languageFileType != null && languageFileType.getLanguage() instanceof JvmLanguage;

@@ -85,7 +85,7 @@ public class ConditionalExpressionInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiConditionalExpression)) {
         return;
@@ -240,7 +240,7 @@ public class ConditionalExpressionInspection extends BaseInspection {
   private class ConditionalExpressionVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitConditionalExpression(PsiConditionalExpression expression) {
+    public void visitConditionalExpression(@NotNull PsiConditionalExpression expression) {
       super.visitConditionalExpression(expression);
       final PsiExpression condition = expression.getCondition();
       PsiElement last = PsiTreeUtil.getDeepestLast(condition);

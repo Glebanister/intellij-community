@@ -24,7 +24,7 @@ import java.io.IOException
 class EditorConfigWrongFileNameNotificationProvider : EditorNotifications.Provider<EditorNotificationPanel>(), DumbAware {
   override fun getKey() = KEY
   override fun createNotificationPanel(file: VirtualFile, fileEditor: FileEditor, project: Project): EditorNotificationPanel? {
-    fileEditor as? TextEditor ?: return null
+    if (fileEditor !is TextEditor) return null
     val editor = fileEditor.editor
     if (editor.getUserData(HIDDEN_KEY) != null) return null
     if (PropertiesComponent.getInstance().isTrueValue(DISABLE_KEY)) return null
@@ -34,7 +34,7 @@ class EditorConfigWrongFileNameNotificationProvider : EditorNotifications.Provid
   }
 
   private fun buildPanel(editor: Editor, file: VirtualFile, project: Project): EditorNotificationPanel {
-    val result = EditorNotificationPanel(editor, null, null)
+    val result = EditorNotificationPanel(editor, null, null, EditorNotificationPanel.Status.Warning)
 
     if (findEditorConfig(file) == null) {
       val rename = EditorConfigBundle["notification.action.rename"]

@@ -13,8 +13,8 @@ import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.ExtensionTestUtil
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.rules.ProjectModelRule
+import com.intellij.testFramework.workspaceModel.updateProjectModel
 import com.intellij.workspaceModel.ide.impl.WorkspaceModelCacheImpl
-import com.intellij.workspaceModel.ide.impl.WorkspaceModelImpl
 import com.intellij.workspaceModel.ide.impl.jps.serialization.LoadedProjectData
 import com.intellij.workspaceModel.ide.impl.jps.serialization.copyAndLoadProject
 import com.intellij.workspaceModel.storage.EntitySource
@@ -31,7 +31,7 @@ import java.io.File
 class WorkspaceCacheTest {
   @Rule
   @JvmField
-  val projectModel = ProjectModelRule(true)
+  val projectModel = ProjectModelRule()
 
   @Rule
   @JvmField

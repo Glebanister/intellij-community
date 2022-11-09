@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight;
 
 import com.intellij.codeInsight.completion.CompletionMemory;
@@ -292,7 +292,7 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitParenthesizedExpression(PsiParenthesizedExpression expression) {
+    public void visitParenthesizedExpression(@NotNull PsiParenthesizedExpression expression) {
       PsiElement parent = expression.getParent();
       if (parent != null) {
         final MyParentVisitor visitor = new MyParentVisitor(expression, myForCompletion, myClassProvider, myVoidable, myUsedAfter,
@@ -343,7 +343,7 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitExpressionStatement(PsiExpressionStatement statement) {
+    public void visitExpressionStatement(@NotNull PsiExpressionStatement statement) {
       if (statement.getParent() instanceof PsiSwitchLabeledRuleStatement) {
         PsiSwitchBlock block = ((PsiSwitchLabeledRuleStatement)statement.getParent()).getEnclosingSwitchBlock();
         if (block instanceof PsiSwitchExpression) {
@@ -357,7 +357,7 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitYieldStatement(PsiYieldStatement statement) {
+    public void visitYieldStatement(@NotNull PsiYieldStatement statement) {
       PsiSwitchExpression expression = statement.findEnclosingExpression();
       if (expression != null) {
         Collections.addAll(myResult, getExpectedTypes(expression, myForCompletion));
@@ -415,7 +415,7 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitLambdaExpression(PsiLambdaExpression lambdaExpression) {
+    public void visitLambdaExpression(@NotNull PsiLambdaExpression lambdaExpression) {
       super.visitLambdaExpression(lambdaExpression);
       final PsiType functionalInterfaceType = lambdaExpression.getFunctionalInterfaceType();
       final PsiMethod scopeMethod = LambdaUtil.getFunctionalInterfaceMethod(functionalInterfaceType);
@@ -426,7 +426,7 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitReturnStatement(PsiReturnStatement statement) {
+    public void visitReturnStatement(@NotNull PsiReturnStatement statement) {
       final PsiMethod method;
       final PsiType type;
       final boolean tailTypeSemicolon;
@@ -468,17 +468,17 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitIfStatement(PsiIfStatement statement) {
+    public void visitIfStatement(@NotNull PsiIfStatement statement) {
       myResult.add(createInfoImpl(PsiType.BOOLEAN, ExpectedTypeInfo.TYPE_STRICTLY, PsiType.BOOLEAN, TailTypes.IF_RPARENTH));
     }
 
     @Override
-    public void visitWhileStatement(PsiWhileStatement statement) {
+    public void visitWhileStatement(@NotNull PsiWhileStatement statement) {
       myResult.add(createInfoImpl(PsiType.BOOLEAN, ExpectedTypeInfo.TYPE_STRICTLY, PsiType.BOOLEAN, TailTypes.WHILE_RPARENTH));
     }
 
     @Override
-    public void visitDoWhileStatement(PsiDoWhileStatement statement) {
+    public void visitDoWhileStatement(@NotNull PsiDoWhileStatement statement) {
       myResult.add(createInfoImpl(PsiType.BOOLEAN, ExpectedTypeInfo.TYPE_STRICTLY, PsiType.BOOLEAN, TailTypes.WHILE_RPARENTH));
     }
 
@@ -497,6 +497,24 @@ public final class ExpectedTypesProvider {
       }
       else {
         myResult.add(createInfoImpl(PsiType.BOOLEAN, ExpectedTypeInfo.TYPE_STRICTLY, PsiType.BOOLEAN, TailType.SEMICOLON));
+      }
+    }
+
+    @Override
+    public void visitPatternGuard(@NotNull PsiPatternGuard guard) {
+      processGuard(guard);
+    }
+
+    @Override
+    public void visitGuardedPattern(@NotNull PsiGuardedPattern pattern) {
+      processGuard(pattern);
+    }
+
+    private void processGuard(@NotNull PsiCaseLabelElement guard) {
+      final PsiSwitchBlock switchBlock = PsiTreeUtil.getParentOfType(guard, PsiSwitchBlock.class);
+      if (switchBlock != null) {
+        final TailType caseTail = TailTypes.forSwitchLabel(switchBlock);
+        myResult.add(createInfoImpl(PsiType.BOOLEAN, ExpectedTypeInfo.TYPE_STRICTLY, PsiType.BOOLEAN, caseTail));
       }
     }
 
@@ -686,7 +704,7 @@ public final class ExpectedTypesProvider {
     }
 
     @Override
-    public void visitCaseLabelElementList(PsiCaseLabelElementList list) {
+    public void visitCaseLabelElementList(@NotNull PsiCaseLabelElementList list) {
       PsiElement parent = list.getParent();
       if (parent instanceof PsiSwitchLabelStatementBase) {
         PsiSwitchBlock switchBlock = ((PsiSwitchLabelStatementBase)parent).getEnclosingSwitchBlock();

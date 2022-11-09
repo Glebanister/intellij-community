@@ -1,7 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.actions;
 
-import com.intellij.application.options.RegistryManager;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzerSettings;
 import com.intellij.ide.lightEdit.LightEditCompatible;
@@ -10,6 +9,7 @@ import com.intellij.ide.ui.ToolbarSettings;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.idea.ActionsBundle;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.editor.EditorFactory;
@@ -17,8 +17,8 @@ import com.intellij.openapi.editor.ex.EditorSettingsExternalizable;
 import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.registry.RegistryManager;
 import com.intellij.openapi.util.registry.RegistryValue;
-import com.intellij.openapi.wm.WindowManager;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -40,6 +40,11 @@ public class ToggleDistractionFreeModeAction extends DumbAwareAction implements 
                                         "action.ToggleDistractionFreeMode.exit" :
                                         "action.ToggleDistractionFreeMode.enter");
     presentation.setText(text);
+  }
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
   }
 
   @Override
@@ -73,10 +78,6 @@ public class ToggleDistractionFreeModeAction extends DumbAwareAction implements 
     if (!enter) {
       TogglePresentationModeAction.restoreToolWindows(project, false);
     }
-    JFrame projectJFrame = WindowManager.getInstance().getFrame(project);
-    if (projectJFrame != null) {
-      projectJFrame.transferFocus();
-    }
   }
 
   private static void applyAndSave(@NotNull PropertiesComponent p,
@@ -109,7 +110,9 @@ public class ToggleDistractionFreeModeAction extends DumbAwareAction implements 
   }
 
   public static int getStandardTabPlacement() {
-    if (!isDistractionFreeModeEnabled()) return UISettings.getInstance().getEditorTabPlacement();
+    if (!isDistractionFreeModeEnabled()) {
+      return UISettings.getInstance().getEditorTabPlacement();
+    }
     return PropertiesComponent.getInstance().getInt(BEFORE + "EDITOR_TAB_PLACEMENT", SwingConstants.TOP);
   }
 

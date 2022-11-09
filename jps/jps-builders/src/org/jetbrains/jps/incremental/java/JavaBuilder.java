@@ -59,8 +59,7 @@ import org.jetbrains.jps.model.serialization.PathMacroUtil;
 import org.jetbrains.jps.service.JpsServiceManager;
 import org.jetbrains.jps.service.SharedThreadPool;
 
-import javax.tools.Diagnostic;
-import javax.tools.JavaFileObject;
+import javax.tools.*;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
@@ -113,13 +112,8 @@ public final class JavaBuilder extends ModuleLevelBuilder {
   );
 
   private static final List<ClassPostProcessor> ourClassProcessors = new ArrayList<>();
-  private static final Set<JpsModuleType<?>> ourCompilableModuleTypes = new HashSet<>();
   @Nullable private static final File ourDefaultRtJar;
   static {
-    for (JavaBuilderExtension extension : JpsServiceManager.getInstance().getExtensions(JavaBuilderExtension.class)) {
-      ourCompilableModuleTypes.addAll(extension.getCompilableModuleTypes());
-    }
-
     File rtJar = null;
     StringTokenizer tokenizer = new StringTokenizer(System.getProperty("sun.boot.class.path", ""), File.pathSeparator, false);
     while (tokenizer.hasMoreTokens()) {
@@ -130,6 +124,16 @@ public final class JavaBuilder extends ModuleLevelBuilder {
       }
     }
     ourDefaultRtJar = rtJar;
+  }
+
+  private static final class CompilableModuleTypesHolder {
+    // avoid loading extensions on JavaBuilder.class load. Init compilable types atomically on demand
+    static final Set<JpsModuleType<?>> ourCompilableModuleTypes = new HashSet<>();
+    static {
+      for (JavaBuilderExtension extension : JpsServiceManager.getInstance().getExtensions(JavaBuilderExtension.class)) {
+        ourCompilableModuleTypes.addAll(extension.getCompilableModuleTypes());
+      }
+    }
   }
 
   public static void registerClassPostProcessor(ClassPostProcessor processor) {
@@ -247,7 +251,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     try {
       Set<File> filesToCompile = FileCollectionFactory.createCanonicalFileLinkedSet();
       dirtyFilesHolder.processDirtyFiles((target, file, descriptor) -> {
-        if (JAVA_SOURCES_FILTER.accept(file) && ourCompilableModuleTypes.contains(target.getModule().getModuleType())) {
+        if (JAVA_SOURCES_FILTER.accept(file) && CompilableModuleTypesHolder.ourCompilableModuleTypes.contains(target.getModule().getModuleType())) {
           filesToCompile.add(file);
         }
         return true;
@@ -424,7 +428,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     try {
       final int targetLanguageLevel = getTargetPlatformLanguageVersion(chunk.representativeTarget().getModule());
 
-      // when forking external javac, compilers from SDK 1.6 and higher are supported
+      // when forking external javac, compilers from SDK 1.7 and higher are supported
       final Pair<String, Integer> forkSdk;
       if (shouldForkCompilerProcess(context, chunk, targetLanguageLevel)) {
         forkSdk = getForkedJavacSdk(chunk, targetLanguageLevel);
@@ -459,7 +463,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
       if (moduleInfoFile != null) { // has modules
         final ModulePathSplitter splitter = MODULE_PATH_SPLITTER.get(context);
         final Pair<ModulePath, Collection<File>> pair = splitter.splitPath(
-          moduleInfoFile, outs.keySet(), ProjectPaths.getCompilationModulePath(chunk, false)
+          moduleInfoFile, outs.keySet(), ProjectPaths.getCompilationModulePath(chunk, false), collectAdditionalRequires(options)
         );
         final boolean useModulePathOnly = Boolean.parseBoolean(System.getProperty(USE_MODULE_PATH_ONLY_OPTION))/*compilerConfig.useModulePathOnly()*/;
         if (useModulePathOnly) {
@@ -524,6 +528,23 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     finally {
       counter.waitFor();
     }
+  }
+
+  @NotNull
+  private static Collection<String> collectAdditionalRequires(Iterable<String> options) {
+    // --add-reads module=other-module(,other-module)*
+    // The option specifies additional modules to be considered as required by a given module.
+    final Set<String> result = new SmartHashSet<>();
+    for (Iterator<String> it = options.iterator(); it.hasNext(); ) {
+      final String option = it.next();
+      if ("--add-reads".equalsIgnoreCase(option) && it.hasNext()) {
+        final String moduleNames = StringUtil.substringAfter(it.next(), "=");
+        if (moduleNames != null) {
+          result.addAll(StringUtil.split(moduleNames, ","));
+        }
+      }
+    }
+    return result;
   }
 
   private static void logJavacCall(ModuleChunk chunk, Iterable<String> options, final String mode) {
@@ -670,7 +691,7 @@ public final class JavaBuilder extends ModuleLevelBuilder {
       final Pair<JpsSdk<JpsDummyElement>, Integer> sdkVersionPair = getAssociatedSdk(chunk);
       if (sdkVersionPair != null) {
         final Integer chunkSdkVersion = sdkVersionPair.second;
-        if (chunkSdkVersion != compilerSdkVersion && chunkSdkVersion >= 6 /*min. supported compiler version*/) {
+        if (chunkSdkVersion != compilerSdkVersion && chunkSdkVersion >= ExternalJavacProcess.MINIMUM_REQUIRED_JAVA_VERSION) {
           // there is a special case because of difference in type inference behavior between javac8 and javac6-javac7
           // so if corresponding JDK is associated with the module chunk, prefer compiler from this JDK over the newer compiler version
           return true;
@@ -1149,10 +1170,11 @@ public final class JavaBuilder extends ModuleLevelBuilder {
     final Pair<JpsSdk<JpsDummyElement>, Integer> sdkVersionPair = getAssociatedSdk(chunk);
     if (sdkVersionPair != null) {
       final int sdkVersion = sdkVersionPair.second;
-      if (sdkVersion >= 6 && isTargetReleaseSupported(sdkVersion, targetLanguageLevel)) {
+      if (sdkVersion >= ExternalJavacProcess.MINIMUM_REQUIRED_JAVA_VERSION && isTargetReleaseSupported(sdkVersion, targetLanguageLevel)) {
         // current javac compiler does support required language level
         return Pair.create(sdkVersionPair.first.getHomePath(), sdkVersion);
       }
+      LOG.warn("Target bytecode version " + targetLanguageLevel + " is not supported by SDK version " + sdkVersion);
     }
     final String fallbackJdkHome = System.getProperty(GlobalOptions.FALLBACK_JDK_HOME, null);
     if (fallbackJdkHome == null) {
@@ -1165,9 +1187,9 @@ public final class JavaBuilder extends ModuleLevelBuilder {
       return null;
     }
     final int fallbackVersion = JpsJavaSdkType.parseVersion(fallbackJdkVersion);
-    if (fallbackVersion < 6) {
+    if (fallbackVersion < ExternalJavacProcess.MINIMUM_REQUIRED_JAVA_VERSION) {
       LOG.info("Version string for fallback JDK is '" + fallbackJdkVersion + "' (recognized as version '" + fallbackVersion + "')." +
-               " At least version 6 is required.");
+               " At least version " + ExternalJavacProcess.MINIMUM_REQUIRED_JAVA_VERSION + " is required.");
       return null;
     }
     return Pair.create(fallbackJdkHome, fallbackVersion);
@@ -1279,9 +1301,8 @@ public final class JavaBuilder extends ModuleLevelBuilder {
             LOG.debug(line);
           }
         }
-        else if (line.contains("\\bjava.lang.OutOfMemoryError\\b")) {
-          myContext.processMessage(new CompilerMessage(getBuilderName(), BuildMessage.Kind.ERROR,
-                                                       JpsBuildBundle.message("build.message.insufficient.memory")));
+        else if (line.contains("java.lang.OutOfMemoryError")) {
+          myContext.processMessage(new CompilerMessage(getBuilderName(), BuildMessage.Kind.ERROR, JpsBuildBundle.message("build.message.insufficient.memory")));
           myErrorCount.incrementAndGet();
         }
         else {

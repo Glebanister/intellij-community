@@ -2,24 +2,24 @@
 package com.intellij.ui.popup.tree;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.ide.util.treeView.AlphaComparator;
 import com.intellij.ide.util.treeView.NodeRenderer;
 import com.intellij.openapi.application.AccessToken;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.PopupStep;
 import com.intellij.openapi.ui.popup.TreePopup;
 import com.intellij.openapi.ui.popup.TreePopupStep;
 import com.intellij.openapi.ui.popup.util.PopupUtil;
-import com.intellij.openapi.util.Disposer;
+import com.intellij.ui.ExperimentalUI;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.popup.NextStepHandler;
 import com.intellij.ui.popup.WizardPopup;
 import com.intellij.ui.popup.util.PopupImplUtil;
+import com.intellij.ui.tree.AsyncTreeModel;
+import com.intellij.ui.tree.FilteringTreeModel;
 import com.intellij.ui.treeStructure.SimpleTree;
-import com.intellij.ui.treeStructure.filtered.FilteringTreeBuilder;
 import com.intellij.ui.treeStructure.filtered.FilteringTreeStructure;
+import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.tree.TreeUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -30,23 +30,16 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.List;
 
 public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHandler {
-  private static final Logger LOG = Logger.getInstance(TreePopupImpl.class);
   private MyTree myWizardTree;
 
   private MouseMotionListener myMouseMotionListener;
   private MouseListener myMouseListener;
 
-  private final List<TreePath> mySavedExpanded = new ArrayList<>();
-  private TreePath mySavedSelected;
-
   private TreePath myShowingChildPath;
   private TreePath myPendingChildPath;
-  private FilteringTreeBuilder myBuilder;
+  private FilteringTreeModel myModel;
 
   public TreePopupImpl(@Nullable Project project,
                        @Nullable JBPopup parent,
@@ -60,16 +53,9 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
   protected JComponent createContent() {
     myWizardTree = new MyTree();
     myWizardTree.getAccessibleContext().setAccessibleName("WizardTree");
-    myBuilder = new FilteringTreeBuilder(myWizardTree, this, getTreeStep().getStructure(), AlphaComparator.INSTANCE) {
-      @Override
-      protected boolean isSelectable(final Object nodeObject) {
-        return getTreeStep().isSelectable(nodeObject, nodeObject);
-      }
-    };
-    Disposer.register(this, myBuilder);
-
-    myBuilder.updateFromRoot();
-
+    myModel = FilteringTreeModel.createModel(getTreeStep().getStructure(), this, this);
+    myWizardTree.setModel(new AsyncTreeModel(myModel, this));
+    myModel.updateTree(myWizardTree, false, null);
     myWizardTree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
 
     Action action = myWizardTree.getActionMap().get("toggleSelectionPreserveAnchor");
@@ -167,15 +153,6 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
 
   @Override
   public void dispose() {
-    mySavedExpanded.clear();
-    final Enumeration<TreePath> expanded = myWizardTree.getExpandedDescendants(new TreePath(myWizardTree.getModel().getRoot()));
-    if (expanded != null) {
-      while (expanded.hasMoreElements()) {
-        mySavedExpanded.add(expanded.nextElement());
-      }
-    }
-    mySavedSelected = myWizardTree.getSelectionPath();
-
     myWizardTree.removeMouseMotionListener(myMouseMotionListener);
     myWizardTree.removeMouseListener(myMouseListener);
     super.dispose();
@@ -188,11 +165,6 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
     expandAll();
 
     collapseAll();
-
-    restoreExpanded();
-    if (mySavedSelected != null) {
-      myWizardTree.setSelectionPath(mySavedSelected);
-    }
 
     return super.beforeShow();
   }
@@ -210,18 +182,6 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
         myWizardTree.setSelectionPath(path);
         break;
       }
-    }
-  }
-
-
-  private void restoreExpanded() {
-    if (mySavedExpanded.isEmpty()) {
-      expandAll();
-      return;
-    }
-
-    for (TreePath each : mySavedExpanded) {
-      myWizardTree.expandPath(each);
     }
   }
 
@@ -243,8 +203,8 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
     myWizardTree.scrollPathToVisible(myWizardTree.getSelectionPath());
   }
 
-  private TreePopupStep getTreeStep() {
-    return (TreePopupStep) myStep;
+  private TreePopupStep<Object> getTreeStep() {
+    return (TreePopupStep<Object>)myStep;
   }
 
   private class MyMouseMotionListener extends MouseMotionAdapter {
@@ -391,6 +351,16 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
 
       super.customizeCellRenderer(tree, value, shouldPaintSelected, expanded, leaf, row, shouldPaintFocus);
     }
+
+    @Override
+    @NotNull
+    public Dimension getPreferredSize() {
+      Dimension size = super.getPreferredSize();
+      if (ExperimentalUI.isNewUI()) {
+        size.height = JBUI.CurrentTheme.Tree.rowHeight();
+      }
+      return size;
+    }
   }
 
   @Override
@@ -455,7 +425,7 @@ public class TreePopupImpl extends WizardPopup implements TreePopup, NextStepHan
 
   @Override
   protected void onSpeedSearchPatternChanged() {
-    myBuilder.refilterAsync();
+    myModel.updateTree(myWizardTree, mySpeedSearch.isHoldingFilter(), null);
   }
 
   @Override

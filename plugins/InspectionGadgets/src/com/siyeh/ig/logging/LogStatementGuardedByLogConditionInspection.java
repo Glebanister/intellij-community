@@ -116,7 +116,7 @@ public class LogStatementGuardedByLogConditionInspection extends BaseInspection 
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiMethodCallExpression methodCallExpression = (PsiMethodCallExpression)element.getParent().getParent();
       final PsiStatement statement = PsiTreeUtil.getParentOfType(methodCallExpression, PsiStatement.class);
@@ -200,7 +200,7 @@ public class LogStatementGuardedByLogConditionInspection extends BaseInspection 
   private class LogStatementGuardedByLogConditionVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethodCallExpression(PsiMethodCallExpression expression) {
+    public void visitMethodCallExpression(@NotNull PsiMethodCallExpression expression) {
       super.visitMethodCallExpression(expression);
       final PsiReferenceExpression methodExpression = expression.getMethodExpression();
       final String referenceName = methodExpression.getReferenceName();

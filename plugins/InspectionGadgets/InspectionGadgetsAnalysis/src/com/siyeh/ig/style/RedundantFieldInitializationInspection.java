@@ -17,7 +17,6 @@ package com.siyeh.ig.style;
 
 import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.ProblemDescriptor;
-import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.codeInspection.ui.SingleCheckboxOptionsPanel;
 import com.intellij.java.analysis.JavaAnalysisBundle;
 import com.intellij.openapi.project.Project;
@@ -66,7 +65,7 @@ public class RedundantFieldInitializationInspection extends BaseInspection imple
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       descriptor.getPsiElement().delete();
     }
   }
@@ -109,7 +108,7 @@ public class RedundantFieldInitializationInspection extends BaseInspection imple
       if (isAssignmentInInitializerOverwritten(field)) {
         return;
       }
-      registerError(initializer, ProblemHighlightType.LIKE_UNUSED_SYMBOL);
+      registerError(initializer);
     }
 
     private boolean isAssignmentInInitializerOverwritten(@NotNull PsiField field) {

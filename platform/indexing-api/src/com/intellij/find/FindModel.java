@@ -530,14 +530,6 @@ public class FindModel extends UserDataHolderBase implements Cloneable {
    * @deprecated and not used anymore
    */
   @Deprecated(forRemoval = true)
-  public boolean isOpenInNewTabVisible() {
-    return true;
-  }
-
-  /**
-   * @deprecated and not used anymore
-   */
-  @Deprecated(forRemoval = true)
   public void setOpenInNewTabVisible(boolean showInNewTabVisible) {
   }
 
@@ -626,26 +618,26 @@ public class FindModel extends UserDataHolderBase implements Cloneable {
   @Override
   public String toString() {
     return "--- FIND MODEL ---\n" +
-           "myStringToFind =" + myStringToFind + "\n" +
-           "myStringToReplace =" + myStringToReplace + "\n" +
-           "isReplaceState =" + isReplaceState + "\n" +
-           "isWholeWordsOnly =" + isWholeWordsOnly + "\n" +
-           "searchContext =" + searchContext + "\n" +
-           "isFromCursor =" + isFromCursor + "\n" +
-           "isForward =" + isForward + "\n" +
-           "isGlobal =" + isGlobal + "\n" +
-           "isRegularExpressions =" + isRegularExpressions + "\n" +
-           "isCaseSensitive =" + isCaseSensitive + "\n" +
-           "isMultipleFiles =" + isMultipleFiles + "\n" +
-           "isPromptOnReplace =" + isPromptOnReplace + "\n" +
-           "isReplaceAll =" + isReplaceAll + "\n" +
-           "isProjectScope =" + isProjectScope + "\n" +
-           "directoryName =" + directoryName + "\n" +
-           "isWithSubdirectories =" + isWithSubdirectories + "\n" +
-           "fileFilter =" + fileFilter + "\n" +
-           "moduleName =" + moduleName + "\n" +
-           "customScopeName =" + customScopeName + "\n" +
-           "searchInProjectFiles =" + mySearchInProjectFiles + "\n";
+           "myStringToFind = '" + myStringToFind + "'\n" +
+           "myStringToReplace = '" + myStringToReplace + "'\n" +
+           "isReplaceState = " + isReplaceState + "\n" +
+           "isWholeWordsOnly = " + isWholeWordsOnly + "\n" +
+           "searchContext = '" + searchContext + "'\n" +
+           "isFromCursor = " + isFromCursor + "\n" +
+           "isForward = " + isForward + "\n" +
+           "isGlobal = " + isGlobal + "\n" +
+           "isRegularExpressions = " + isRegularExpressions + "\n" +
+           "isCaseSensitive = " + isCaseSensitive + "\n" +
+           "isMultipleFiles = " + isMultipleFiles + "\n" +
+           "isPromptOnReplace = " + isPromptOnReplace + "\n" +
+           "isReplaceAll = " + isReplaceAll + "\n" +
+           "isProjectScope = " + isProjectScope + "\n" +
+           "directoryName = '" + directoryName + "'\n" +
+           "isWithSubdirectories = " + isWithSubdirectories + "\n" +
+           "fileFilter = " + fileFilter + "\n" +
+           "moduleName = '" + moduleName + "'\n" +
+           "customScopeName = '" + customScopeName + "'\n" +
+           "searchInProjectFiles = " + mySearchInProjectFiles + "\n";
   }
 
   /**

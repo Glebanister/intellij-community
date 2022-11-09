@@ -62,7 +62,7 @@ public class DanglingJavadocInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement docComment = element.getParent();
       final StringBuilder newCommentText = new StringBuilder();
@@ -97,7 +97,7 @@ public class DanglingJavadocInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       element.getParent().delete();
     }
@@ -111,7 +111,7 @@ public class DanglingJavadocInspection extends BaseInspection {
   private class DanglingJavadocVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitDocComment(PsiDocComment comment) {
+    public void visitDocComment(@NotNull PsiDocComment comment) {
       super.visitDocComment(comment);
       if (comment.getOwner() != null || TemplateLanguageUtil.isInsideTemplateFile(comment)) {
         return;

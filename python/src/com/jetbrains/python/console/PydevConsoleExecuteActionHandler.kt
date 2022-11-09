@@ -1,7 +1,6 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.jetbrains.python.console
 
-import com.intellij.application.options.RegistryManager
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.execution.console.LanguageConsoleImpl
 import com.intellij.execution.console.LanguageConsoleView
@@ -75,7 +74,7 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
     if (ipythonEnabled && !consoleComm.isWaitingForInput && !code.getText().isBlank()) {
       ++myIpythonInputPromptCount
     }
-    if (RegistryManager.getInstance().`is`("python.console.CommandQueue")) {
+    if (PyConsoleUtil.isCommandQueueEnabled(project)) {
       // add new command to CommandQueue service
       service<CommandQueueForPythonConsoleService>().addNewCommand(this, code)
     } else {
@@ -99,7 +98,7 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
       }
     }
     else {
-      if (RegistryManager.getInstance().`is`("python.console.CommandQueue")) {
+      if (PyConsoleUtil.isCommandQueueEnabled(project)) {
         inPrompt()
       } else {
         executingPrompt()
@@ -130,7 +129,7 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
   private fun ipythonInPrompt() {
     myConsoleView.setPromptAttributes(object : ConsoleViewContentType("", TextAttributes()) {
       override fun getAttributes(): TextAttributes {
-        val attrs = EditorColorsManager.getInstance().globalScheme.getAttributes(USER_INPUT_KEY);
+        val attrs = EditorColorsManager.getInstance().globalScheme.getAttributes(USER_INPUT_KEY)
         attrs.fontType = Font.PLAIN
         return attrs
       }
@@ -191,7 +190,7 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
 
   override fun runExecuteAction(console: LanguageConsoleView) {
     if (isEnabled) {
-      if (RegistryManager.getInstance().`is`("python.console.CommandQueue")) {
+      if (PyConsoleUtil.isCommandQueueEnabled(project)) {
         doRunExecuteAction(console)
       } else {
         if (!canExecuteNow()) {
@@ -208,21 +207,26 @@ open class PydevConsoleExecuteActionHandler(private val myConsoleView: LanguageC
   }
 
   private fun doRunExecuteAction(console: LanguageConsoleView) {
-  val doc = myConsoleView.editorDocument
-  val endMarker = doc.createRangeMarker(doc.textLength, doc.textLength)
-  endMarker.isGreedyToLeft = false
-  endMarker.isGreedyToRight = true
-  val isComplete = myEnterHandler.handleEnterPressed(console.consoleEditor)
-  if (isComplete || consoleCommunication.isWaitingForInput) {
-
-    deleteString(doc, endMarker)
-    if (shouldCopyToHistory(console)) {
-      copyToHistoryAndExecute(console)
+    val doc = myConsoleView.editorDocument
+    val endMarker = doc.createRangeMarker(doc.textLength, doc.textLength)
+    endMarker.isGreedyToLeft = false
+    endMarker.isGreedyToRight = true
+    val isComplete = myEnterHandler.handleEnterPressed(console.consoleEditor)
+    if (isComplete || consoleCommunication.isWaitingForInput) {
+      deleteString(doc, endMarker)
+      if (shouldCopyToHistory(console)) {
+        (console as? PythonConsoleView)?.let { pythonConsole ->
+          pythonConsole.flushDeferredText()
+          pythonConsole.storeExecutionCounterLineNumber(myIpythonInputPromptCount,
+                                                        pythonConsole.historyViewer.document.lineCount +
+                                                        console.consoleEditor.document.lineCount)
+        }
+        copyToHistoryAndExecute(console)
+      }
+      else {
+        processLine(myConsoleView.consoleEditor.document.text)
+      }
     }
-    else {
-      processLine(myConsoleView.consoleEditor.document.text)
-    }
-  }
   }
 
   private fun copyToHistoryAndExecute(console: LanguageConsoleView) = super.runExecuteAction(console)

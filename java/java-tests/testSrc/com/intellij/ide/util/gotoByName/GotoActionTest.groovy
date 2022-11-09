@@ -32,9 +32,6 @@ import java.util.List
 import java.util.concurrent.TimeUnit
 import java.util.function.BiPredicate
 
-/**
- * @author peter
- */
 @CompileStatic
 class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
   private static final DataKey<Boolean> SHOW_HIDDEN_KEY = DataKey.create("GotoActionTest.DataKey")
@@ -313,11 +310,14 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
       "tab placement"
     ]
 
+    def errors = []
     patterns.forEach { String pattern ->
       def elements = ChooseByNameTest.calcContributorElements(contributor, pattern)
-      assert elements.any { matchedValue -> isNavigableOption(((MatchedValue)matchedValue).value)
+      if (!elements.any { matchedValue -> isNavigableOption(((MatchedValue)matchedValue).value) }) {
+        errors += "Failure for pattern '$pattern' - $elements"
       }
     }
+    assert errors.isEmpty()
   }
 
   private static boolean isNavigableOption(Object o) {
@@ -411,7 +411,11 @@ class GotoActionTest extends LightJavaCodeInsightFixtureTestCase {
     return createMatchedAction(project, createAction(text), pattern, mode, isAvailable)
   }
 
-  static MatchedValue createMatchedAction(Project project, AnAction action, String pattern, MatchMode mode = MatchMode.NAME, boolean isAvailable = true) {
+  static MatchedValue createMatchedAction(Project project,
+                                          AnAction action,
+                                          String pattern,
+                                          MatchMode mode = MatchMode.NAME,
+                                          boolean isAvailable = true) {
     def model = new GotoActionModel(project, null, null)
     def wrapper = new ActionWrapper(action, null, mode, model) {
       @Override

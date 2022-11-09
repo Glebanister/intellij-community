@@ -1,7 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.util.ui;
 
-import com.intellij.diagnostic.LoadingState;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.util.SystemInfoRt;
 import com.intellij.ui.*;
@@ -30,10 +29,6 @@ import java.util.Map;
  */
 @SuppressWarnings("UseJBColor")
 public final class JBUI {
-  static {
-    LoadingState.BASE_LAF_INITIALIZED.checkOccurred();
-  }
-
   /**
    * Returns the pixel scale factor, corresponding to the default monitor device.
    */
@@ -364,6 +359,10 @@ public final class JBUI {
         return insets("ActionsList.mnemonicsBorderInsets", insets(0, 8, 1, 6));
       }
 
+      public static @NotNull Insets mnemonicInsets() {
+        return insets("ActionsList.mnemonicsInsets", insets(0, 0, 0, 8));
+      }
+
       public static @NotNull Insets cellPadding() {
         return insets("ActionsList.cellBorderInsets", insets(1, 12, 1, 12));
       }
@@ -384,6 +383,22 @@ public final class JBUI {
         }
         return font;
       }
+    }
+
+    public static final class Banner {
+      public static final Color INFO_BACKGROUND = JBColor.namedColor("Banner.infoBackground", 0xF5F8FE, 0x25324D);
+      public static final Color INFO_BORDER_COLOR = JBColor.namedColor("Banner.infoBorderColor", 0xCFDEFC, 0x35538F);
+
+      public static final Color SUCCESS_BACKGROUND = JBColor.namedColor("Banner.successBackground", 0xF2FCF3, 0x253627);
+      public static final Color SUCCESS_BORDER_COLOR = JBColor.namedColor("Banner.successBorderColor", 0xC1E5C3, 0x375239);
+
+      public static final Color WARNING_BACKGROUND = JBColor.namedColor("Banner.warningBackground", 0xfff8e3, 0x3d3223);
+      public static final Color WARNING_BORDER_COLOR = JBColor.namedColor("Banner.warningBorderColor", 0xFCDB8D, 0x5E4D33);
+
+      public static final Color ERROR_BACKGROUND = JBColor.namedColor("Banner.errorBackground", 0xFFF5F5, 0x402929);
+      public static final Color ERROR_BORDER_COLOR = JBColor.namedColor("Banner.errorBorderColor", 0xFCD4D4, 0x5E3838);
+
+      public static final Color FOREGROUND = JBColor.namedColor("Banner.foreground", 0x0, 0xDFE1E5);
     }
 
     public static final class Button {
@@ -477,6 +492,10 @@ public final class JBUI {
 
       public static @NotNull Color paneBackground() {
         return JBColor.namedColor("Panel.background", Gray.xCD);
+      }
+
+      public static int menuPopupMinWidth() {
+        return scale(180);
       }
     }
 
@@ -800,6 +819,21 @@ public final class JBUI {
       }
     }
 
+    public static final class Toolbar {
+
+      public static Insets toolbarButtonInsets(boolean isMainToolbar) {
+        return isMainToolbar ? mainToolbarButtonInsets() : toolbarButtonInsets();
+      }
+
+      public static Insets toolbarButtonInsets() {
+        return insets("Toolbar.Button.buttonInsets", JBInsets.create(1, 2));
+      }
+
+      public static Insets mainToolbarButtonInsets() {
+        return insets("MainToolbar.Button.buttonInsets", JBInsets.create(1, 2));
+      }
+    }
+
     public static final class Label {
       public static @NotNull Color foreground(boolean selected) {
         return selected ? JBColor.namedColor("Label.selectedForeground", 0xFFFFFF)
@@ -947,14 +981,52 @@ public final class JBUI {
         return JBUIScale.scale(170);
       }
 
+      public static Color mnemonicForeground() {
+        return JBColor.namedColor("Popup.mnemonicForeground", ActionsList.MNEMONIC_FOREGROUND);
+      }
+
       public static class Selection {
         public static final JBValue ARC = new JBValue.UIInteger("Popup.Selection.arc", 8);
         public static final JBValue LEFT_RIGHT_INSET = new JBValue.UIInteger("Popup.Selection.leftRightInset", 12);
 
         @NotNull
         public static Insets innerInsets() {
-          return insets("Popup.Selection.innerInsets", insets(2, 8));
+          JBInsets result = insets("Popup.Selection.innerInsets", insets(0, 8));
+          // Top and bottom values are ignored now
+          result.top = 0;
+          result.bottom = 0;
+          return result;
         }
+      }
+    }
+
+    public static final class Menu {
+
+      public static final class Selection {
+        public static @NotNull JBInsets innerInsets() {
+          return insets("Menu.Selection.innerInsets", insets(2, 2));
+        }
+
+        public static @NotNull JBInsets outerInsets() {
+          return insets("Menu.Selection.outerInsets", insets(1, 4));
+        }
+
+        public static final JBValue ARC = new JBValue.UIInteger("Menu.Selection.arc", 8);
+      }
+    }
+
+    public static final class PopupMenu {
+
+      public static final class Selection {
+        public static @NotNull JBInsets innerInsets() {
+          return insets("PopupMenu.Selection.innerInsets", insets(2, 10));
+        }
+
+        public static @NotNull JBInsets outerInsets() {
+          return insets("PopupMenu.Selection.outerInsets", insets(1, 4));
+        }
+
+        public static final JBValue ARC = new JBValue.UIInteger("PopupMenu.Selection.arc", 8);
       }
     }
 
@@ -1116,37 +1188,18 @@ public final class JBUI {
       public static @NotNull Color linkColor() {
         return Foreground.ENABLED;
       }
-
-      /**
-       * @deprecated use {@link Foreground#HOVERED} instead
-       */
-      @Deprecated(forRemoval = true)
-      public static @NotNull Color linkHoverColor() {
-        return Foreground.HOVERED;
-      }
-
-      /**
-       * @deprecated use {@link Foreground#PRESSED} instead
-       */
-      @Deprecated(forRemoval = true)
-      public static @NotNull Color linkPressedColor() {
-        return Foreground.PRESSED;
-      }
-
-      /**
-       * @deprecated use {@link Foreground#VISITED} instead
-       */
-      @Deprecated(forRemoval = true)
-      public static @NotNull Color linkVisitedColor() {
-        return Foreground.VISITED;
-      }
     }
 
     public static final class Tooltip {
+      public static final JBValue CORNER_RADIUS = new JBValue.UIInteger("ToolTip.borderCornerRadius", 4);
+
       public static @NotNull Color shortcutForeground () {
         return JBColor.namedColor("ToolTip.shortcutForeground", new JBColor(0x787878, 0x999999));
       }
 
+      /**
+       * Border color for tooltips except information/question/error tooltips (see {@link com.intellij.codeInsight.hint.HintUtil#HINT_BORDER_COLOR_KEY})
+       */
       public static @NotNull Color borderColor() {
         return JBColor.namedColor("ToolTip.borderColor", new JBColor(0xadadad, 0x636569));
       }
@@ -1298,6 +1351,33 @@ public final class JBUI {
         return selected ? Selection.foreground(focused) : FOREGROUND;
       }
 
+      static int rowHeight() {
+        int defaultHeight = JBUIScale.scale(24);
+        int result = getInt("List.rowHeight", defaultHeight);
+        // Linux doesn't support rowHeight now, use default value. See IDEA-234112
+        return result <= 0 ? defaultHeight : result;
+      }
+
+      static int buttonLeftRightInsets() {
+        return getInt("List.Button.leftRightInset", 8);
+      }
+
+      static Color buttonHoverBackground() {
+        return JBColor.namedColor("List.Button.hoverBackground");
+      }
+
+      static Color buttonSeparatorColor() {
+        return JBColor.namedColor("List.Button.separatorColor", Popup.BACKGROUND);
+      }
+
+      static int buttonSeparatorInset() {
+        return getInt("List.Button.separatorInset", 4);
+      }
+
+      static Color lineHoverBackground(boolean focused) {
+        return JBColor.namedColor("List.Line.hoverBackground", Selection.background(focused));
+      }
+
       final class Selection {
         private static final Color BACKGROUND = JBColor.namedColor("List.selectionBackground", DEFAULT_RENDERER_SELECTION_BACKGROUND);
         private static final Color FOREGROUND = JBColor.namedColor("List.selectionForeground", Label.foreground(true));
@@ -1331,6 +1411,11 @@ public final class JBUI {
         private interface Inactive {
           Color BACKGROUND = JBColor.namedColor("List.hoverInactiveBackground", DEFAULT_RENDERER_HOVER_INACTIVE_BACKGROUND);
         }
+      }
+
+      interface Tag {
+        Color BACKGROUND = JBColor.namedColor("List.Tag.background", new JBColor(0xEBECF0, 0x393B40));
+        Color FOREGROUND = JBColor.namedColor("List.Tag.foreground", new JBColor(0x494B57, 0xA8ADBD));
       }
     }
 
@@ -1389,6 +1474,13 @@ public final class JBUI {
         return selected ? Selection.foreground(focused) : FOREGROUND;
       }
 
+      static int rowHeight() {
+        int defaultHeight = JBUIScale.scale(24);
+        int result = getInt("Tree.rowHeight", defaultHeight);
+        // Linux doesn't support rowHeight now, use default value. See IDEA-234112
+        return result <= 0 ? defaultHeight : result;
+      }
+
       final class Selection {
         private static final Color BACKGROUND = JBColor.namedColor("Tree.selectionBackground", DEFAULT_RENDERER_SELECTION_BACKGROUND);
         private static final Color FOREGROUND = JBColor.namedColor("Tree.selectionForeground", Label.foreground(true));
@@ -1418,6 +1510,17 @@ public final class JBUI {
           Color BACKGROUND = JBColor.namedColor("Tree.hoverInactiveBackground", DEFAULT_RENDERER_HOVER_INACTIVE_BACKGROUND);
         }
       }
+    }
+
+    public final static class RunWidget {
+      public static final Color FOREGROUND = JBColor.namedColor("RunWidget.foreground", Color.WHITE);
+      public static final Color BACKGROUND = JBColor.namedColor("RunWidget.background", 0x3369D6);
+      public static final Color RUNNING_BACKGROUND = JBColor.namedColor("RunWidget.runningBackground", 0x599E5E);
+      public static final Color SEPARATOR = JBColor.namedColor("RunWidget.separatorColor", new Color(255, 255, 255, 64));
+
+      // these colors will be applied over background color
+      public static final Color HOVER_BACKGROUND = JBColor.namedColor("RunWidget.hoverBackground", new Color(0, 0, 0, 25));
+      public static final Color PRESSED_BACKGROUND = JBColor.namedColor("RunWidget.pressedBackground", new Color(0, 0, 0, 40));
     }
   }
 

@@ -1,9 +1,8 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.fileTypes;
 
 import com.intellij.lang.Language;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.components.ComponentManagerEx;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.fileTypes.ex.FileTypeIdentifiableByVirtualFile;
 import com.intellij.openapi.util.io.ByteSequence;
@@ -32,11 +31,11 @@ import java.util.function.Supplier;
  * {@link com.intellij.openapi.application.ReadAction#nonBlocking}.
  */
 public abstract class FileTypeRegistry {
-  private static Supplier<FileTypeRegistry> instanceGetter;
+  private static Supplier<? extends FileTypeRegistry> instanceGetter;
 
   @ApiStatus.Internal
-  public static Supplier<FileTypeRegistry> setInstanceSupplier(@NotNull Supplier<FileTypeRegistry> supplier) {
-    Supplier<FileTypeRegistry> oldValue = instanceGetter;
+  public static Supplier<? extends FileTypeRegistry> setInstanceSupplier(@NotNull Supplier<? extends FileTypeRegistry> supplier) {
+    Supplier<? extends FileTypeRegistry> oldValue = instanceGetter;
     instanceGetter = supplier;
     return oldValue;
   }
@@ -60,11 +59,11 @@ public abstract class FileTypeRegistry {
   }
 
   public static FileTypeRegistry getInstance() {
-    Supplier<FileTypeRegistry> instanceGetter = FileTypeRegistry.instanceGetter;
+    Supplier<? extends FileTypeRegistry> instanceGetter = FileTypeRegistry.instanceGetter;
     if (instanceGetter == null) {
       // in tests FileTypeManager service maybe not preloaded, so, ourInstanceGetter is not set
-      return ((ComponentManagerEx)ApplicationManager.getApplication())
-        .getServiceByClassName("com.intellij.openapi.fileTypes.FileTypeManager");
+      //noinspection deprecation
+      return ApplicationManager.getApplication().getServiceByClassName("com.intellij.openapi.fileTypes.FileTypeManager");
     }
     return instanceGetter.get();
   }

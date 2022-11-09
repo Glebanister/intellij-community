@@ -1,3 +1,4 @@
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package training.featuresSuggester.suggesters
 
 import com.intellij.openapi.util.TextRange
@@ -15,7 +16,7 @@ class ReplaceCompletionSuggester : AbstractFeatureSuggester() {
   override val suggestingDocUrl = "https://www.jetbrains.com/help/idea/auto-completing-code.html#accept"
   override val minSuggestingIntervalDays = 14
 
-  override val languages = listOf("JAVA", "kotlin", "Python", "ECMAScript 6")
+  override val languages = listOf("JAVA", "kotlin", "Python", "JavaScript", "ECMAScript 6")
 
   private data class EditedStatementData(val dotOffset: Int) {
     var isCompletionStarted: Boolean = false
@@ -115,7 +116,6 @@ class ReplaceCompletionSuggester : AbstractFeatureSuggester() {
     return NoSuggestion
   }
 
-  @Suppress("DuplicatedCode")
   private fun SuggesterSupport.createEditedStatementData(action: EditorAction, offset: Int): EditedStatementData? {
     val curElement = action.psiFile?.findElementAt(offset) ?: return null
     return if (curElement.getParentByPredicate(::isLiteralExpression) == null &&

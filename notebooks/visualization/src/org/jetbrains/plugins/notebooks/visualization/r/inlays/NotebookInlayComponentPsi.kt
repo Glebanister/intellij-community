@@ -18,7 +18,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import org.jetbrains.plugins.notebooks.visualization.NotebookIntervalPointer
-import org.jetbrains.plugins.notebooks.visualization.notebookAppearance
+import org.jetbrains.plugins.notebooks.ui.visualization.notebookAppearance
 import org.jetbrains.plugins.notebooks.visualization.r.inlays.components.*
 import org.jetbrains.plugins.notebooks.visualization.r.ui.UiCustomizer
 import java.awt.BorderLayout
@@ -92,7 +92,6 @@ private fun createSeparatorHighlighter(editor: EditorImpl, textRange: TextRange)
 
     customRenderer = NotebookInlayComponent.separatorRenderer
     lineMarkerRenderer = LineMarkerRenderer { _, g, r ->
-      @Suppress("INACCESSIBLE_TYPE")
       val gutterWidth = ((editor as EditorEx).gutterComponentEx as JComponent).width
 
       val y = r.y + r.height - editor.lineHeight

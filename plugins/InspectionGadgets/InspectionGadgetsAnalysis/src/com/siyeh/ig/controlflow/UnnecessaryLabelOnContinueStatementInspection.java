@@ -16,7 +16,6 @@
 package com.siyeh.ig.controlflow;
 
 import com.intellij.codeInspection.ProblemDescriptor;
-import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
@@ -56,7 +55,7 @@ public class UnnecessaryLabelOnContinueStatementInspection
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement continueKeywordElement = descriptor.getPsiElement();
       final PsiContinueStatement continueStatement = (PsiContinueStatement)continueKeywordElement.getParent();
       final PsiIdentifier labelIdentifier = continueStatement.getLabelIdentifier();
@@ -84,7 +83,7 @@ public class UnnecessaryLabelOnContinueStatementInspection
       final PsiStatement labelEnabledParent = PsiTreeUtil.getParentOfType(statement, PsiLoopStatement.class);
       if (labelEnabledParent == null) return;
       if (!exitedStatement.equals(labelEnabledParent)) return;
-      registerError(labelIdentifier, ProblemHighlightType.LIKE_UNUSED_SYMBOL);
+      registerError(labelIdentifier);
     }
   }
 }

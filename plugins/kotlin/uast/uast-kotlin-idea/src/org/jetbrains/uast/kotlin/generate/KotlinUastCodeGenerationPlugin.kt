@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.uast.kotlin.generate
 
@@ -8,19 +8,24 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.*
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.util.asSafely
 import org.jetbrains.kotlin.idea.KotlinLanguage
+import org.jetbrains.kotlin.idea.base.fe10.codeInsight.newDeclaration.Fe10KotlinNameSuggester
+import org.jetbrains.kotlin.idea.base.psi.replaced
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.core.*
+import org.jetbrains.kotlin.idea.intentions.ImportAllMembersIntention
 import org.jetbrains.kotlin.idea.refactoring.fqName.fqName
+import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
 import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.util.resolveToKotlinType
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
+import org.jetbrains.kotlin.references.fe10.KtFe10SimpleNameReference
 import org.jetbrains.kotlin.resolve.scopes.utils.findClassifier
-import org.jetbrains.kotlin.util.firstNotNullResult
-import org.jetbrains.kotlin.utils.addToStdlib.cast
 import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 import org.jetbrains.uast.*
 import org.jetbrains.uast.generate.UParameterInfo
@@ -72,6 +77,68 @@ class KotlinUastCodeGenerationPlugin : UastCodeGenerationPlugin {
             else -> replaced
         }?.toUElementOfExpectedTypes(elementType)
     }
+
+    override fun bindToElement(reference: UReferenceExpression, element: PsiElement): PsiElement? {
+        val sourcePsi = reference.sourcePsi ?: return null
+        if (sourcePsi !is KtSimpleNameExpression) return null
+        return KtFe10SimpleNameReference(sourcePsi)
+            .bindToElement(element, KtSimpleNameReference.ShorteningMode.FORCED_SHORTENING)
+    }
+
+    override fun shortenReference(reference: UReferenceExpression): UReferenceExpression? {
+        val sourcePsi = reference.sourcePsi ?: return null
+        if (sourcePsi !is KtElement) return null
+        return ShortenReferences.DEFAULT.process(sourcePsi).toUElementOfType()
+    }
+
+    override fun importMemberOnDemand(reference: UQualifiedReferenceExpression): UExpression? {
+        val ktQualifiedExpression = reference.sourcePsi?.asSafely<KtDotQualifiedExpression>() ?: return null
+        val selector = ktQualifiedExpression.selectorExpression ?: return null
+        val ptr = SmartPointerManager.createPointer(selector)
+        ImportAllMembersIntention().applyTo(ktQualifiedExpression, null)
+        return ptr.element?.toUElementOfType()
+    }
+
+    override fun initializeField(uField: UField, uParameter: UParameter) {
+        val uMethod = uParameter.getParentOfType(UMethod::class.java, false) ?: return
+        val sourcePsi = uMethod.sourcePsi ?: return
+        if (sourcePsi is KtPrimaryConstructor) {
+            if (uField.name == uParameter.name) {
+                val psiElement = uParameter.sourcePsi ?: return
+                val ktParameter = KtPsiFactory(psiElement.project).createParameter(uField.sourcePsi?.text ?: return)
+                ktParameter.modifierList?.getModifier(KtTokens.FINAL_KEYWORD)?.delete()
+                ktParameter.defaultValue?.delete()
+                ktParameter.equalsToken?.delete()
+                val psiField = uField.sourcePsi
+                if (psiField != null) {
+                    val nextSibling = psiField.nextSibling
+                    if (nextSibling is PsiWhiteSpace) {
+                        nextSibling.delete()
+                    }
+                    psiField.delete()
+                }
+                psiElement.replace(ktParameter)
+            }
+            else {
+                val property = uField.sourcePsi as? KtProperty ?: return
+                property.initializer = KtPsiFactory(property.project).createExpression(uParameter.name)
+            }
+            return
+        }
+
+        val body = (sourcePsi as? KtDeclarationWithBody)?.bodyBlockExpression ?: return
+        val ktPsiFactory = KtPsiFactory(sourcePsi)
+        val assigmentExpression = ktPsiFactory.buildExpression {
+            if (uField.name == uParameter.name) {
+                appendFixedText("this.")
+            }
+            appendName(Name.identifier(uField.name))
+            appendFixedText(" = ")
+            appendName(Name.identifier(uParameter.name))
+        }
+
+        body.addBefore(assigmentExpression, body.rBrace)
+    }
 }
 
 private fun hasBraces(oldPsi: KtBlockExpression): Boolean = oldPsi.lBrace != null && oldPsi.rBrace != null
@@ -79,7 +146,6 @@ private fun hasBraces(oldPsi: KtBlockExpression): Boolean = oldPsi.lBrace != nul
 class KotlinUastElementFactory(project: Project) : UastElementFactory {
     private val psiFactory = KtPsiFactory(project)
 
-    @Suppress("UNUSED_PARAMETER")
     override fun createQualifiedReference(qualifiedName: String, context: PsiElement?): UQualifiedReferenceExpression? {
         return psiFactory.createExpression(qualifiedName).let {
             when (it) {
@@ -219,7 +285,10 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
         val thenBranchPsi = thenBranch.sourcePsi as? KtExpression ?: return null
         val elseBranchPsi = elseBranch?.sourcePsi as? KtExpression
 
-        return KotlinUIfExpression(psiFactory.createIf(conditionPsi, thenBranchPsi.ensureBlockExpressionBraces(), elseBranchPsi?.ensureBlockExpressionBraces()), null)
+        return KotlinUIfExpression(
+            psiFactory.createIf(conditionPsi, thenBranchPsi.ensureBlockExpressionBraces(), elseBranchPsi?.ensureBlockExpressionBraces()),
+            givenParent = null
+        )
     }
 
     @Deprecated("use version with context parameter")
@@ -235,7 +304,7 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
     }
 
     @Deprecated("use version with context parameter")
-    fun createSimpleReference(name: String): USimpleNameReferenceExpression? {
+    fun createSimpleReference(name: String): USimpleNameReferenceExpression {
         logger<KotlinUastElementFactory>().error("Please switch caller to the version with a context parameter")
         return createSimpleReference(name, null)
     }
@@ -255,7 +324,7 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
     }
 
     @Deprecated("use version with context parameter")
-    fun createReturnExpresion(expression: UExpression?, inLambda: Boolean): UReturnExpression? {
+    fun createReturnExpresion(expression: UExpression?, inLambda: Boolean): UReturnExpression {
         logger<KotlinUastElementFactory>().error("Please switch caller to the version with a context parameter")
         return createReturnExpresion(expression, inLambda, null)
     }
@@ -347,7 +416,7 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
     }
 
     @Deprecated("use version with context parameter")
-    fun createBlockExpression(expressions: List<UExpression>): UBlockExpression? {
+    fun createBlockExpression(expressions: List<UExpression>): UBlockExpression {
         logger<KotlinUastElementFactory>().error("Please switch caller to the version with a context parameter")
         return createBlockExpression(expressions, null)
     }
@@ -364,7 +433,7 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
     }
 
     @Deprecated("use version with context parameter")
-    fun createDeclarationExpression(declarations: List<UDeclaration>): UDeclarationsExpression? {
+    fun createDeclarationExpression(declarations: List<UDeclaration>): UDeclarationsExpression {
         logger<KotlinUastElementFactory>().error("Please switch caller to the version with a context parameter")
         return createDeclarationExpression(declarations, null)
     }
@@ -398,8 +467,8 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
             parameters.joinToString(", ") { p ->
                 val ktype = resolutionFacade?.let { p.type?.resolveToKotlinType(it) }
                 StringBuilder().apply {
-                    append(p.suggestedName ?: ktype?.let { KotlinNameSuggester.suggestNamesByType(it, validator).firstOrNull() })
-                        ?: KotlinNameSuggester.suggestNameByName("v", validator)
+                    append(p.suggestedName ?: ktype?.let { Fe10KotlinNameSuggester.suggestNamesByType(it, validator).firstOrNull() })
+                        ?: Fe10KotlinNameSuggester.suggestNameByName("v", validator)
                     ktype?.fqName?.toString()?.let { append(": ").append(it) }
                 }
             },
@@ -435,8 +504,8 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
                 append("fun foo() { ")
                 append(if (immutable) "val" else "var")
                 append(" ")
-                append(suggestedName ?: ktype?.let { KotlinNameSuggester.suggestNamesByType(it, validator).firstOrNull() })
-                    ?: KotlinNameSuggester.suggestNameByName("v", validator)
+                append(suggestedName ?: ktype?.let { Fe10KotlinNameSuggester.suggestNamesByType(it, validator).firstOrNull() })
+                    ?: Fe10KotlinNameSuggester.suggestNameByName("v", validator)
                 ktype?.fqName?.toString()?.let { append(": ").append(it) }
                 append(" = null")
                 append("}")
@@ -454,7 +523,7 @@ class KotlinUastElementFactory(project: Project) : UastElementFactory {
         type: PsiType?,
         initializer: UExpression,
         immutable: Boolean
-    ): ULocalVariable? {
+    ): ULocalVariable {
         logger<KotlinUastElementFactory>().error("Please switch caller to the version with a context parameter")
         return createLocalVariable(suggestedName, type, initializer, immutable, null)
     }

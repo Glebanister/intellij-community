@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.hints.codeVision
 
 import com.intellij.codeInsight.codeVision.*
@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiModificationTracker
+import kotlin.math.min
 
 /**
  * Adapter between code [CodeVisionProvider] and [DaemonBoundCodeVisionProvider].
@@ -18,19 +19,19 @@ class CodeVisionProviderAdapter(internal val delegate: DaemonBoundCodeVisionProv
     // nothing
   }
 
-  override fun collectPlaceholders(editor: Editor): List<TextRange> {
-    return delegate.collectPlaceholders(editor)
+  override fun preparePreview(editor: Editor, file: PsiFile) {
+    delegate.preparePreview(editor, file)
   }
 
   override fun getPlaceholderCollector(editor: Editor, psiFile: PsiFile?): CodeVisionPlaceholderCollector? {
     return delegate.getPlaceholderCollector(editor, psiFile)
   }
 
-  override fun shouldRecomputeForEditor(editor: Editor, uiData: Unit): Boolean {
+  override fun shouldRecomputeForEditor(editor: Editor, uiData: Unit?): Boolean {
     if (isInlaySettingsEditor(editor)) return true
     val project = editor.project ?: return super.shouldRecomputeForEditor(editor, uiData)
     val cacheService = DaemonBoundCodeVisionCacheService.getInstance(project)
-    val modificationTracker = PsiModificationTracker.SERVICE.getInstance(editor.project)
+    val modificationTracker = PsiModificationTracker.getInstance(editor.project)
     val cached = cacheService.getVisionDataForEditor(editor, id) ?: return super.shouldRecomputeForEditor(editor, uiData)
 
     return modificationTracker.modificationCount == cached.modificationStamp
@@ -47,7 +48,7 @@ class CodeVisionProviderAdapter(internal val delegate: DaemonBoundCodeVisionProv
       val range = it.first
       it.second.showInMorePopup = false
       if (document.textLength <= range.endOffset) {
-        TextRange(range.startOffset, document.textLength) to it.second
+        TextRange(min(document.textLength, range.startOffset), document.textLength) to it.second
       }
       else {
         it

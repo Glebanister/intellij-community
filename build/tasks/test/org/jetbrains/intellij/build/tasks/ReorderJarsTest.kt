@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("UsePropertyAccessSyntax")
 package org.jetbrains.intellij.build.tasks
 
@@ -9,6 +9,10 @@ import com.intellij.util.lang.ImmutableZipFile
 import io.opentelemetry.api.common.AttributeKey
 import io.opentelemetry.api.common.Attributes
 import io.opentelemetry.api.trace.Span
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.zip.ZipFile
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.intellij.build.io.zip
@@ -17,7 +21,6 @@ import org.junit.jupiter.api.extension.RegisterExtension
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.ForkJoinTask
 import java.util.zip.ZipEntry
 import kotlin.random.Random
 
@@ -44,9 +47,15 @@ class ReorderJarsTest {
     Files.write(dir2.resolve("resource2.txt"), random.nextBytes(random.nextInt(128)))
 
     val archiveFile = fs.root.resolve("archive.jar")
-    zip(archiveFile, mapOf(rootDir to ""), compress = false, addDirEntries = true)
+    zip(archiveFile, mapOf(rootDir to ""))
 
-    doReorderJars(mapOf(archiveFile to emptyList()), archiveFile.parent, archiveFile.parent)
+    ImmutableZipFile.load(archiveFile).use { zipFile ->
+      assertThat((zipFile as ImmutableZipFile).resourcePackages).isNotEmpty()
+    }
+
+    runBlocking {
+      doReorderJars(mapOf(archiveFile to emptyList()), archiveFile.parent, archiveFile.parent)
+    }
     ImmutableZipFile.load(archiveFile).use { zipFile ->
       assertThat(zipFile.getResource("anotherDir")).isNotNull()
       assertThat(zipFile.getResource("dir2")).isNotNull()
@@ -67,7 +76,9 @@ class ReorderJarsTest {
 
     Files.createDirectories(tempDir)
 
-    doReorderJars(readClassLoadingLog(path.resolve("order.txt").inputStream(), path, "idea.jar"), path, tempDir)
+    runBlocking {
+      doReorderJars(readClassLoadingLog(path.resolve("order.txt").inputStream(), path, "idea.jar"), path, tempDir)
+    }
     val files = tempDir.toFile().listFiles()!!
     assertThat(files).isNotNull()
     assertThat(files).hasSize(1)
@@ -90,7 +101,9 @@ class ReorderJarsTest {
     Files.createDirectories(tempDir)
 
     val path = testDataPath
-    doReorderJars(readClassLoadingLog(path.resolve("zkmOrder.txt").inputStream(), path, "idea.jar"), path, tempDir)
+    runBlocking {
+      doReorderJars(readClassLoadingLog(path.resolve("zkmOrder.txt").inputStream(), path, "idea.jar"), path, tempDir)
+    }
     val files = tempDir.toFile().listFiles()!!
     assertThat(files).isNotNull()
     val file = files[0]
@@ -102,16 +115,17 @@ class ReorderJarsTest {
   }
 }
 
-private fun doReorderJars(sourceToNames: Map<Path, List<String>>, sourceDir: Path, targetDir: Path) {
-  ForkJoinTask.invokeAll(sourceToNames.mapNotNull { (jarFile, orderedNames) ->
-    if (Files.notExists(jarFile)) {
-      Span.current().addEvent("cannot find jar", Attributes.of(AttributeKey.stringKey("file"), sourceDir.relativize(jarFile).toString()))
-      return@mapNotNull null
-    }
+private suspend fun doReorderJars(sourceToNames: Map<Path, List<String>>, sourceDir: Path, targetDir: Path) {
+  withContext(Dispatchers.IO) {
+    for ((jarFile, orderedNames) in sourceToNames) {
+      if (Files.notExists(jarFile)) {
+        Span.current().addEvent("cannot find jar", Attributes.of(AttributeKey.stringKey("file"), sourceDir.relativize(jarFile).toString()))
+        continue
+      }
 
-    task(tracer.spanBuilder("reorder jar")
-           .setAttribute("file", sourceDir.relativize(jarFile).toString())) {
-      reorderJar(jarFile, orderedNames, if (targetDir == sourceDir) jarFile else targetDir.resolve(sourceDir.relativize(jarFile)))
+      launch {
+        reorderJar(jarFile, orderedNames, if (targetDir == sourceDir) jarFile else targetDir.resolve(sourceDir.relativize(jarFile)))
+      }
     }
-  })
+  }
 }

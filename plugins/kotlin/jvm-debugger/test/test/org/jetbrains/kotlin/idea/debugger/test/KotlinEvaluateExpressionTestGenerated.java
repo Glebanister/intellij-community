@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 import org.jetbrains.kotlin.test.TargetBackend;
 
@@ -792,6 +792,135 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
         }
 
         @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("testData/evaluation/singleBreakpoint/simpleConstructors")
+        public static class SimpleConstructors extends AbstractKotlinEvaluateExpressionTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doSingleBreakpointTest, this, TargetBackend.JVM_WITH_OLD_EVALUATOR, testDataFilePath);
+            }
+
+            @TestMetadata("property.kt")
+            public void testProperty() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleConstructors/property.kt");
+            }
+        }
+
+        @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("testData/evaluation/singleBreakpoint/simpleLocals")
+        public static class SimpleLocals extends AbstractKotlinEvaluateExpressionTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doSingleBreakpointTest, this, TargetBackend.JVM_WITH_OLD_EVALUATOR, testDataFilePath);
+            }
+
+            @TestMetadata("anonymousObject.kt")
+            public void testAnonymousObject() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/anonymousObject.kt");
+            }
+
+            @TestMetadata("localClass.kt")
+            public void testLocalClass() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localClass.kt");
+            }
+
+            @TestMetadata("localFunction.kt")
+            public void testLocalFunction() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localFunction.kt");
+            }
+
+            @TestMetadata("localFunctionCapturedField.kt")
+            public void testLocalFunctionCapturedField() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localFunctionCapturedField.kt");
+            }
+
+            @TestMetadata("localFunctionWithArg.kt")
+            public void testLocalFunctionWithArg() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localFunctionWithArg.kt");
+            }
+
+            @TestMetadata("localFunctionWithArgAndCapturedLocalVar.kt")
+            public void testLocalFunctionWithArgAndCapturedLocalVar() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localFunctionWithArgAndCapturedLocalVar.kt");
+            }
+
+            @TestMetadata("localFunctionWithCapturedLocalVar.kt")
+            public void testLocalFunctionWithCapturedLocalVar() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localFunctionWithCapturedLocalVar.kt");
+            }
+
+            @TestMetadata("localFunctionWithCapturedOuterParameter.kt")
+            public void testLocalFunctionWithCapturedOuterParameter() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/localFunctionWithCapturedOuterParameter.kt");
+            }
+
+            @TestMetadata("twoLocals.kt")
+            public void testTwoLocals() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/twoLocals.kt");
+            }
+
+            @TestMetadata("variableFinderShouldNotImplementDynamicScoping.kt")
+            public void testVariableFinderShouldNotImplementDynamicScoping() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/variableFinderShouldNotImplementDynamicScoping.kt");
+            }
+
+            @TestMetadata("variableFinderShouldNotImplementDynamicScoping2.kt")
+            public void testVariableFinderShouldNotImplementDynamicScoping2() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/variableFinderShouldNotImplementDynamicScoping2.kt");
+            }
+
+            @TestMetadata("variableFinderShouldNotImplementDynamicScoping3.kt")
+            public void testVariableFinderShouldNotImplementDynamicScoping3() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/variableFinderShouldNotImplementDynamicScoping3.kt");
+            }
+
+            @TestMetadata("variableFinderShouldNotImplementDynamicScoping4.kt")
+            public void testVariableFinderShouldNotImplementDynamicScoping4() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/variableFinderShouldNotImplementDynamicScoping4.kt");
+            }
+
+            @TestMetadata("variableFinderShouldNotImplementDynamicScoping5.kt")
+            public void testVariableFinderShouldNotImplementDynamicScoping5() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleLocals/variableFinderShouldNotImplementDynamicScoping5.kt");
+            }
+        }
+
+        @RunWith(JUnit3RunnerWithInners.class)
+        @TestMetadata("testData/evaluation/singleBreakpoint/simpleSmartcasts")
+        public static class SimpleSmartcasts extends AbstractKotlinEvaluateExpressionTest {
+            private void runTest(String testDataFilePath) throws Exception {
+                KotlinTestUtils.runTest(this::doSingleBreakpointTest, this, TargetBackend.JVM_WITH_OLD_EVALUATOR, testDataFilePath);
+            }
+
+            @TestMetadata("downcast.kt")
+            public void testDowncast() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleSmartcasts/downcast.kt");
+            }
+
+            @TestMetadata("downcastFail.kt")
+            public void testDowncastFail() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleSmartcasts/downcastFail.kt");
+            }
+
+            @TestMetadata("downcastFailSplitLines.kt")
+            public void testDowncastFailSplitLines() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleSmartcasts/downcastFailSplitLines.kt");
+            }
+
+            @TestMetadata("downcastSplitLines.kt")
+            public void testDowncastSplitLines() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleSmartcasts/downcastSplitLines.kt");
+            }
+
+            @TestMetadata("notnull.kt")
+            public void testNotnull() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleSmartcasts/notnull.kt");
+            }
+
+            @TestMetadata("notnullFail.kt")
+            public void testNotnullFail() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/simpleSmartcasts/notnullFail.kt");
+            }
+        }
+
+        @RunWith(JUnit3RunnerWithInners.class)
         @TestMetadata("testData/evaluation/singleBreakpoint")
         public static class Uncategorized extends AbstractKotlinEvaluateExpressionTest {
             private void runTest(String testDataFilePath) throws Exception {
@@ -848,6 +977,11 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
                 runTest("testData/evaluation/singleBreakpoint/callableBug.kt");
             }
 
+            @TestMetadata("capturedVariablesInSamLambda.kt")
+            public void testCapturedVariablesInSamLambda() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/capturedVariablesInSamLambda.kt");
+            }
+
             @TestMetadata("classFromAnotherPackage.kt")
             public void testClassFromAnotherPackage() throws Exception {
                 runTest("testData/evaluation/singleBreakpoint/classFromAnotherPackage.kt");
@@ -896,6 +1030,11 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
             @TestMetadata("dependentOnFile.kt")
             public void testDependentOnFile() throws Exception {
                 runTest("testData/evaluation/singleBreakpoint/dependentOnFile.kt");
+            }
+
+            @TestMetadata("distinctSequence.kt")
+            public void testDistinctSequence() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/distinctSequence.kt");
             }
 
             @TestMetadata("doubles.kt")
@@ -1113,6 +1252,16 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
                 runTest("testData/evaluation/singleBreakpoint/kt7046localVarInInline.kt");
             }
 
+            @TestMetadata("ktij21907.kt")
+            public void testKtij21907() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/ktij21907.kt");
+            }
+
+            @TestMetadata("ktij21963.kt")
+            public void testKtij21963() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/ktij21963.kt");
+            }
+
             @TestMetadata("lambdaToString.kt")
             public void testLambdaToString() throws Exception {
                 runTest("testData/evaluation/singleBreakpoint/lambdaToString.kt");
@@ -1221,6 +1370,11 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
             @TestMetadata("privatePropertyWithNonDefaultAccessor.kt")
             public void testPrivatePropertyWithNonDefaultAccessor() throws Exception {
                 runTest("testData/evaluation/singleBreakpoint/privatePropertyWithNonDefaultAccessor.kt");
+            }
+
+            @TestMetadata("privateToplevelProperty.kt")
+            public void testPrivateToplevelProperty() throws Exception {
+                runTest("testData/evaluation/singleBreakpoint/privateToplevelProperty.kt");
             }
 
             @TestMetadata("protectedMember.kt")
@@ -1403,6 +1557,11 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
                 runTest("testData/evaluation/multipleBreakpoints/inlineStackTrace.kt");
             }
 
+            @TestMetadata("inlineStackTraceWithApply.kt")
+            public void testInlineStackTraceWithApply() throws Exception {
+                runTest("testData/evaluation/multipleBreakpoints/inlineStackTraceWithApply.kt");
+            }
+
             @TestMetadata("inlineStackTraceWithNestedLambdas.kt")
             public void testInlineStackTraceWithNestedLambdas() throws Exception {
                 runTest("testData/evaluation/multipleBreakpoints/inlineStackTraceWithNestedLambdas.kt");
@@ -1416,6 +1575,11 @@ public abstract class KotlinEvaluateExpressionTestGenerated extends AbstractKotl
             @TestMetadata("isInsideInlineLambda.kt")
             public void testIsInsideInlineLambda() throws Exception {
                 runTest("testData/evaluation/multipleBreakpoints/isInsideInlineLambda.kt");
+            }
+
+            @TestMetadata("kt51755.kt")
+            public void testKt51755() throws Exception {
+                runTest("testData/evaluation/multipleBreakpoints/kt51755.kt");
             }
 
             @TestMetadata("lambdaParameters.kt")

@@ -1,15 +1,23 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.internal.statistic.libraryUsage
 
 import com.intellij.codeInsight.hint.HintManager
 import com.intellij.internal.statistic.libraryJar.findJarVersion
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.components.service
 import com.intellij.openapi.ui.Messages
 
-class LibraryUsageStatisticsAction : AnAction() {
+internal class LibraryUsageStatisticsAction : AnAction() {
+
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+  override fun update(e: AnActionEvent) {
+    e.presentation.isEnabledAndVisible = e.project != null
+  }
+
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project ?: return
     val editor = e.getRequiredData(CommonDataKeys.EDITOR)
@@ -18,11 +26,10 @@ class LibraryUsageStatisticsAction : AnAction() {
     val fileType = psiFile.fileType
     fun showErrorHint(message: String): Unit = HintManager.getInstance().showErrorHint(editor, message)
 
-    val processor = LibraryUsageImportProcessor.EP_NAME.findFirstSafe { it.isApplicable(fileType) }
+    val processor = LibraryUsageImportProcessorBean.INSTANCE.forLanguage(psiFile.language)
                     ?: return showErrorHint("LibraryUsageImportProcessor is not found for ${fileType.name} file type")
 
-    val libraryDescriptorFinder = service<LibraryDescriptorFinderService>().cachedLibraryDescriptorFinder()
-                                  ?: return showErrorHint("LibraryDescriptorFinder is not cached")
+    val libraryDescriptorFinder = service<LibraryDescriptorFinderService>()
 
     val import = processor.imports(psiFile).find { caretOffset in it.textRange } ?: return showErrorHint("import at caret is not found")
     val qualifier = processor.importQualifier(import) ?: return showErrorHint("qualifier is null")

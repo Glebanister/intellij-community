@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.test;
 
@@ -7,13 +7,9 @@ import com.intellij.openapi.Disposable;
 import com.intellij.openapi.editor.Caret;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
-import kotlin.io.path.PathsKt;
-import kotlin.text.StringsKt;
-import org.jetbrains.kotlin.test.KotlinRoot;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Ref;
-import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.util.text.StringUtilRt;
@@ -28,15 +24,17 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.testFramework.TestDataFile;
 import com.intellij.testFramework.UsefulTestCase;
 import com.intellij.util.PathUtil;
+import com.intellij.util.lang.UrlClassLoader;
 import junit.framework.TestCase;
 import kotlin.collections.CollectionsKt;
+import kotlin.io.path.PathsKt;
 import kotlin.jvm.functions.Function1;
+import kotlin.text.StringsKt;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.DefaultBuiltIns;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
-import org.jetbrains.kotlin.idea.checkers.CompilerTestLanguageVersionSettings;
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys;
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity;
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSourceLocation;
@@ -44,15 +42,18 @@ import org.jetbrains.kotlin.cli.common.messages.MessageCollector;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
-import org.jetbrains.kotlin.config.*;
+import org.jetbrains.kotlin.config.CommonConfigurationKeys;
+import org.jetbrains.kotlin.config.CompilerConfiguration;
+import org.jetbrains.kotlin.config.JVMConfigurationKeys;
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl;
 import org.jetbrains.kotlin.idea.KotlinLanguage;
-import org.jetbrains.kotlin.idea.artifacts.KotlinArtifacts;
+import org.jetbrains.kotlin.idea.base.plugin.artifacts.TestKotlinArtifacts;
+import org.jetbrains.kotlin.idea.base.test.KotlinRoot;
+import org.jetbrains.kotlin.idea.test.util.JetTestUtils;
 import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.storage.LockBasedStorageManager;
-import org.jetbrains.kotlin.idea.test.util.JetTestUtils;
 import org.jetbrains.kotlin.test.TargetBackend;
 import org.jetbrains.kotlin.test.TestJdkKind;
 import org.jetbrains.kotlin.test.TestMetadata;
@@ -101,7 +102,7 @@ public class KotlinTestUtils {
             @NotNull TestJdkKind jdkKind
     ) {
         return KotlinCoreEnvironment.createForTests(
-                disposable, newConfiguration(configurationKind, jdkKind, KotlinArtifacts.getInstance().getJetbrainsAnnotations()),
+                disposable, newConfiguration(configurationKind, jdkKind, TestKotlinArtifacts.getJetbrainsAnnotations()),
                 EnvironmentConfigFiles.JVM_CONFIG_FILES
         );
     }
@@ -238,16 +239,6 @@ public class KotlinTestUtils {
         CompilerConfiguration configuration = new CompilerConfiguration();
         configuration.put(CommonConfigurationKeys.MODULE_NAME, TEST_MODULE_NAME);
 
-        if ("true".equals(System.getProperty("kotlin.ni"))) {
-            // Enable new inference for tests which do not declare their own language version settings
-            CommonConfigurationKeysKt.setLanguageVersionSettings(configuration, new CompilerTestLanguageVersionSettings(
-                    Collections.emptyMap(),
-                    LanguageVersionSettingsImpl.DEFAULT.getApiVersion(),
-                    LanguageVersionSettingsImpl.DEFAULT.getLanguageVersion(),
-                    Collections.emptyMap()
-            ));
-        }
-
         configuration.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, new MessageCollector() {
             @Override
             public void clear() {
@@ -295,28 +286,26 @@ public class KotlinTestUtils {
         if (jdkKind == TestJdkKind.MOCK_JDK) {
             JvmContentRootsKt.addJvmClasspathRoot(configuration, findMockJdkRtJar());
             configuration.put(JVMConfigurationKeys.NO_JDK, true);
-        } else if (SystemInfo.IS_AT_LEAST_JAVA9) {
+        } else {
             configuration.put(JVMConfigurationKeys.JDK_HOME, getAtLeastJdk9Home());
         }
 
-        KotlinArtifacts artifacts = KotlinArtifacts.getInstance();
-
         if (configurationKind.getKotlinStdlib()) {
-            JvmContentRootsKt.addJvmClasspathRoot(configuration, artifacts.getKotlinStdlib());
-            JvmContentRootsKt.addJvmClasspathRoot(configuration, artifacts.getKotlinScriptRuntime());
-            JvmContentRootsKt.addJvmClasspathRoot(configuration, artifacts.getKotlinTest());
-            configuration.put(CLIConfigurationKeys.PATH_TO_KOTLIN_COMPILER_JAR, artifacts.getKotlinCompiler());
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, TestKotlinArtifacts.getKotlinStdlib());
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, TestKotlinArtifacts.getKotlinScriptRuntime());
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, TestKotlinArtifacts.getKotlinTest());
+            configuration.put(CLIConfigurationKeys.PATH_TO_KOTLIN_COMPILER_JAR, TestKotlinArtifacts.getKotlinCompiler());
         }
 
         if (configurationKind.getKotlinReflect()) {
-            JvmContentRootsKt.addJvmClasspathRoot(configuration, artifacts.getKotlinReflect());
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, TestKotlinArtifacts.getKotlinReflect());
         }
 
         JvmContentRootsKt.addJvmClasspathRoots(configuration, classpath);
 
         configuration.put(
                 CLIConfigurationKeys.INTELLIJ_PLUGIN_ROOT,
-                KotlinArtifacts.getInstance().getKotlinCompiler().getAbsolutePath()
+                TestKotlinArtifacts.getKotlinCompiler().getAbsolutePath()
         );
 
         setupIdeaStandaloneExecution();
@@ -526,7 +515,12 @@ public class KotlinTestUtils {
 
     private static boolean compileJavaFiles(@NotNull Collection<File> files, List<String> options, @Nullable File javaErrorFile)
             throws IOException {
-        JavaCompiler javaCompiler = ToolProvider.getSystemJavaCompiler();
+
+        JavaCompiler javaCompiler = ServiceLoader.load(
+                JavaCompiler.class,
+                UrlClassLoader.build().parent(ClassLoader.getSystemClassLoader()
+                ).get()).findFirst().get();
+
         DiagnosticCollector<JavaFileObject> diagnosticCollector = new DiagnosticCollector<>();
         try (StandardJavaFileManager fileManager =
                      javaCompiler.getStandardFileManager(diagnosticCollector, Locale.ENGLISH, StandardCharsets.UTF_8)) {
@@ -612,18 +606,22 @@ public class KotlinTestUtils {
         runTestImpl(testWithCustomIgnoreDirective(test, targetBackend, IGNORE_BACKEND_DIRECTIVE_PREFIX), testCase, testDataFilePath);
     }
 
-    private static void runTestImpl(@NotNull DoTest test, @NotNull TestCase testCase, String testDataFilePath) throws Exception {
+    private static void runTestImpl(@NotNull DoTest test, @Nullable TestCase testCase, String testDataFilePath) throws Exception {
         String absoluteTestDataFilePath;
 
         File testDataFile = new File(testDataFilePath);
         if (testDataFile.isAbsolute()) {
             absoluteTestDataFilePath = testDataFilePath;
         } else {
-            File testRoot = TestMetadataUtil.getTestRoot(testCase.getClass());
-            if (testRoot == null) {
-                throw new IllegalStateException("@TestRoot annotation was not found on " + testCase.getName());
+            if ("true".equals(System.getProperty("kombo.compiler.tests.mode", "false"))) {
+                absoluteTestDataFilePath = new File(TestKotlinArtifacts.jpsPluginTestData(testDataFilePath)).getAbsolutePath();
+            } else {
+                File testRoot = TestMetadataUtil.getTestRoot(testCase.getClass());
+                if (testRoot == null) {
+                    throw new IllegalStateException("@TestRoot annotation was not found on " + testCase.getName());
+                }
+                absoluteTestDataFilePath = new File(testRoot, testDataFilePath).getAbsolutePath();
             }
-            absoluteTestDataFilePath  = new File(testRoot, testDataFilePath).getAbsolutePath();
         }
 
         test.invoke(absoluteTestDataFilePath);

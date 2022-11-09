@@ -1,7 +1,6 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins;
 
-import com.intellij.application.options.RegistryManager;
 import com.intellij.execution.process.ProcessIOExecutorService;
 import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.icons.AllIcons;
@@ -40,6 +39,7 @@ import com.intellij.openapi.updateSettings.impl.UpdateSettings;
 import com.intellij.openapi.util.NlsContexts;
 import com.intellij.openapi.util.NlsSafe;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.registry.RegistryManager;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.LicensingFacade;
@@ -55,7 +55,10 @@ import com.intellij.ui.scale.JBUIScale;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.net.HttpConfigurable;
 import com.intellij.util.ui.*;
-import org.jetbrains.annotations.*;
+import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
@@ -81,7 +84,7 @@ public final class PluginManagerConfigurable
   @SuppressWarnings("UseJBColor") public static final Color MAIN_BG_COLOR =
     JBColor.namedColor("Plugins.background", JBColor.lazy(() -> JBColor.isBright() ? UIUtil.getListBackground() : new Color(0x313335)));
   public static final Color SEARCH_BG_COLOR = JBColor.namedColor("Plugins.SearchField.background", MAIN_BG_COLOR);
-  public static final Color SEARCH_FIELD_BORDER_COLOR = JBColor.border();
+  public static final Color SEARCH_FIELD_BORDER_COLOR = JBColor.namedColor("Plugins.borderColor", JBColor.border());
 
   private static final int MARKETPLACE_TAB = 0;
   private static final int INSTALLED_TAB = 1;
@@ -129,6 +132,7 @@ public final class PluginManagerConfigurable
   private boolean myInstalledSearchSetState = true;
 
   private String myLaterSearchQuery;
+  private boolean myForceShowInstalledTabForTag = false;
   private boolean myShowMarketplaceTab;
 
   public PluginManagerConfigurable(@Nullable Project project) {
@@ -239,11 +243,12 @@ public final class PluginManagerConfigurable
     myCardPanel.select(selectionTab, true);
 
     if (myLaterSearchQuery != null) {
-      Runnable search = enableSearch(myLaterSearchQuery);
+      Runnable search = enableSearch(myLaterSearchQuery, myForceShowInstalledTabForTag);
       if (search != null) {
         ApplicationManager.getApplication().invokeLater(search, ModalityState.any());
       }
       myLaterSearchQuery = null;
+      myForceShowInstalledTabForTag = false;
     }
 
     return myCardPanel;
@@ -438,6 +443,20 @@ public final class PluginManagerConfigurable
               }
               myMarketplacePanel.doLayout();
               myMarketplacePanel.initialSelection();
+
+              if (PluginDetailsPageComponent.isMultiTabs()) {
+                myPluginUpdatesService.calculateUpdates(updates -> {
+                  if (ContainerUtil.isEmpty(updates)) {
+                    clearUpdates(myMarketplacePanel);
+                    clearUpdates(myMarketplaceSearchPanel.getPanel());
+                  }
+                  else {
+                    applyUpdates(myMarketplacePanel, updates);
+                    applyUpdates(myMarketplaceSearchPanel.getPanel(), updates);
+                  }
+                  selectionListener.accept(myMarketplacePanel);
+                });
+              }
             }, ModalityState.any());
           }
         };
@@ -484,8 +503,8 @@ public final class PluginManagerConfigurable
           protected List<String> getValues(@NotNull String attribute) {
             SearchWords word = SearchWords.find(attribute);
             if (word == null) return null;
-            switch (word) {
-              case TAG:
+            return switch (word) {
+              case TAG -> {
                 if (myTagsSorted == null || myTagsSorted.isEmpty()) {
                   Set<String> allTags = new HashSet<>();
                   for (PluginNode descriptor : CustomPluginRepositoryService.getInstance().getCustomRepositoryPlugins()) {
@@ -504,10 +523,10 @@ public final class PluginManagerConfigurable
                   }
                   myTagsSorted = ContainerUtil.sorted(allTags, String::compareToIgnoreCase);
                 }
-                return myTagsSorted;
-              case SORT_BY:
-                return Arrays.asList("downloads", "name", "rating", "updated");
-              case ORGANIZATION:
+                yield myTagsSorted;
+              }
+              case SORT_BY -> Arrays.asList("downloads", "name", "rating", "updated");
+              case ORGANIZATION -> {
                 if (myVendorsSorted == null || myVendorsSorted.isEmpty()) {
                   LinkedHashSet<String> vendors = new LinkedHashSet<>();
                   try {
@@ -520,11 +539,10 @@ public final class PluginManagerConfigurable
                   }
                   myVendorsSorted = new ArrayList<>(vendors);
                 }
-                return myVendorsSorted;
-              case REPOSITORY:
-                return UpdateSettings.getInstance().getPluginHosts();
-            }
-            return null;
+                yield myVendorsSorted;
+              }
+              case REPOSITORY -> UpdateSettings.getInstance().getPluginHosts();
+            };
           }
 
           @Override
@@ -706,7 +724,7 @@ public final class PluginManagerConfigurable
                   return;
                 }
 
-                List<PluginNode> pluginsFromMarketplace = MarketplaceRequests.getInstance().searchPlugins(parser.getUrlQuery(), 10000);
+                List<PluginNode> pluginsFromMarketplace = MarketplaceRequests.getInstance().searchPlugins(parser.getUrlQuery(), 10000, true);
                 // compare plugin versions between marketplace & custom repositories
                 List<PluginNode> customPlugins = ContainerUtil.flatten(customRepositoriesMap.values());
                 Collection<PluginNode> plugins = RepositoryHelper.mergePluginsFromRepositories(pluginsFromMarketplace,
@@ -1323,6 +1341,11 @@ public final class PluginManagerConfigurable
       }
 
       @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.EDT;
+      }
+
+      @Override
       public boolean isCopyEnabled(@NotNull DataContext dataContext) {
         return !component.getSelection().isEmpty();
       }
@@ -1479,7 +1502,7 @@ public final class PluginManagerConfigurable
     ShowSettingsUtil.getInstance().editConfigurable(project,
                                                     configurable,
                                                     () -> {
-                                                      configurable.myPluginModel.enablePlugins(descriptors);
+                                                      configurable.myPluginModel.enable(descriptors);
                                                       configurable.select(descriptors);
                                                     });
   }
@@ -1513,6 +1536,11 @@ public final class PluginManagerConfigurable
     }
 
     @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
+
+    @Override
     public boolean isSelected(@NotNull AnActionEvent e) {
       return myState;
     }
@@ -1536,19 +1564,13 @@ public final class PluginManagerConfigurable
 
     @Nullable
     public String getQuery() {
-      switch (myOption) {
-        case Downloads:
-          return "/sortBy:downloads";
-        case Name:
-          return "/sortBy:name";
-        case Rating:
-          return "/sortBy:rating";
-        case Updated:
-          return "/sortBy:updated";
-        case Relevance:
-        default:
-          return null;
-      }
+      return switch (myOption) {
+        case Downloads -> "/sortBy:downloads";
+        case Name -> "/sortBy:name";
+        case Rating -> "/sortBy:rating";
+        case Updated -> "/sortBy:updated";
+        case Relevance -> null;
+      };
     }
   }
 
@@ -1585,32 +1607,25 @@ public final class PluginManagerConfigurable
       myInstalledSearchCallback.accept(this);
     }
 
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.BGT;
+    }
+
     public void setState(@Nullable SearchQueryParser.Installed parser) {
       if (parser == null) {
         myState = false;
         return;
       }
 
-      switch (myOption) {
-        case Enabled:
-          myState = parser.enabled;
-          break;
-        case Disabled:
-          myState = parser.disabled;
-          break;
-        case Downloaded:
-          myState = parser.downloaded;
-          break;
-        case Bundled:
-          myState = parser.bundled;
-          break;
-        case Invalid:
-          myState = parser.invalid;
-          break;
-        case NeedUpdate:
-          myState = parser.needUpdate;
-          break;
-      }
+      myState = switch (myOption) {
+        case Enabled -> parser.enabled;
+        case Disabled -> parser.disabled;
+        case Downloaded -> parser.downloaded;
+        case Bundled -> parser.bundled;
+        case Invalid -> parser.invalid;
+        case NeedUpdate -> parser.needUpdate;
+      };
     }
 
     @NotNull
@@ -1809,6 +1824,11 @@ public final class PluginManagerConfigurable
   @Nullable
   @Override
   public Runnable enableSearch(String option) {
+    return enableSearch(option, false);
+  }
+
+  @Nullable
+  public Runnable enableSearch(String option, boolean ignoreTagMarketplaceTab) {
     if (myTabHeaderComponent == null) {
       myLaterSearchQuery = option;
       return () -> {};
@@ -1818,7 +1838,7 @@ public final class PluginManagerConfigurable
     }
 
     return () -> {
-      boolean marketplace = (option != null && option.startsWith(SearchWords.TAG.getValue()));
+      boolean marketplace = (!ignoreTagMarketplaceTab && option != null && option.startsWith(SearchWords.TAG.getValue()));
       if (myShowMarketplaceTab) {
         marketplace = true;
         myShowMarketplaceTab = false;
@@ -1843,6 +1863,15 @@ public final class PluginManagerConfigurable
     if (myMarketplaceTab != null) {
       myMarketplaceTab.clearSearchPanel(option);
       myMarketplaceTab.showSearchPanel(option);
+    }
+  }
+
+  public void openInstalledTab(@NotNull String option) {
+    myLaterSearchQuery = option;
+    myShowMarketplaceTab = false;
+    myForceShowInstalledTabForTag = true;
+    if (myTabHeaderComponent != null) {
+      updateSelectionTab(INSTALLED_TAB);
     }
   }
 

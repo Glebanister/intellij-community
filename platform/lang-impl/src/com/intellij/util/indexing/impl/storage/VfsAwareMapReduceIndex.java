@@ -37,7 +37,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 /**
  * @author Eugene Zhuravlev
  */
-public abstract class VfsAwareMapReduceIndex<Key, Value, FileCachedData extends VfsAwareMapReduceIndex.IndexerIdHolder>
+public class VfsAwareMapReduceIndex<Key, Value, FileCachedData extends VfsAwareMapReduceIndex.IndexerIdHolder>
   extends MapReduceIndexBase<Key, Value, FileCachedData> {
   private static final Logger LOG = Logger.getInstance(VfsAwareMapReduceIndex.class);
 
@@ -159,7 +159,7 @@ public abstract class VfsAwareMapReduceIndex<Key, Value, FileCachedData extends 
   protected final InputData<Key, Value> mapInput(int inputId, @Nullable FileContent content) {
     InputData<Key, Value> data;
     boolean containsSnapshotData = true;
-    boolean isPhysical = content instanceof FileContentImpl && ((FileContentImpl)content).isPhysicalContent();
+    boolean isPhysical = content instanceof FileContentImpl && !((FileContentImpl)content).isTransientContent();
     if (mySnapshotInputMappings != null && isPhysical) {
       try {
         data = mySnapshotInputMappings.readData(content);
@@ -191,37 +191,59 @@ public abstract class VfsAwareMapReduceIndex<Key, Value, FileCachedData extends 
   }
 
   public static class IndexerIdHolder {
-    private int indexerId;
+    public int indexerId;
 
-    int getIndexerId() {
-      return indexerId;
-    }
-
-    void setIndexerId(int indexerId) {
+    public IndexerIdHolder(int indexerId) {
       this.indexerId = indexerId;
     }
   }
 
   @Override
-  public void writeData(@NotNull FileCachedData fileData,
-                        @NotNull IndexedFile file) {
+  public FileCachedData getFileIndexMetaData(@NotNull IndexedFile file) {
     if (mySubIndexerRetriever != null) {
       try {
-        Integer indexerId = ProgressManager.getInstance().computeInNonCancelableSection(() -> mySubIndexerRetriever.getFileIndexerId(file));
-        fileData.setIndexerId(indexerId);
+        return (FileCachedData)ProgressManager.getInstance().computeInNonCancelableSection(() -> new IndexerIdHolder(mySubIndexerRetriever.getFileIndexerId(file)));
       }
       catch (IOException e) {
         LOG.error(e);
       }
     }
+    return null;
+  }
+
+  /**
+   * @return value < 0 means that no sub indexer id corresponds to the specified file
+   */
+  protected int getStoredFileSubIndexerId(int fileId) {
+    if (mySubIndexerRetriever == null) throw new IllegalStateException("not a composite indexer");
+    try {
+      return mySubIndexerRetriever.getStoredFileIndexerId(fileId);
+    }
+    catch (IOException e) {
+      LOG.error(e);
+      return -4;
+    }
+  }
+
+  public <SubIndexerVersion> @Nullable SubIndexerVersion getStoredSubIndexerVersion(int fileId) {
+    int indexerId = getStoredFileSubIndexerId(fileId);
+    if (indexerId < 0) return null;
+    try {
+      return (SubIndexerVersion)mySubIndexerRetriever.getVersionByIndexerId(indexerId);
+    }
+    catch (IOException e) {
+      LOG.error(e);
+      return null;
+    }
   }
 
   @Override
-  public void setIndexedStateForFileOnCachedData(int fileId, @NotNull FileCachedData fileData) {
+  public void setIndexedStateForFileOnFileIndexMetaData(int fileId, @Nullable FileCachedData fileData) {
     IndexingStamp.setFileIndexedStateCurrent(fileId, (ID<?, ?>)myIndexId);
     if (mySubIndexerRetriever != null) {
+      LOG.assertTrue(fileData != null, "getFileIndexMetaData() shouldn't have returned null.");
       try {
-        mySubIndexerRetriever.setFileIndexerId(fileId, fileData.getIndexerId());
+        mySubIndexerRetriever.setFileIndexerId(fileId, fileData.indexerId);
       }
       catch (IOException e) {
         LOG.error(e);

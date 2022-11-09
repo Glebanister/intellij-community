@@ -3,10 +3,7 @@ package com.intellij.diff.impl.ui
 
 import com.intellij.diff.DiffTool
 import com.intellij.diff.FrameDiffTool
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.Presentation
-import com.intellij.openapi.actionSystem.ToggleAction
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.CustomComponentAction
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.DumbAwareAction
@@ -14,7 +11,12 @@ import com.intellij.ui.dsl.builder.IntelliJSpacingConfiguration
 import com.intellij.ui.dsl.builder.components.SegmentedButtonToolbar
 import javax.swing.JComponent
 
+@Suppress("DialogTitleCapitalization")
 abstract class DiffToolChooser(private val targetComponent: JComponent? = null) : DumbAwareAction(), CustomComponentAction {
+
+  private val actions = arrayListOf<MyDiffToolAction>()
+
+  override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 
   override fun update(e: AnActionEvent) {
     val presentation = e.presentation
@@ -48,23 +50,28 @@ abstract class DiffToolChooser(private val targetComponent: JComponent? = null) 
   abstract fun getForcedDiffTool(): DiffTool?
 
   override fun createCustomComponent(presentation: Presentation, place: String): JComponent {
-    val group = DefaultActionGroup()
+    actions.clear()
+
     for (tool in getTools()) {
-      group.add(MyDiffToolAction(tool, tool == getActiveTool()))
+      actions.add(MyDiffToolAction(tool, tool == getActiveTool()))
     }
-    return SegmentedButtonToolbar(group, IntelliJSpacingConfiguration())
+    return SegmentedButtonToolbar(DefaultActionGroup(actions), IntelliJSpacingConfiguration())
       .also { it.targetComponent = targetComponent }
   }
 
-  private inner class MyDiffToolAction(private val diffTool: DiffTool, private val state: Boolean) :
+  private inner class MyDiffToolAction(private val diffTool: DiffTool, private var state: Boolean) :
     ToggleAction(diffTool.name), DumbAware {
 
-    override fun isSelected(e: AnActionEvent): Boolean {
-      return state
-    }
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+
+    override fun isSelected(e: AnActionEvent): Boolean = state
 
     override fun setSelected(e: AnActionEvent, state: Boolean) {
       if (getActiveTool() === diffTool) return
+
+      actions.forEach { action -> action.state = !state }
+
+      this.state = state
 
       onSelected(e, diffTool)
     }

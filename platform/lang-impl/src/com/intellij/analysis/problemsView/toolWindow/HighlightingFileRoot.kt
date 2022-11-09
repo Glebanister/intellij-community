@@ -14,11 +14,11 @@ internal class HighlightingFileRoot(panel: ProblemsViewPanel, val file: VirtualF
   private val problems = mutableSetOf<HighlightingProblem>()
   private val filter = ProblemFilter(panel.state)
 
-  private val provider = object : ProblemsProvider {
+  private val provider: ProblemsProvider = object : ProblemsProvider {
     override val project = panel.project
   }
 
-  private val watcher = createWatcher(provider, file)
+  private val watcher: HighlightingWatcher = createWatcher(provider, file)
 
   init {
     Disposer.register(this, provider)
@@ -46,7 +46,7 @@ internal class HighlightingFileRoot(panel: ProblemsViewPanel, val file: VirtualF
 
   private fun createWatcher(provider: ProblemsProvider,
                             file: VirtualFile): HighlightingWatcher =
-    HighlightingWatcher(provider, this, file, HighlightSeverity.INFORMATION.myVal + 1)
+    HighlightingWatcher(provider, this, file, HighlightSeverity.TEXT_ATTRIBUTES.myVal + 1)
 
   override fun getOtherProblemCount() = 0
 

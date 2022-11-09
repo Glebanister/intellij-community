@@ -1,38 +1,48 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.run
 
 import com.intellij.execution.Location
 import com.intellij.execution.PsiLocation
+import com.intellij.execution.RunManager.Companion.getInstance
 import com.intellij.execution.actions.ConfigurationContext
+import com.intellij.execution.application.ApplicationConfiguration
+import com.intellij.execution.configurations.RuntimeConfigurationWarning
+import com.intellij.execution.impl.RunManagerImpl
+import com.intellij.execution.impl.RunnerAndConfigurationSettingsImpl
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.project.DumbServiceImpl
 import com.intellij.openapi.project.PossiblyDumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootModificationUtil
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.JavaPsiFacade
-import com.intellij.psi.PsiComment
-import com.intellij.psi.PsiManager
+import com.intellij.psi.*
 import com.intellij.refactoring.RefactoringFactory
 import com.intellij.testFramework.IdeaTestUtil
 import com.intellij.testFramework.MapDataContext
+import com.intellij.testFramework.fixtures.EditorTestFixture
 import junit.framework.TestCase
 import org.jdom.Element
+import org.jetbrains.kotlin.asJava.toLightElements
 import org.jetbrains.kotlin.asJava.toLightMethods
-import org.jetbrains.kotlin.idea.checkers.languageVersionSettingsFromText
 import org.jetbrains.kotlin.config.LanguageVersionSettings
-import org.jetbrains.kotlin.config.LanguageVersionSettingsImpl
 import org.jetbrains.kotlin.idea.MainFunctionDetector
+import org.jetbrains.kotlin.idea.base.codeInsight.KotlinMainFunctionDetector
+import org.jetbrains.kotlin.idea.base.codeInsight.findMainOwner
+import org.jetbrains.kotlin.idea.base.projectStructure.withLanguageVersionSettings
+import org.jetbrains.kotlin.idea.base.util.allScope
+import org.jetbrains.kotlin.idea.base.util.module
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
-import org.jetbrains.kotlin.idea.project.withLanguageVersionSettings
+import org.jetbrains.kotlin.idea.checkers.languageVersionSettingsFromText
+import org.jetbrains.kotlin.idea.compiler.configuration.KotlinPluginLayout
 import org.jetbrains.kotlin.idea.run.KotlinRunConfiguration.Companion.findMainClassFile
-import org.jetbrains.kotlin.idea.search.allScope
 import org.jetbrains.kotlin.idea.stubindex.KotlinFullClassNameIndex
 import org.jetbrains.kotlin.idea.stubindex.KotlinTopLevelFunctionFqnNameIndex
 import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
 import org.jetbrains.kotlin.idea.test.withCustomLanguageAndApiVersion
-import org.jetbrains.kotlin.idea.util.module
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.allChildren
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
@@ -52,8 +62,8 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
         configureProject()
         val configuredModule = defaultConfiguredModule
 
-        val languageVersion = LanguageVersionSettingsImpl.DEFAULT.languageVersion
-        withCustomLanguageAndApiVersion(project, module, languageVersion.versionString, apiVersion = null) {
+        val languageVersion = KotlinPluginLayout.standaloneCompilerVersion.languageVersion
+        withCustomLanguageAndApiVersion(project, module, languageVersion, apiVersion = null) {
             val runConfiguration = createConfigurationFromMain(project, "some.main")
             val javaParameters = getJavaRunParameters(runConfiguration)
 
@@ -86,7 +96,7 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
                         foundMainCandidates
                     )
 
-                    val foundMainFileContainer = EntryPointContainerFinder.find(ktFile)
+                    val foundMainFileContainer = KotlinMainFunctionDetector.getInstance().findMainOwner(ktFile)
 
                     if (functionCandidates?.any { it.isMainFunction(languageVersionSettings) } == true) {
                         assertNotNull(
@@ -139,6 +149,46 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
 
     fun testInJsModule() = checkClasses(Platform.JavaScript)
 
+    fun testApplicationConfiguration() {
+        configureProject()
+
+        val manager = getInstance(project)
+        val configuration = ApplicationConfiguration("some.main()", project)
+        val mainFunction = findMainFunction(project, "some.main")
+        val lightElements = mainFunction.containingKtFile.toLightElements()
+        val psiClass = lightElements.single() as PsiClass
+        assertEquals("MainKt", psiClass.name)
+        configuration.setMainClass(psiClass)
+        val settings = RunnerAndConfigurationSettingsImpl(manager as RunManagerImpl, configuration)
+        settings.checkSettings(null)
+
+        // modify file: `main` becomes `_main`, hence no main function
+        val containingFile = mainFunction.containingFile
+        val virtualFile = containingFile.virtualFile
+        val editorTestFixture = editorTestFixture(virtualFile)
+        val editor = editorTestFixture.editor
+        val offset = editor.document.text.indexOf("main").takeIf { it >= 0 } ?: error("no `main` marker")
+        editor.caretModel.moveToOffset(offset)
+        editorTestFixture.type('_')
+
+        FileDocumentManager.getInstance().saveDocument(editor.document)
+        PsiDocumentManager.getInstance(project).commitAllDocuments()
+        // recheck
+        try {
+            settings.checkSettings(null)
+            fail("There is no Main method in class some.MainKt")
+        } catch (e: RuntimeConfigurationWarning) {
+            assertEquals("Main method not found in class some.MainKt", e.message)
+        }
+    }
+
+    private fun editorTestFixture(virtualFile: VirtualFile): EditorTestFixture {
+        val fragmentEditor = FileEditorManagerEx.getInstanceEx(project).openTextEditor(
+            OpenFileDescriptor(project, virtualFile, 0), true
+        ) ?: error("unable to open file")
+        return EditorTestFixture(project, fragmentEditor, virtualFile)
+    }
+
     fun testRedirectInputPath() {
         configureProject()
 
@@ -174,7 +224,7 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
 
         val runConfiguration = createConfigurationFromObject("renameTest.Foo")
 
-        val obj = KotlinFullClassNameIndex.getInstance().get("renameTest.Foo", project, project.allScope()).single()
+        val obj = KotlinFullClassNameIndex.get("renameTest.Foo", project, project.allScope()).single()
         val rename = RefactoringFactory.getInstance(project).createRename(obj, "Bar")
         rename.run()
 
@@ -247,7 +297,7 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
     }
 
     private fun createConfigurationFromObject(@Suppress("SameParameterValue") objectFqn: String): KotlinRunConfiguration {
-        val obj = KotlinFullClassNameIndex.getInstance().get(objectFqn, project, project.allScope()).single()
+        val obj = KotlinFullClassNameIndex.get(objectFqn, project, project.allScope()).single()
         val mainFunction = obj.declarations.single { it is KtFunction && it.getName() == "main" }
         return createConfigurationFromElement(mainFunction, true) as KotlinRunConfiguration
     }
@@ -312,7 +362,7 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
                     }
                 }
 
-                val foundMainContainer = EntryPointContainerFinder.find(function)
+                val foundMainContainer = KotlinMainFunctionDetector.getInstance().findMainOwner(function)
 
                 if (isMainFunction) {
                     createConfigurationFromMain(project, function.fqName?.asString()!!).checkConfiguration()
@@ -328,6 +378,7 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
                             "$file: configuration for function ${function.fqName?.asString()} at least shouldn't pass checkConfiguration()",
                         )
                     } catch (expected: Throwable) {
+                        // ignore
                     }
 
                     if (text.startsWith("// entryPointExists")) {
@@ -348,18 +399,26 @@ class RunConfigurationTest : AbstractRunConfigurationTest() {
         }
 
         private fun createConfigurationFromMain(project: Project, mainFqn: String): KotlinRunConfiguration {
+            val mainFunction = findMainFunction(project, mainFqn)
+            return createConfigurationFromElement(mainFunction) as KotlinRunConfiguration
+        }
+
+        private fun findMainFunction(
+            project: Project,
+            mainFqn: String
+        ): KtNamedFunction {
             val scope = project.allScope()
             val mainFunction =
-                KotlinTopLevelFunctionFqnNameIndex.getInstance().get(mainFqn, project, scope).firstOrNull()
+                KotlinTopLevelFunctionFqnNameIndex.get(mainFqn, project, scope).firstOrNull()
                     ?: run {
                         val className = StringUtil.getPackageName(mainFqn)
                         val shortName = StringUtil.getShortName(mainFqn)
-                        KotlinFullClassNameIndex.getInstance().get(className, project, scope)
+                        KotlinFullClassNameIndex.get(className, project, scope)
                             .flatMap { it.declarations }
                             .filterIsInstance<KtNamedFunction>()
                             .firstOrNull { it.name == shortName }
                     } ?: error("unable to look up top level function $mainFqn")
-            return createConfigurationFromElement(mainFunction) as KotlinRunConfiguration
+            return mainFunction
         }
     }
 

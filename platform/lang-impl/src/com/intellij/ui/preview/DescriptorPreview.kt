@@ -12,7 +12,6 @@ import com.intellij.openapi.editor.ex.EditorEx
 import com.intellij.openapi.editor.highlighter.EditorHighlighterFactory
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.ui.Splitter
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
 import com.intellij.util.ui.JBUI
@@ -65,9 +64,9 @@ class DescriptorPreview(val splitter: Splitter, val editable: Boolean, val id: C
       true -> EditorFactory.getInstance().createEditor(document, project, EditorKind.PREVIEW)
       else -> EditorFactory.getInstance().createViewer(document, project, EditorKind.PREVIEW)
     }
-    if (editor is EditorEx && Registry.`is`("ide.color.scheme.for.descriptor.preview.enabled", false)) {
-      val scheme = EditorColorsUtil.getGlobalOrDefaultColorScheme()
-      editor.colorsScheme = scheme
+    if (editor is EditorEx) {
+      val scheme = EditorColorsUtil.getColorSchemeForBackground(editor.colorsScheme.defaultBackground)
+      editor.colorsScheme = editor.createBoundColorSchemeDelegate(scheme)
       editor.highlighter = EditorHighlighterFactory.getInstance().createEditorHighlighter(file, scheme, project)
     }
     with(editor.settings) {

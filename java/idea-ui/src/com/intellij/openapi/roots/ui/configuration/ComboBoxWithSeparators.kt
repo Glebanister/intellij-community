@@ -1,13 +1,17 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.roots.ui.configuration
 
+import com.intellij.openapi.roots.ui.configuration.ComboBoxWithSeparators.EntryModel
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.util.NlsContexts
 import com.intellij.ui.ColoredListCellRenderer
-import com.intellij.ui.JBColor
-import com.intellij.ui.SeparatorWithText
+import com.intellij.ui.GroupHeaderSeparator
 import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.components.panels.OpaquePanel
+import com.intellij.util.ui.JBUI
+import java.awt.BorderLayout
 import java.awt.Component
+import java.awt.Dimension
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JList
 
@@ -43,7 +47,7 @@ abstract class ComboBoxWithSeparators<T> : ComboBox<ComboBoxWithSeparators<T>.En
   }
 
   private inner class MyListCellRenderer: ColoredListCellRenderer<ComboBoxWithSeparators<T>.EntryModel<T>>() {
-    private val separator = SeparatorWithText()
+    private val separatorRenderer = SeparatorRenderer()
 
     override fun getListCellRendererComponent(list: JList<out EntryModel<T>>?,
                                               value: EntryModel<T>?,
@@ -52,8 +56,9 @@ abstract class ComboBoxWithSeparators<T> : ComboBox<ComboBoxWithSeparators<T>.En
                                               hasFocus: Boolean): Component {
       return when (value) {
         is Separator -> {
-          separator.caption = value.text
-          separator
+          // index = -1 for ComboBox size calculation, separator shouldn't be taken into account
+          separatorRenderer.init(value.text, index < 0)
+          separatorRenderer
         }
         else -> super.getListCellRendererComponent(list, value, index, selected, hasFocus)
       }
@@ -75,4 +80,30 @@ abstract class ComboBoxWithSeparators<T> : ComboBox<ComboBoxWithSeparators<T>.En
 
   }
 
+}
+
+private class SeparatorRenderer : OpaquePanel() {
+
+  private val separator = GroupHeaderSeparator(JBUI.insets(3, 8, 1, 0))
+
+  private var emptyPreferredHeight = false
+
+  init {
+    layout = BorderLayout()
+    separator.useComboLineInsets()
+    add(separator)
+  }
+
+  fun init(@NlsContexts.Separator caption: String, emptyPreferredHeight: Boolean) {
+    separator.caption = caption
+    this.emptyPreferredHeight = emptyPreferredHeight
+  }
+
+  override fun getPreferredSize(): Dimension {
+    var result = super.getPreferredSize()
+    if (emptyPreferredHeight) {
+      result = Dimension(result.width, 0)
+    }
+    return result
+  }
 }

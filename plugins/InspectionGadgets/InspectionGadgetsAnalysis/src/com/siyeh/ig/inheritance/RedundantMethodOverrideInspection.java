@@ -57,7 +57,7 @@ public class RedundantMethodOverrideInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement methodNameIdentifier = descriptor.getPsiElement();
       final PsiElement method = methodNameIdentifier.getParent();
       assert method != null;
@@ -72,7 +72,7 @@ public class RedundantMethodOverrideInspection extends BaseInspection {
 
   private class RedundantMethodOverrideVisitor extends BaseInspectionVisitor {
     @Override
-    public void visitMethod(PsiMethod method) {
+    public void visitMethod(@NotNull PsiMethod method) {
       super.visitMethod(method);
       if (method.isConstructor()) {
         return;

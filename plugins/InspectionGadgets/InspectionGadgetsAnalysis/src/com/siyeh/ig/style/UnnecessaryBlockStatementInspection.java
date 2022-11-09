@@ -74,7 +74,7 @@ public class UnnecessaryBlockStatementInspection extends BaseInspection implemen
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement leftBrace = descriptor.getPsiElement();
       final PsiElement parent = leftBrace.getParent();
       if (!(parent instanceof PsiCodeBlock)) {
@@ -95,7 +95,7 @@ public class UnnecessaryBlockStatementInspection extends BaseInspection implemen
   private class UnnecessaryBlockStatementVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitBlockStatement(PsiBlockStatement blockStatement) {
+    public void visitBlockStatement(@NotNull PsiBlockStatement blockStatement) {
       super.visitBlockStatement(blockStatement);
       if (ignoreSwitchBranches) {
         final PsiElement prevStatement = PsiTreeUtil.skipWhitespacesBackward(blockStatement);

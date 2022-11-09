@@ -72,6 +72,7 @@ public class ChangeModifierIntention extends BaseElementAtCaretIntentionAction {
   private AccessModifier myTarget;
 
   // Necessary to register an extension
+  @SuppressWarnings("unused")
   public ChangeModifierIntention() {
     this(false);
   }
@@ -91,11 +92,13 @@ public class ChangeModifierIntention extends BaseElementAtCaretIntentionAction {
     if (modifiers.isEmpty()) return false;
     if (!myErrorFix && !ContainerUtil.exists(modifiers, mod -> mod.hasModifier(member))) return false;
     modifiers.removeIf(mod -> mod.hasModifier(member));
-    AccessModifier target = null;
     if (modifiers.isEmpty()) return false;
+    AccessModifier target = null;
     if (modifiers.size() == 1) {
       target = modifiers.get(0);
-      setText(IntentionPowerPackBundle.message("change.modifier.text", identifier.getText(), target));
+      String name = identifier.getText();
+      if (member instanceof PsiMethod) name += "()";
+      setText(IntentionPowerPackBundle.message("change.modifier.text", name, target));
     }
     else {
       setText(getFamilyName());
@@ -366,7 +369,7 @@ public class ChangeModifierIntention extends BaseElementAtCaretIntentionAction {
       .run(() -> {
         VisibilityUtil.setVisibility(modifierList, modifier.toPsiModifier());
         if (modifier != AccessModifier.PACKAGE_LOCAL) {
-          final PsiElement whitespace = PsiParserFacade.SERVICE.getInstance(project).createWhiteSpaceFromText(" ");
+          final PsiElement whitespace = PsiParserFacade.getInstance(project).createWhiteSpaceFromText(" ");
           final PsiElement sibling = modifierList.getNextSibling();
           if (sibling instanceof PsiWhiteSpace) {
             sibling.replace(whitespace);

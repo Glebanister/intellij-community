@@ -52,7 +52,7 @@ public class PackageInfoWithoutPackageInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiJavaFile)) {
         return;
@@ -75,7 +75,7 @@ public class PackageInfoWithoutPackageInspection extends BaseInspection {
   private static class PackageInfoWithoutPackageVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitJavaFile(PsiJavaFile file) {
+    public void visitJavaFile(@NotNull PsiJavaFile file) {
       @NonNls final String name = file.getName();
       if (!PsiPackage.PACKAGE_INFO_FILE.equals(name)) {
         return;

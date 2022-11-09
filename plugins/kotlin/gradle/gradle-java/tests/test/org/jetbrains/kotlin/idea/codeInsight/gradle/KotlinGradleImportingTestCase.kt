@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.kotlin.idea.codeInsight.gradle
 
 import com.intellij.execution.executors.DefaultRunExecutor
@@ -22,10 +22,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.VfsTestUtil
 import org.gradle.util.GradleVersion
 import org.jetbrains.jps.model.module.JpsModuleSourceRootType
+import org.jetbrains.kotlin.idea.base.test.AndroidStudioTestUtils
 import org.jetbrains.kotlin.idea.gradleTooling.KotlinMPPGradleModel
 import org.jetbrains.kotlin.idea.test.GradleProcessOutputInterceptor
 import org.jetbrains.kotlin.idea.test.IDEA_TEST_DATA_DIR
-import org.jetbrains.kotlin.test.AndroidStudioTestUtils
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils
 import org.jetbrains.kotlin.utils.addToStdlib.filterIsInstanceWithChecker
 import org.jetbrains.plugins.gradle.importing.GradleImportingTestCase
@@ -54,6 +54,14 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase() {
 
     protected val importStatusCollector = ImportStatusCollector()
 
+    override fun findJdkPath(): String {
+        return System.getenv("JDK_11") ?: System.getenv("JAVA11_HOME") ?: run {
+            val message = "Missing JDK_11 or JAVA11_HOME environment variable"
+            if (IS_UNDER_TEAMCITY) LOG.error(message) else LOG.warn(message)
+            super.findJdkPath()
+        }
+    }
+
     override fun setUp() {
         Assume.assumeFalse(AndroidStudioTestUtils.skipIncompatibleTestAgainstAndroidStudio())
         super.setUp()
@@ -65,8 +73,13 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase() {
     }
 
     override fun tearDown() {
-        tearDownImportStatusCollector()
-        super.tearDown()
+        try {
+            tearDownImportStatusCollector()
+        } catch (e: Throwable) {
+            addSuppressedException(e)
+        } finally {
+            super.tearDown()
+        }
     }
 
     protected open fun setUpImportStatusCollector() {
@@ -119,6 +132,7 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase() {
         }.toList()
     }
 
+    @Deprecated("Use .setupAndroid() instead", level = DeprecationLevel.ERROR)
     protected fun createLocalPropertiesSubFileForAndroid() {
         createProjectSubFile(
             "local.properties",
@@ -158,13 +172,18 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase() {
         return files
     }
 
-    protected inline fun <reified T : Any> buildGradleModel(): BuiltGradleModel<T> =
-        buildGradleModel(T::class)
+    protected inline fun <reified T : Any> buildGradleModel(debuggerOptions: BuildGradleModelDebuggerOptions? = null): BuiltGradleModel<T> =
+        buildGradleModel(T::class, debuggerOptions)
 
-    protected fun <T : Any> buildGradleModel(clazz: KClass<T>): BuiltGradleModel<T> =
-        buildGradleModel(myProjectRoot.toNioPath().toFile(), GradleVersion.version(gradleVersion), clazz)
+    protected fun <T : Any> buildGradleModel(
+        clazz: KClass<T>,
+        debuggerOptions: BuildGradleModelDebuggerOptions? = null
+    ): BuiltGradleModel<T> =
+        buildGradleModel(myProjectRoot.toNioPath().toFile(), GradleVersion.version(gradleVersion), findJdkPath(), clazz, debuggerOptions)
 
-    protected fun buildKotlinMPPGradleModel(): BuiltGradleModel<KotlinMPPGradleModel> = buildGradleModel()
+    protected fun buildKotlinMPPGradleModel(
+        debuggerOptions: BuildGradleModelDebuggerOptions? = null
+    ): BuiltGradleModel<KotlinMPPGradleModel> = buildGradleModel(debuggerOptions)
 
     protected fun getSourceRootInfos(moduleName: String): List<Pair<String, JpsModuleSourceRootType<*>>> {
         return ModuleRootManager.getInstance(getModule(moduleName)).contentEntries.flatMap { contentEntry ->
@@ -220,9 +239,14 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase() {
         val localFileSystem = LocalFileSystem.getInstance()
         val projectFile = localFileSystem.refreshAndFindFileByPath(projectFilePath)
             ?: error("Failed to find projectFile: $projectFilePath")
+
+        val settings = createLinkSettings(projectFile.toNioPath(), myProject).apply {
+            gradleJvm = GRADLE_JDK_NAME
+        }
+
         ExternalSystemUtil.linkExternalProject(
             /* externalSystemId = */ GradleConstants.SYSTEM_ID,
-            /* projectSettings = */ createLinkSettings(projectFile.toNioPath(), myProject),
+            /* projectSettings = */ settings,
             /* project = */ myProject,
             /* importResultCallback = */ null,
             /* isPreviewMode = */ false,
@@ -272,11 +296,11 @@ abstract class KotlinGradleImportingTestCase : GradleImportingTestCase() {
         const val MINIMAL_SUPPORTED_GRADLE_PLUGIN_VERSION = "1.3.0"
         const val LATEST_STABLE_GRADLE_PLUGIN_VERSION = "1.3.70"
 
-        val SUPPORTED_GRADLE_VERSIONS: List<Array<Any>> = listOf(arrayOf("4.9"), arrayOf("5.6.4"), arrayOf("6.0.1"))
+        val SUPPORTED_GRADLE_VERSIONS = arrayOf("4.9", "5.6.4", "6.0.1")
 
         @JvmStatic
         @Suppress("ACCIDENTAL_OVERRIDE")
         @Parameterized.Parameters(name = "{index}: with Gradle-{0}")
-        fun data(): Collection<Array<Any>> = SUPPORTED_GRADLE_VERSIONS
+        fun data(): Collection<Array<Any>> = SUPPORTED_GRADLE_VERSIONS.map { arrayOf(it) }
     }
 }

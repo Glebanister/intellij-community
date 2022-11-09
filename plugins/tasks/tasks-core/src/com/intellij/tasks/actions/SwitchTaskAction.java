@@ -26,7 +26,6 @@ import com.intellij.tasks.TaskManager;
 import com.intellij.tasks.config.TaskSettings;
 import com.intellij.tasks.impl.LocalTaskImpl;
 import com.intellij.tasks.impl.TaskManagerImpl;
-import com.intellij.tools.SimpleActionGroup;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.util.NullableFunction;
 import com.intellij.util.containers.ContainerUtil;
@@ -54,12 +53,6 @@ public class SwitchTaskAction extends ComboBoxAction implements DumbAware {
         return SwitchTaskAction.createPopup(DataManager.getInstance().getDataContext(this), onDispose, false);
       }
     };
-  }
-
-  @NotNull
-  @Override
-  protected DefaultActionGroup createPopupActionGroup(JComponent button) {
-    return new DefaultActionGroup();
   }
 
   @Override
@@ -92,6 +85,11 @@ public class SwitchTaskAction extends ComboBoxAction implements DumbAware {
       presentation.setEnabledAndVisible(true);
       presentation.copyFrom(getTemplatePresentation());
     }
+  }
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
   }
 
   private static boolean isImplicit(LocalTask activeTask) {
@@ -200,7 +198,7 @@ public class SwitchTaskAction extends ComboBoxAction implements DumbAware {
   }
 
   private static ActionGroup createActionsStep(final List<TaskListItem> tasks, final Project project, final Ref<Boolean> shiftPressed) {
-    SimpleActionGroup group = new SimpleActionGroup();
+    DefaultActionGroup group = new DefaultActionGroup();
     final TaskManager manager = TaskManager.getManager(project);
     final LocalTask task = tasks.get(0).getTask();
     if (tasks.size() == 1 && task != null) {

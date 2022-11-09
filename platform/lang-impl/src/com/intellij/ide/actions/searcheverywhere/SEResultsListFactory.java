@@ -20,11 +20,16 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.util.Map;
 import java.util.function.Supplier;
 
 abstract class SEResultsListFactory {
+
+  private static final JBInsets RENDERER_INSETS = new JBInsets(1, 8, 1, 2);
+  private static final JBInsets TOGGLE_BUTTON_RENDERER_INSETS =
+    new JBInsets(0, RENDERER_INSETS.getUnscaled().left, 0, RENDERER_INSETS.getUnscaled().right);
 
   abstract SearchListModel createModel();
 
@@ -32,7 +37,7 @@ abstract class SEResultsListFactory {
 
   abstract ListCellRenderer<Object> createListRenderer(SearchListModel model, SearchEverywhereHeader header);
 
-  protected static final SimpleTextAttributes SMALL_LABEL_ATTRS = new SimpleTextAttributes(
+  public static final SimpleTextAttributes SMALL_LABEL_ATTRS = new SimpleTextAttributes(
     SimpleTextAttributes.STYLE_SMALLER, JBUI.CurrentTheme.BigPopup.listTitleLabelForeground());
 
   protected static final ListCellRenderer<Object> myMoreRenderer = new ColoredListCellRenderer<>() {
@@ -62,7 +67,7 @@ abstract class SEResultsListFactory {
       return component;
     }
     SelectablePanel selectablePanel = SelectablePanel.wrap(component, JBUI.CurrentTheme.Popup.BACKGROUND);
-    PopupUtil.configSelectablePanel(selectablePanel);
+    PopupUtil.configListRendererFixedHeight(selectablePanel);
     if (selected) {
       selectablePanel.setSelectionColor(UIUtil.getListBackground(true, true));
     }
@@ -74,43 +79,57 @@ abstract class SEResultsListFactory {
                                       SearchListModel searchListModel, Map<String, ListCellRenderer<? super Object>> renderersCache) {
     Color unselectedBackground = extractUnselectedBackground(selected, () ->
       SearchEverywhereClassifier.EP_Manager.getListCellRendererComponent(list, value, index, false, hasFocus));
-    Component component = SearchEverywhereClassifier.EP_Manager.getListCellRendererComponent(
-      list, value, index, selected, hasFocus);
+    Component component = detachParent(SearchEverywhereClassifier.EP_Manager.getListCellRendererComponent(
+      list, value, index, selected, hasFocus));
     if (component == null) {
       SearchEverywhereContributor<Object> contributor = searchListModel.getContributorForIndex(index);
       assert contributor != null : "Null contributor is not allowed here";
       ListCellRenderer<? super Object> renderer = renderersCache.computeIfAbsent(contributor.getSearchProviderId(), s -> contributor.getElementsRenderer());
       unselectedBackground = extractUnselectedBackground(selected, () ->
-        renderer.getListCellRendererComponent(list, value, index, false, true));
-      component = renderer.getListCellRendererComponent(list, value, index, selected, true);
+        detachParent(renderer.getListCellRendererComponent(list, value, index, false, true)));
+      component = detachParent(renderer.getListCellRendererComponent(list, value, index, selected, true));
     }
 
     if (component instanceof JComponent) {
       JComponent jComponent = (JComponent)component;
-      if (ExperimentalUI.isNewUI()) {
-        jComponent.setBorder(JBUI.Borders.empty());
-      }
-      else {
-        if (jComponent.getBorder() != GotoActionModel.GotoActionListCellRenderer.TOGGLE_BUTTON_BORDER) {
-          jComponent.setBorder(JBUI.Borders.empty(1, 2));
-        }
+      if (!ExperimentalUI.isNewUI()) {
+        jComponent.setBorder(
+          new EmptyBorder(jComponent.getBorder() == GotoActionModel.GotoActionListCellRenderer.TOGGLE_BUTTON_BORDER
+                          ? TOGGLE_BUTTON_RENDERER_INSETS
+                          : RENDERER_INSETS));
       }
     }
 
     AppUIUtil.targetToDevice(component, list);
 
     if (ExperimentalUI.isNewUI()) {
-      Color rowBackground = selected ? unselectedBackground : component.getBackground();
+      Color rowBackground;
+      if (selected) {
+        rowBackground = unselectedBackground;
+      }
+      else {
+        rowBackground = component.getBackground();
+      }
       if (rowBackground == null || rowBackground == UIUtil.getListBackground()) {
         rowBackground = JBUI.CurrentTheme.Popup.BACKGROUND;
       }
-      SelectablePanel selectablePanel = SelectablePanel.wrap(component, rowBackground);
-      PopupUtil.configSelectablePanel(selectablePanel);
+
+      SelectablePanel selectablePanel;
+      if (component instanceof SelectablePanel) {
+        selectablePanel = (SelectablePanel)component;
+      } else {
+        if (component instanceof JComponent) {
+          ((JComponent)component).setBorder(JBUI.Borders.empty());
+        }
+        UIUtil.setOpaqueRecursively(component, false);
+        selectablePanel = SelectablePanel.wrap(component);
+        component = selectablePanel;
+      }
+      selectablePanel.setBackground(rowBackground);
+      PopupUtil.configListRendererFixedHeight(selectablePanel);
       if (selected) {
         selectablePanel.setSelectionColor(UIUtil.getListBackground(true, true));
       }
-      UIUtil.setOpaqueRecursively(component, false);
-      component = selectablePanel;
     } else {
       component.setPreferredSize(UIUtil.updateListRowHeight(component.getPreferredSize()));
     }
@@ -118,7 +137,17 @@ abstract class SEResultsListFactory {
     return component;
   }
 
-  private static @Nullable Color extractUnselectedBackground(boolean isSelected, Supplier<Component> supplier) {
+  /**
+   * In case component's background is null parent's background is returned. Detach from parent to avoid that
+   */
+  private static <T extends Component> T detachParent(@Nullable T component) {
+    if (ExperimentalUI.isNewUI() && component != null && component.getParent() != null) {
+      component.getParent().remove(component);
+    }
+    return component;
+  }
+
+  private static @Nullable Color extractUnselectedBackground(boolean isSelected, Supplier<? extends Component> supplier) {
     if (ExperimentalUI.isNewUI() && isSelected) {
       Component component = supplier.get();
       if (component != null) {

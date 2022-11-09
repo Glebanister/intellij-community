@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.idea.refactoring.rename
 
@@ -7,28 +7,19 @@ import com.intellij.psi.*
 import com.intellij.refactoring.RefactoringActionHandler
 import com.intellij.refactoring.rename.inplace.VariableInplaceRenameHandler
 import com.intellij.refactoring.rename.inplace.VariableInplaceRenamer
-import org.jetbrains.kotlin.idea.core.unquote
+import org.jetbrains.kotlin.idea.base.psi.unquoteKotlinIdentifier
 import org.jetbrains.kotlin.psi.*
 
 open class KotlinVariableInplaceRenameHandler : VariableInplaceRenameHandler() {
     companion object {
         fun isInplaceRenameAvailable(element: PsiElement): Boolean {
-            when (element) {
-                is KtTypeParameter -> return true
-                is KtDestructuringDeclarationEntry -> return true
-                is KtParameter -> {
-                    val parent = element.parent
-                    if (parent is KtForExpression) {
-                        return true
-                    }
-                    if (parent is KtParameterList) {
-                        val grandparent = parent.parent
-                        return grandparent is KtCatchClause || grandparent is KtFunctionLiteral
-                    }
-                }
-                is KtLabeledExpression, is KtImportAlias -> return true
+            return when (element) {
+                is KtTypeParameter -> true
+                is KtDestructuringDeclarationEntry -> true
+                is KtParameter -> element.isLoopParameter || element.isCatchParameter || element.isLambdaParameter
+                is KtLabeledExpression, is KtImportAlias -> true
+                else -> false
             }
-            return false
         }
     }
 
@@ -44,7 +35,7 @@ open class KotlinVariableInplaceRenameHandler : VariableInplaceRenameHandler() {
         override fun acceptReference(reference: PsiReference): Boolean {
             val refElement = reference.element
             val textRange = reference.rangeInElement
-            val referenceText = refElement.text.substring(textRange.startOffset, textRange.endOffset).unquote()
+            val referenceText = refElement.text.substring(textRange.startOffset, textRange.endOffset).unquoteKotlinIdentifier()
             return referenceText == myElementToRename.name
         }
 
@@ -63,6 +54,6 @@ open class KotlinVariableInplaceRenameHandler : VariableInplaceRenameHandler() {
         return RenamerImpl(currentElementToRename, editor, currentName, currentName)
     }
 
-    override public fun isAvailable(element: PsiElement?, editor: Editor, file: PsiFile) =
+    public override fun isAvailable(element: PsiElement?, editor: Editor, file: PsiFile) =
         editor.settings.isVariableInplaceRenameEnabled && element != null && isInplaceRenameAvailable(element)
 }

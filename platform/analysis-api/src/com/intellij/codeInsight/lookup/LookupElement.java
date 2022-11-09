@@ -25,7 +25,6 @@ import java.util.Set;
  * Another way is to subclass it. Use the latter way only if you need it to implement some additional interface, to modify equals/hashCode
  * or other advanced logic.
  *
- * @author peter
  * @see com.intellij.codeInsight.completion.PrioritizedLookupElement
  */
 public abstract class LookupElement extends UserDataHolderBase {
@@ -95,10 +94,10 @@ public abstract class LookupElement extends UserDataHolderBase {
 
   /**
    * Performs changes after the current lookup element is chosen by the user.<p/>
-   * <p>
+   *
    * When this method is invoked, the lookup string is already inserted into the editor.
    * In addition, the document is committed, unless {@link #requiresCommittedDocuments()} returns false.<p/>
-   * <p>
+   *
    * This method is invoked inside a write action. If you need to show dialogs,
    * please do that inside {@link InsertionContext#setLaterRunnable}.
    *
@@ -110,7 +109,7 @@ public abstract class LookupElement extends UserDataHolderBase {
 
   /**
    * @return whether {@link #handleInsert} expects all documents to be committed at the moment of its invocation.
-   * The default is {@code true}, overriders can change that, for example if automatic commit is too slow.
+   * The default is {@code true}, overriders can change that, for example if automatic commit is too slow. 
    */
   public boolean requiresCommittedDocuments() {
     return true;
@@ -131,12 +130,12 @@ public abstract class LookupElement extends UserDataHolderBase {
   /**
    * Fill the given presentation object with details specifying how this lookup element should look when rendered.
    * By default, just sets the item text to the lookup string.<p></p>
-   * <p>
+   *
    * This method is called before the item can be shown in the suggestion list, so it should be relatively fast to ensure that
    * list is shown as soon as possible. If there are heavy computations involved, consider making them optional and moving into
    * to {@link #getExpensiveRenderer()}.
    */
-  public void renderElement(LookupElementPresentation presentation) {
+  public void renderElement(@NotNull LookupElementPresentation presentation) {
     presentation.setItemText(getLookupString());
     JBColor highlighted = getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
     if (highlighted != null) {
@@ -154,11 +153,9 @@ public abstract class LookupElement extends UserDataHolderBase {
     return null;
   }
 
-  /**
-   * Prefer to use {@link #as(Class)}
-   */
+  /** Prefer to use {@link #as(Class)} */
   @Nullable
-  public <T> T as(ClassConditionKey<T> conditionKey) {
+  public <T> T as(@NotNull ClassConditionKey<T> conditionKey) {
     //noinspection unchecked
     return conditionKey.isInstance(this) ? (T)this : null;
   }
@@ -168,9 +165,9 @@ public abstract class LookupElement extends UserDataHolderBase {
    * If this object is not a decorator, return it if it's instance of the given class, otherwise null.
    */
   @Nullable
-  public <T> T as(Class<T> clazz) {
+  public <T> T as(@NotNull Class<T> clazz) {
     //noinspection unchecked
-    return clazz.isInstance(this) ? (T)this : null;
+    return clazz.isInstance(this) ? (T) this : null;
   }
 
   /**

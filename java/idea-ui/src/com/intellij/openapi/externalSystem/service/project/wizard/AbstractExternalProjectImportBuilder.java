@@ -174,7 +174,7 @@ public abstract class AbstractExternalProjectImportBuilder<C extends AbstractImp
     final ExternalProjectSettings projectSettings = getCurrentExternalProjectSettings();
 
     //noinspection unchecked
-    Set<ExternalProjectSettings> projects = new HashSet<>(systemSettings.getLinkedProjectsSettings());
+    Set<ExternalProjectSettings> projects = new HashSet<ExternalProjectSettings>(systemSettings.getLinkedProjectsSettings());
     // add current importing project settings to linked projects settings or replace if similar already exist
     projects.remove(projectSettings);
     projects.add(projectSettings);
@@ -209,7 +209,7 @@ public abstract class AbstractExternalProjectImportBuilder<C extends AbstractImp
                               boolean isFromUI,
                               final List<Module> modules,
                               IdeModifiableModelsProvider modelsProvider, final ExternalProjectSettings projectSettings) {
-    myProjectDataManager.importData(externalProjectNode, project, modelsProvider, true);
+    myProjectDataManager.importData(externalProjectNode, project, modelsProvider);
     myExternalProjectNode = null;
 
     // resolve dependencies
@@ -238,7 +238,7 @@ public abstract class AbstractExternalProjectImportBuilder<C extends AbstractImp
         if (externalProject == null) {
           return;
         }
-        ApplicationManager.getApplication().getService(ProjectDataManager.class).importData(externalProject, project, false);
+        ApplicationManager.getApplication().getService(ProjectDataManager.class).importData(externalProject, project);
       }
     };
   }

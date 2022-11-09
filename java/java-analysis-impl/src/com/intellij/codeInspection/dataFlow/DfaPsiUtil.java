@@ -43,7 +43,9 @@ import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.MultiMap;
 import com.intellij.util.containers.Stack;
 import com.siyeh.ig.callMatcher.CallMatcher;
+import com.siyeh.ig.psiutils.BoolUtils;
 import com.siyeh.ig.psiutils.ClassUtils;
+import com.siyeh.ig.psiutils.ControlFlowUtils;
 import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -51,6 +53,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 import static com.intellij.psi.CommonClassNames.*;
+import static com.intellij.util.ObjectUtils.tryCast;
 import static com.siyeh.ig.callMatcher.CallMatcher.staticCall;
 
 public final class DfaPsiUtil {
@@ -221,7 +224,7 @@ public final class DfaPsiUtil {
 
   private static boolean shouldIgnoreAnnotation(PsiAnnotation annotation) {
     PsiClass containingClass = ClassUtils.getContainingClass(annotation);
-    if (containingClass == null) return false;
+    if (containingClass == null || !containingClass.isValid()) return false;
     String qualifiedName = containingClass.getQualifiedName();
     // We deliberately ignore nullability annotations on Guava functional interfaces to avoid noise warnings
     // See IDEA-170548 for details
@@ -279,16 +282,21 @@ public final class DfaPsiUtil {
     return Nullability.UNKNOWN;
   }
 
+  private static final CallMatcher OPTIONAL_FUNCTIONS =
+    CallMatcher.instanceCall(JAVA_UTIL_OPTIONAL, "map", "filter", "ifPresent", "flatMap", "ifPresentOrElse");
+  private static final CallMatcher MAP_COMPUTE =
+    CallMatcher.instanceCall(JAVA_UTIL_MAP, "compute").parameterTypes("K", JAVA_UTIL_FUNCTION_BI_FUNCTION);
+
   @NotNull
   private static Nullability getLambdaParameterNullability(@NotNull PsiMethod method, int parameterIndex, int lambdaParameterIndex) {
-    PsiClass type = method.getContainingClass();
-    if(type != null) {
-      if(JAVA_UTIL_OPTIONAL.equals(type.getQualifiedName())) {
-        String methodName = method.getName();
-        if((methodName.equals("map") || methodName.equals("filter") || methodName.equals("ifPresent") || methodName.equals("flatMap"))
-          && parameterIndex == 0 && lambdaParameterIndex == 0) {
-          return Nullability.NOT_NULL;
-        }
+    if (OPTIONAL_FUNCTIONS.methodMatches(method)) {
+      if (parameterIndex == 0 && lambdaParameterIndex == 0) {
+        return Nullability.NOT_NULL;
+      }
+    }
+    else if (MAP_COMPUTE.methodMatches(method)) {
+      if (parameterIndex == 1 && lambdaParameterIndex == 1) {
+        return Nullability.NULLABLE;
       }
     }
     return Nullability.UNKNOWN;
@@ -445,7 +453,7 @@ public final class DfaPsiUtil {
         final MultiMap<PsiField, PsiExpression> result = new MultiMap<>();
         JavaRecursiveElementWalkingVisitor visitor = new JavaRecursiveElementWalkingVisitor() {
           @Override
-          public void visitAssignmentExpression(PsiAssignmentExpression assignment) {
+          public void visitAssignmentExpression(@NotNull PsiAssignmentExpression assignment) {
             super.visitAssignmentExpression(assignment);
             PsiExpression lExpression = assignment.getLExpression();
             PsiExpression rExpression = assignment.getRExpression();
@@ -692,5 +700,79 @@ public final class DfaPsiUtil {
       return ((PsiType)value).getPresentableText();
     }
     return value.toString();
+  }
+
+  /**
+   * @param anchor boolean expression
+   * @param expectedValue the expected result of boolean expression
+   * @return true if this boolean expression is effectively an assertion (code throws if its value is not equal to expectedValue)
+   */
+  public static boolean isAssertionEffectively(@NotNull PsiExpression anchor, boolean expectedValue) {
+    PsiElement parent;
+    while (true) {
+      parent = anchor.getParent();
+      if (parent instanceof PsiExpression parentExpr && BoolUtils.isNegation(parentExpr)) {
+        expectedValue = !expectedValue;
+        anchor = parentExpr;
+        continue;
+      }
+      if (parent instanceof PsiParenthesizedExpression parenthesized) {
+        anchor = parenthesized;
+        continue;
+      }
+      if (parent instanceof PsiPolyadicExpression polyadic) {
+        IElementType tokenType = polyadic.getOperationTokenType();
+        if (tokenType.equals(JavaTokenType.ANDAND) || tokenType.equals(JavaTokenType.OROR)) {
+          // always true operand makes always true OR-chain and does not affect the result of AND-chain
+          // Note that in `assert unknownExpression && trueExpression;` the trueExpression should not be reported
+          // because this assertion is essentially the shortened `assert unknownExpression; assert trueExpression;`
+          // which is not reported.
+          boolean causesShortCircuit = (tokenType.equals(JavaTokenType.OROR) == expectedValue) &&
+                                       ArrayUtil.getLastElement(polyadic.getOperands()) != anchor;
+          if (!causesShortCircuit) {
+            // We still report `assert trueExpression || unknownExpression`, because here `unknownExpression` is never checked
+            // which is probably not intended.
+            anchor = polyadic;
+            continue;
+          }
+        }
+      }
+      break;
+    }
+    if (parent instanceof PsiAssertStatement) {
+      return expectedValue;
+    }
+    if (parent instanceof PsiIfStatement ifStatement && anchor == ifStatement.getCondition()) {
+      PsiStatement thenBranch = ControlFlowUtils.stripBraces(ifStatement.getThenBranch());
+      if (thenBranch instanceof PsiThrowStatement) {
+        return !expectedValue;
+      }
+    }
+    return isAssertCallArgument(anchor, ContractValue.booleanValue(expectedValue));
+  }
+
+  /**
+   * @param anchor expression
+   * @param wantedConstraint expected contract value
+   * @return true if this expression is an argument for an assertion call that ensures that the expression is equal to the expected value
+   */
+  public static boolean isAssertCallArgument(@NotNull PsiElement anchor, @NotNull ContractValue wantedConstraint) {
+    PsiElement parent = PsiUtil.skipParenthesizedExprUp(anchor.getParent());
+    if (parent instanceof PsiExpressionList) {
+      int index = ArrayUtil.indexOf(((PsiExpressionList)parent).getExpressions(), anchor);
+      if (index >= 0) {
+        PsiMethodCallExpression call = tryCast(parent.getParent(), PsiMethodCallExpression.class);
+        if (call != null) {
+          MethodContract contract = ContainerUtil.getOnlyItem(JavaMethodContractUtil.getMethodCallContracts(call));
+          if (contract != null && contract.getReturnValue().isFail()) {
+            ContractValue condition = ContainerUtil.getOnlyItem(contract.getConditions());
+            if (condition != null) {
+              return condition.getArgumentComparedTo(wantedConstraint, false).orElse(-1) == index;
+            }
+          }
+        }
+      }
+    }
+    return false;
   }
 }

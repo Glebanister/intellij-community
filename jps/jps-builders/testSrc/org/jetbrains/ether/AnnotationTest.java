@@ -16,7 +16,7 @@
 package org.jetbrains.ether;
 
 /**
- * @author: db
+ * @author db
  */
 public class AnnotationTest extends IncrementalTestCase {
   public AnnotationTest() {
@@ -32,6 +32,10 @@ public class AnnotationTest extends IncrementalTestCase {
   }
   
   public void testAddTypeUseAnnotationTarget() {
+    doTest();
+  }
+
+  public void testAddRecordComponentAnnotationTarget() {
     doTest();
   }
 

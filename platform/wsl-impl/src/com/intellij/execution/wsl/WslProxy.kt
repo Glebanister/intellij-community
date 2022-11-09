@@ -2,7 +2,6 @@
 package com.intellij.execution.wsl
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
 import io.ktor.network.selector.ActorSelectorManager
 import io.ktor.network.sockets.aSocket
@@ -14,6 +13,7 @@ import io.ktor.utils.io.close
 import io.ktor.utils.io.jvm.javaio.toByteReadChannel
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import java.io.IOException
 import java.net.InetAddress
 import java.nio.ByteBuffer
@@ -84,7 +84,12 @@ class WslProxy(distro: AbstractWslDistribution, private val applicationPort: Int
 
   private suspend fun readToBuffer(channel: ByteReadChannel, bufferSize: Int): ByteBuffer {
     val buffer = ByteBuffer.allocate(bufferSize).order(ByteOrder.LITTLE_ENDIAN)
-    channel.readFully(buffer)
+    try {
+      channel.readFully(buffer)
+    }
+    catch (e: ClosedReceiveChannelException) {
+      throw Exception("wslproxy closed stream unexpectedly. See idea.log for errors", e)
+    }
     buffer.rewind()
     return buffer
   }
@@ -92,7 +97,7 @@ class WslProxy(distro: AbstractWslDistribution, private val applicationPort: Int
   private suspend fun readPortFromChannel(channel: ByteReadChannel): Int = readToBuffer(channel, 2).short.toUShort().toInt()
 
   init {
-    val wslCommandLine =  distro.getTool("wslproxy")
+    val wslCommandLine = runBlocking { distro.getTool("wslproxy") }
     val process = Runtime.getRuntime().exec(wslCommandLine.commandLineString)
     val log = Logger.getInstance(WslProxy::class.java)
 

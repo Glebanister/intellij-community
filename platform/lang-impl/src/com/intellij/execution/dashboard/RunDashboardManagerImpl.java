@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.execution.dashboard;
 
 import com.google.common.collect.Sets;
@@ -14,10 +14,7 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.services.ServiceEventListener;
 import com.intellij.execution.services.ServiceViewManager;
 import com.intellij.execution.services.ServiceViewManagerImpl;
-import com.intellij.execution.ui.RunContentDescriptor;
-import com.intellij.execution.ui.RunContentManager;
-import com.intellij.execution.ui.RunContentManagerImpl;
-import com.intellij.execution.ui.RunnerLayoutUi;
+import com.intellij.execution.ui.*;
 import com.intellij.execution.ui.layout.impl.RunnerLayoutUiImpl;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.lightEdit.LightEdit;
@@ -33,7 +30,6 @@ import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Condition;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.wm.ToolWindowId;
 import com.intellij.ui.content.*;
 import com.intellij.util.SmartList;
@@ -75,7 +71,7 @@ public final class RunDashboardManagerImpl implements RunDashboardManager, Persi
 
   public RunDashboardManagerImpl(@NotNull Project project) {
     myProject = project;
-    ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
+    ContentFactory contentFactory = ContentFactory.getInstance();
     myContentManager = contentFactory.createContentManager(new PanelContentUI(), false, project);
     myServiceContentManagerListener = new ServiceContentManagerListener();
     myReuseCondition = this::canReuseContent;
@@ -107,20 +103,36 @@ public final class RunDashboardManagerImpl implements RunDashboardManager, Persi
     CUSTOMIZER_EP_NAME.addExtensionPointListener(dashboardUpdater, myProject);
     GROUPING_RULE_EP_NAME.addExtensionPointListener(dashboardUpdater, myProject);
 
-    ExtensionPointListener typeUpdater = new ExtensionPointListener() {
+    DEFAULT_TYPES_PROVIDER_EP_NAME.addExtensionPointListener(new ExtensionPointListener<RunDashboardDefaultTypesProvider>() {
       @Override
-      public void extensionAdded(@NotNull Object extension, @NotNull PluginDescriptor pluginDescriptor) {
+      public void extensionAdded(RunDashboardDefaultTypesProvider extension, @NotNull PluginDescriptor pluginDescriptor) {
+        Set<String> types = new HashSet<>(getTypes());
+        types.addAll(extension.getDefaultTypeIds(myProject));
+        setTypes(types);
+      }
+
+      @Override
+      public void extensionRemoved(RunDashboardDefaultTypesProvider extension, @NotNull PluginDescriptor pluginDescriptor) {
+        Set<String> types = new HashSet<>(getTypes());
+        types.removeAll(extension.getDefaultTypeIds(myProject));
+        setTypes(types);
+        dashboardUpdater.extensionRemoved(extension, pluginDescriptor);
+      }
+    }, myProject);
+    ConfigurationType.CONFIGURATION_TYPE_EP.addExtensionPointListener(new ExtensionPointListener<ConfigurationType>() {
+      @Override
+      public void extensionAdded(ConfigurationType extension, @NotNull PluginDescriptor pluginDescriptor) {
         setTypes(new HashSet<>(getTypes()));
       }
 
       @Override
-      public void extensionRemoved(@NotNull Object extension, @NotNull PluginDescriptor pluginDescriptor) {
-        setTypes(new HashSet<>(getTypes()));
+      public void extensionRemoved(ConfigurationType extension, @NotNull PluginDescriptor pluginDescriptor) {
+        Set<String> types = new HashSet<>(getTypes());
+        types.remove(extension.getId());
+        setTypes(types);
         dashboardUpdater.extensionRemoved(extension, pluginDescriptor);
       }
-    };
-    DEFAULT_TYPES_PROVIDER_EP_NAME.addExtensionPointListener(typeUpdater, myProject);
-    ConfigurationType.CONFIGURATION_TYPE_EP.addExtensionPointListener(typeUpdater, myProject);
+    }, myProject);
   }
 
   private void initServiceContentListeners() {
@@ -298,7 +310,8 @@ public final class RunDashboardManagerImpl implements RunDashboardManager, Persi
 
   private void moveAddedContent(Condition<? super RunnerAndConfigurationSettings> condition) {
     RunContentManagerImpl runContentManager = (RunContentManagerImpl)RunContentManager.getInstance(myProject);
-    List<RunContentDescriptor> descriptors = ((ExecutionManagerImpl)ExecutionManager.getInstance(myProject)).getRunningDescriptors(condition);
+    List<RunContentDescriptor> descriptors =
+      ((ExecutionManagerImpl)ExecutionManager.getInstance(myProject)).getRunningDescriptors(condition);
     for (RunContentDescriptor descriptor : descriptors) {
       Content content = descriptor.getAttachedContent();
       if (content == null) continue;
@@ -562,7 +575,7 @@ public final class RunDashboardManagerImpl implements RunDashboardManager, Persi
     RunContentDescriptor descriptor = RunContentManagerImpl.getRunContentDescriptorByContent(content);
     RunnerLayoutUiImpl ui = getRunnerLayoutUi(descriptor);
     if (ui != null) {
-      if (Registry.is("debugger.new.tool.window.layout")) {
+      if (UIExperiment.isNewDebuggerUIEnabled()) {
         ui.setTopLeftActionsVisible(visible);
       }
       else {
@@ -762,7 +775,8 @@ public final class RunDashboardManagerImpl implements RunDashboardManager, Persi
       if (onAdd) {
         RunConfigurationNode node = createNode(content);
         if (node != null) {
-          ServiceViewManager.getInstance(myProject).select(node, RunDashboardServiceViewContributor.class, true, false);
+          var shouldActivate = node.getConfigurationSettings().isActivateToolWindowBeforeRun();
+          ServiceViewManager.getInstance(myProject).select(node, RunDashboardServiceViewContributor.class, shouldActivate, false);
         }
       }
     }

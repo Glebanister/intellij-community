@@ -1,4 +1,4 @@
-// "Import" "true"
+// "Import class 'F'" "true"
 // ERROR: Cannot access 'F': it is private in file
 // ERROR: Cannot access 'F': it is private in file
 
@@ -8,3 +8,5 @@ import simple.F
 
 @F<caret>()
 class A
+
+/* IGNORE_FIR */

@@ -92,6 +92,10 @@
       "mnemonicsBorderInsets": {
         "os.default":"0,8,1,6",
         "os.linux":"0,8,1,8"
+      },
+      "mnemonicsInsets": {
+        "os.default":"0,0,0,8",
+        "os.linux":"0,0,0,8"
       }
     },
 
@@ -178,7 +182,10 @@
       "UI": "com.intellij.ide.ui.laf.darcula.ui.DarculaComboBoxUI"
     },
 
-    "ComboBoxButton.background": "contentBackground",
+    "ComboBoxButton": {
+      "background": "contentBackground",
+      "UI": "com.intellij.ide.ui.laf.darcula.ui.ComboBoxButtonUI"
+    },
 
     "CompletionPopup": {
       "foreground": "foreground",
@@ -251,7 +258,8 @@
     "Editor": {
       "background": "grey09",
       "foreground": "infoPanelForeground",
-      "shortcutForeground": "#4274A6"
+      "shortcutForeground": "#4274A6",
+      "SearchField.background" : "contentBackground"
     },
 
     "EditorPane": {
@@ -524,10 +532,7 @@
     "PopupMenu": {
       "border": "com.intellij.ide.ui.laf.darcula.ui.DarculaPopupMenuBorder",
       "borderInsets": "6,1,6,1",
-      "borderCornerRadiusX": 16,
-      "borderCornerRadiusY": 16,
-      "leftBorderWith": 10,
-      "rightBorderWith": 0,
+      "borderCornerRadius": 8,
       "translucentBackground": "panel",
       "UI": "com.intellij.ide.ui.laf.intellij.IdeaPopupMenuUI"
     },
@@ -645,10 +650,7 @@
     },
 
     "SpeedSearch": {
-      "background": "contentBackground",
-      "borderColor": "grey02",
-      "errorForeground": "#ff0000",
-      "foreground": "foreground"
+      "background": "contentBackground"
     },
 
     "Spinner": {
@@ -762,6 +764,12 @@
         "os.windows": "#eecaca"
       },
       "disabledBackground": "panel"
+    },
+
+    "SearchFieldWithExtension": {
+      "background": "contentBackground",
+      "border": "com.intellij.ui.components.DarculaSearchBorder",
+      "UI": "com.intellij.ui.components.DarculaSearchFieldWithExtensionUI"
     },
 
     "TitledBorder.titleColor": "black",
@@ -909,9 +917,6 @@
     },
 
     "ToolbarComboWidget": {
-      "background": "#f2f2f2",
-      "hoverBackground": "#dfdfdf",
-      "borderInsets": "3,5,3,5",
       "UI": "com.intellij.ide.ui.laf.darcula.ui.ToolbarComboWidgetUI"
     },
 
@@ -924,7 +929,7 @@
         "pressedBackground": "#dfdfdf"
       },
       "Dropdown": {
-        "borderInsets": "12,6,12,6",
+        "borderInsets": "3,5,3,5",
         "background": "#f2f2f2",
         "hoverBackground": "#dfdfdf",
         "pressedBackground": "#dfdfdf"
@@ -950,6 +955,41 @@
       "spanForeground": "#F5F5F5",
       "foreground": "#F5F5F5",
       "stepNumberForeground": "#6CA6ED"
+    },
+
+    "TipOfTheDay": {
+      "Image.borderColor": "border"
+    },
+
+    "PackageSearch": {
+      "SearchResult": {
+        "background": "#e4faff",
+        "hoverBackground": "#d0e2ee",
+        "PackageTag": {
+          "background": "#d2e6eb",
+          "foreground": "black",
+          "hoverBackground": "#bfd0db",
+          "selectedBackground": "#4395e2",
+          "selectedForeground": "white"
+        }
+      },
+      "PackageTag": {
+        "background": "grey14",
+        "foreground": "black",
+        "hoverBackground": "#c9d2db",
+        "selectedBackground": "#4395e2",
+        "selectedForeground": "white"
+      },
+      "PackageTagSelected.background": "#4395e2",
+      "PackageTagSelected.foreground": "white"
+    },
+    "RunWidget" : {
+      "foreground": "#ffffff",
+      "background": "#3369d6",
+      "runningBackground": "#599e5e",
+      "hoverBackground": "#00000019",
+      "pressedBackground": "#00000028",
+      "separatorColor": "#FFFFFF40"
     }
   }
 }

@@ -1,97 +1,28 @@
+/*******************************************************************************
+ * Copyright 2000-2022 JetBrains s.r.o. and contributors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ******************************************************************************/
+
 package com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions
 
-import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.appSystemDir
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.getProjectDataPath
-import com.intellij.util.io.createDirectories
-import com.intellij.util.io.delete
-import com.intellij.util.io.exists
-import com.intellij.util.io.readText
-import com.jetbrains.packagesearch.api.v2.ApiPackagesResponse
-import com.jetbrains.packagesearch.api.v2.ApiStandardPackage
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.InstalledDependency
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackageVersion
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.PackagesToUpgrade
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.UiPackageModel
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.operations.PackageSearchOperation
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.NormalizedPackageVersion.Garbage
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.NormalizedPackageVersion.Semantic
 import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.models.versions.NormalizedPackageVersion.TimestampLike
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.PackagesListPanel
-import com.jetbrains.packagesearch.intellij.plugin.ui.toolwindow.panels.management.packages.UiPackageModelCacheKey
 import com.jetbrains.packagesearch.intellij.plugin.util.CoroutineLRUCache
 import com.jetbrains.packagesearch.intellij.plugin.util.nullIfBlank
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import java.nio.file.Files
-import kotlin.io.path.writeText
-
-internal class PackageSearchCachesService : Disposable {
-
-    private val persistentCacheFile = appSystemDir.resolve("caches/pkgs/normalizedVersions.json")
-
-    private val json = Json {
-        prettyPrint = true
-        allowStructuredMapKeys = true
-    }
-
-    private val normalizerCache: CoroutineLRUCache<PackageVersion.Named, NormalizedPackageVersion<PackageVersion.Named>> =
-        persistentCacheFile.takeIf { it.exists() }
-            ?.runCatching {
-                json.decodeFromString(
-                    CoroutineLRUCache.serializer<PackageVersion.Named, NormalizedPackageVersion<PackageVersion.Named>>(),
-                    readText()
-                )
-            }
-            ?.getOrNull()
-            ?: CoroutineLRUCache(4_000)
-
-    val normalizer = PackageVersionNormalizer(normalizerCache)
-
-    override fun dispose() {
-        persistentCacheFile
-            .apply { if (!parent.exists()) Files.createDirectories(parent) }
-            .writeText(json.encodeToString(CoroutineLRUCache.serializer(), normalizerCache))
-    }
-
-    suspend fun clear() = coroutineScope {
-        launch { normalizerCache.clear() }
-        launch(Dispatchers.IO) { persistentCacheFile.delete() }
-    }
-}
-
-internal class PackageSearchProjectCachesService(project: Project) {
-
-    val headerOperationsCache: CoroutineLRUCache<PackagesToUpgrade.PackageUpgradeInfo, List<PackageSearchOperation<*>>> =
-        CoroutineLRUCache(2000)
-
-    val searchCache: CoroutineLRUCache<PackagesListPanel.SearchCommandModel, ApiPackagesResponse<ApiStandardPackage, ApiStandardPackage.ApiStandardVersion>> =
-        CoroutineLRUCache(200)
-
-    val searchPackageModelCache: CoroutineLRUCache<UiPackageModelCacheKey, UiPackageModel.SearchResult> =
-        CoroutineLRUCache(1000)
-
-    val installedDependencyCache: CoroutineLRUCache<InstalledDependency, ApiStandardPackage> =
-        CoroutineLRUCache(500)
-
-    val projectCacheDirectory = project.getProjectDataPath("pkgs")
-        .also { if (!it.exists()) it.createDirectories() }
-
-    suspend fun clear() = coroutineScope {
-        launch { headerOperationsCache.clear() }
-        launch { searchCache.clear() }
-        launch { searchPackageModelCache.clear() }
-        launch { installedDependencyCache.clear() }
-        launch(Dispatchers.IO) {
-            projectCacheDirectory.delete(true)
-            projectCacheDirectory.createDirectories()
-        }
-    }
-}
 
 internal class PackageVersionNormalizer(
     private val versionsCache: CoroutineLRUCache<PackageVersion.Named, NormalizedPackageVersion<PackageVersion.Named>> = CoroutineLRUCache(2_000)
@@ -112,32 +43,29 @@ internal class PackageVersionNormalizer(
     private val SEMVER_REGEX = "^((?:\\d{1,5}\\.){0,4}\\d{1,5}(?!\\.?\\d)).*\$".toRegex(option = RegexOption.IGNORE_CASE)
 
     /**
-     * Extracts stability markers. Must be used on the string that follows a valid semver
-     * (see [SEMVER_REGEX]).
+     * Extracts stability markers. Must be used on the string that follows a valid semver (see [SEMVER_REGEX]).
      *
-     * Stability markers are made up by a separator character (one of: . _ - +), then one of the
-     * stability tokens (see the list below), followed by an optional separator (one of: . _ -),
-     * AND [0, 5] numeric digits. After the digits, there must be a word boundary (most
-     * punctuation, except for underscores, qualifies as such).
+     * Stability markers are made up by a separator character (one of: . _ - +), then one of the stability tokens (see the list below), followed by an
+     * optional separator (one of: . _ -), AND [0, 5] numeric digits. After the digits, there must be a word boundary (most punctuation, except for
+     * underscores, qualifies as such).
      *
-     * We only support up to two stability markers (arguably, having two already qualifies for
-     * the [Garbage] tier, but we have well-known libraries out there that do the two-markers
-     * game, now and then, and we need to support those shenanigans).
+     * We only support up to two stability markers (arguably, having two already qualifies for the [Garbage] tier, but we have well-known libraries
+     * out there that do the two-markers game, now and then, and we need to support those shenanigans).
      *
      * ### Stability tokens
      * We support the following stability tokens:
-     *  * `snapshots`*, `snapshot`, `snap`, `s`*
-     *  * `preview`, `eap`, `pre`, `p`*
-     *  * `develop`*, `dev`*
-     *  * `milestone`*, `m`, `build`*
-     *  * `alpha`, `a`
-     *  * `betta` (yes, there are Bettas out there), `beta`, `b`
-     *  * `candidate`*, `rc`
-     *  * `sp`
-     *  * `release`, `final`, `stable`*, `rel`, `r`
+     * * `snapshots`*, `snapshot`, `snap`, `s`*
+     * * `preview`, `eap`, `pre`, `p`*
+     * * `develop`*, `dev`*
+     * * `milestone`*, `m`, `build`*
+     * * `alpha`, `a`
+     * * `betta` (yes, there are Bettas out there), `beta`, `b`
+     * * `candidate`*, `rc`
+     * * `sp`
+     * * `release`, `final`, `stable`*, `rel`, `r`
      *
-     * Tokens denoted by a `*` are considered as meaningless words by [com.intellij.util.text.VersionComparatorUtil]
-     * when comparing without a custom token priority provider, so sorting may be funky when they appear.
+     * Tokens denoted by a `*` are considered as meaningless words by [com.intellij.util.text.VersionComparatorUtil] when comparing without a custom
+     * token priority provider, so sorting may be funky when they appear.
      */
     private val STABILITY_MARKER_REGEX =
         ("^((?:[._\\-+]" +
@@ -145,8 +73,14 @@ internal class PackageVersionNormalizer(
             "(?:[._\\-]?\\d{1,5})?){1,2})(?:\\b|_)")
             .toRegex(option = RegexOption.IGNORE_CASE)
 
+    suspend fun <T : PackageVersion> parse(version: T): NormalizedPackageVersion<*> =
+        when (version) {
+            is PackageVersion.Missing -> NormalizedPackageVersion.Missing
+            is PackageVersion.Named -> parse(version)
+            else -> error("Unknown version type: ${version.javaClass.simpleName}")
+        }
+
     suspend fun parse(version: PackageVersion.Named): NormalizedPackageVersion<PackageVersion.Named> {
-        @Suppress("UNCHECKED_CAST") // Unfortunately, MRUMap doesn't have type parameters
         val cachedValue = versionsCache.get(version)
 
         if (cachedValue != null) return cachedValue

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 @file:Suppress("ReplaceGetOrSet")
 
 package org.jetbrains.intellij.build.images
@@ -142,7 +142,7 @@ internal class ImageSvgPreCompiler(private val compilationOutputRoot: Path? = nu
     private fun getSynchronized(): IkvWriter {
       var store = store
       if (store == null) {
-        val file = dbDir.resolve("icons-v1-$scale$classifier.db")
+        val file = dbDir.resolve("icons-v2-$scale$classifier.db")
         this.file = file
         store = sizeUnawareIkvWriter(file)
         this.store = store
@@ -209,16 +209,14 @@ internal class ImageSvgPreCompiler(private val compilationOutputRoot: Path? = nu
           array[index] = null
         }
       }
-
-      ForkJoinTask.invokeAll(scales.map { scale ->
-        ForkJoinTask.adapt {
-          ByteBufferAllocator().use { bufferAllocator ->
-            for (icon in array) {
-              processImage(icon = icon ?: continue, getMapByScale = getMapByScale, scale = scale, bufferAllocator = bufferAllocator)
-            }
+      // cannot be processed concurrently due to IDEA-303866
+      scales.map { scale ->
+        ByteBufferAllocator().use { bufferAllocator ->
+          for (icon in array) {
+            processImage(icon = icon ?: continue, getMapByScale = getMapByScale, scale = scale, bufferAllocator = bufferAllocator)
           }
         }
-      })
+      }
 
       //println("${Formats.formatFileSize(totalSize.get().toLong())} (${totalSize.get()}, iconCount=${totalFiles.get()}, resultSize=${result.size})")
     }
@@ -354,10 +352,7 @@ internal class ImageSvgPreCompiler(private val compilationOutputRoot: Path? = nu
 
   private fun checkCollision(imageKey: Int, file: Path, fileNormalizedData: ByteArray,
                              collisionGuard: ConcurrentHashMap<Int, FileInfo>): Boolean {
-    val duplicate = collisionGuard.putIfAbsent(imageKey, FileInfo(file))
-    if (duplicate == null) {
-      return false
-    }
+    val duplicate = collisionGuard.putIfAbsent(imageKey, FileInfo(file)) ?: return false
 
     if (duplicate.checksum.contentEquals(FileInfo.digest(fileNormalizedData))) {
       assert(duplicate.file !== file)
@@ -388,7 +383,8 @@ private fun addEntry(map: IkvWriter, image: BufferedImage, imageKey: Int, totalS
   assert(!image.colorModel.isAlphaPremultiplied)
 
   val data = (image.raster.dataBuffer as DataBufferInt).data
-  val buffer = bufferAllocator.allocate(DataUtil.VAR_INT_MAX_SIZE * 2 + data.size * Int.SIZE_BYTES  + 1)
+  val buffer = bufferAllocator.allocate(DataUtil.VAR_INT_MAX_SIZE * 3 + data.size * Int.SIZE_BYTES  + 1)
+  writeVar(buffer, imageKey)
   if (w == h) {
     if (w < 254) {
       buffer.put(w.toByte())

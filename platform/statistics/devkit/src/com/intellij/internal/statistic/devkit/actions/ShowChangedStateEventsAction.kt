@@ -10,6 +10,7 @@ import com.intellij.internal.statistic.devkit.toolwindow.ChangedStateEventsPanel
 import com.intellij.internal.statistic.devkit.toolwindow.eventLogToolWindowsId
 import com.intellij.internal.statistic.eventLog.fus.FeatureUsageLogger
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.progress.runBackgroundableTask
@@ -32,7 +33,7 @@ internal class ShowChangedStateEventsAction(private val recorderId: String) : Du
     runBackgroundableTask(message, project, false) { indicator ->
       FeatureUsageLogger.rollOver()
       val oldState = FusStatesRecorder.getCurrentState()
-      val newState = FusStatesRecorder.recordStateAndWait(project, indicator)
+      val newState = FusStatesRecorder.recordStateAndWait(project, recorderId)
       if (newState == null) {
         StatisticsDevKitUtil.showNotification(project, NotificationType.ERROR, StatisticsBundle.message("stats.failed.recording.state"))
       }
@@ -51,7 +52,7 @@ internal class ShowChangedStateEventsAction(private val recorderId: String) : Du
     val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(eventLogToolWindowsId) ?: return
     val displayName = "Changed events: $recorderId"
     val changedEventsComponent = ChangedStateEventsPanel(project, toolWindow.disposable, difference, recorderId).component
-    val content = ContentFactory.SERVICE.getInstance().createContent(changedEventsComponent, displayName, true)
+    val content = ContentFactory.getInstance().createContent(changedEventsComponent, displayName, true)
     content.preferredFocusableComponent = changedEventsComponent
     val contentManager = toolWindow.contentManager
     contentManager.addContent(content)
@@ -60,7 +61,11 @@ internal class ShowChangedStateEventsAction(private val recorderId: String) : Du
 
   override fun update(event: AnActionEvent) {
     super.update(event)
-    event.presentation.isEnabled = recorderId == StatisticsDevKitUtil.DEFAULT_RECORDER && FusStatesRecorder.isComparisonAvailable()
+    event.presentation.isEnabled = FusStatesRecorder.isComparisonAvailable()
+  }
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.EDT
   }
 
   companion object {

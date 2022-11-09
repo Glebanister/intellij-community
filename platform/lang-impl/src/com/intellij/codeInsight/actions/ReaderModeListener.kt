@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.actions
 
 import com.intellij.application.options.colors.ReaderModeStatsCollector
@@ -14,8 +14,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.StartupActivity
-import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.startup.ProjectPostStartupActivity
 import com.intellij.util.messages.Topic
 import java.beans.PropertyChangeListener
 import java.util.*
@@ -57,12 +56,14 @@ class ReaderModeSettingsListener : ReaderModeListener {
   }
 
   override fun modeChanged(project: Project) {
-    applyToAllEditors(project)
+    if (!project.isDefault) {
+      applyToAllEditors(project)
+    }
   }
 }
 
-private class ReaderModeEditorSettingsListener : StartupActivity.DumbAware {
-  override fun runActivity(project: Project) {
+private class ReaderModeEditorSettingsListener : ProjectPostStartupActivity {
+  override suspend fun execute(project: Project) {
     val propertyChangeListener = PropertyChangeListener { event ->
       when (event.propertyName) {
         EditorSettingsExternalizable.PROP_DOC_COMMENT_RENDERING -> {
@@ -74,12 +75,9 @@ private class ReaderModeEditorSettingsListener : StartupActivity.DumbAware {
     EditorSettingsExternalizable.getInstance().addPropertyChangeListener(propertyChangeListener, project)
 
     val fontPreferences = AppEditorFontOptions.getInstance().fontPreferences as FontPreferencesImpl
-    fontPreferences.changeListener = Runnable {
-      fontPreferences.changeListener
+    fontPreferences.addChangeListener({
       ReaderModeSettings.getInstance(project).showLigatures = fontPreferences.useLigatures()
       applyToAllEditors(project)
-    }
-
-    Disposer.register(project) { fontPreferences.changeListener = null }
+    }, project)
   }
 }

@@ -15,7 +15,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.awt.*;
 import java.util.Map;
 import java.util.Objects;
 
@@ -96,7 +95,7 @@ public final class TransactionGuardImpl extends TransactionGuard {
   }
 
   /**
-   * An absolutely guru method, only intended to be used from Swing event processing. Please consult Peter if you think you need to invoke this.
+   * An absolute guru method, only intended to be used from Swing event processing. Please consult Peter if you think you need to invoke this.
    */
   @ApiStatus.Internal
   public void performActivity(boolean userActivity, @NotNull Runnable runnable) {
@@ -107,13 +106,8 @@ public final class TransactionGuardImpl extends TransactionGuard {
       return;
     }
 
-    if (allowWriting) {
-      ApplicationManager.getApplication().assertIsWriteThread();
-    }
-    else if (!EventQueue.isDispatchThread()) {
-      LOG.error("must be swing thread");
-    }
-    final boolean prev = myWritingAllowed;
+    ApplicationManager.getApplication().assertIsDispatchThread();
+    boolean prev = myWritingAllowed;
     myWritingAllowed = allowWriting;
     try {
       runnable.run();

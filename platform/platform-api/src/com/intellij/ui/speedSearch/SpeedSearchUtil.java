@@ -50,9 +50,9 @@ public final class SpeedSearchUtil {
   }
 
   public static void applySpeedSearchHighlighting(@NotNull SimpleColoredComponent coloredComponent,
-                                                  @Nullable Iterable<TextRange> ranges,
+                                                  @Nullable Iterable<? extends TextRange> ranges,
                                                   boolean selected) {
-    Iterator<TextRange> rangesIterator = ranges != null ? ranges.iterator() : null;
+    Iterator<? extends TextRange> rangesIterator = ranges != null ? ranges.iterator() : null;
     if (rangesIterator == null || !rangesIterator.hasNext()) return;
     Color bg = UIUtil.getTreeBackground(selected, true);
 
@@ -165,10 +165,26 @@ public final class SpeedSearchUtil {
     }
   }
 
-  public static void applySpeedSearchHighlightingFiltered(JTree tree, Object value, ColoredTreeCellRenderer coloredTreeCellRenderer, boolean mainTextOnly, boolean selected) {
+  /**
+   * @deprecated use more generic {@link #applySpeedSearchHighlightingFiltered(JTree, Object, SimpleColoredComponent, boolean, boolean)}
+   */
+  @Deprecated(forRemoval = true)
+  public static void applySpeedSearchHighlightingFiltered(@NotNull JTree tree,
+                                                          @NotNull Object value,
+                                                          @NotNull ColoredTreeCellRenderer coloredTreeCellRenderer,
+                                                          boolean mainTextOnly,
+                                                          boolean selected) {
+    applySpeedSearchHighlightingFiltered(tree, value, (SimpleColoredComponent)coloredTreeCellRenderer, mainTextOnly, selected);
+  }
+
+  public static void applySpeedSearchHighlightingFiltered(@NotNull JTree tree,
+                                                          @NotNull Object value,
+                                                          @NotNull SimpleColoredComponent coloredComponent,
+                                                          boolean mainTextOnly,
+                                                          boolean selected) {
     SpeedSearchSupply speedSearch = SpeedSearchSupply.getSupply(tree);
-    if (speedSearch != null && !speedSearch.isObjectFilteredOut(value)){
-      applySpeedSearchHighlighting(tree, coloredTreeCellRenderer, mainTextOnly, selected);
+    if (speedSearch != null && !speedSearch.isObjectFilteredOut(value)) {
+      applySpeedSearchHighlighting(tree, coloredComponent, mainTextOnly, selected);
     }
   }
 }

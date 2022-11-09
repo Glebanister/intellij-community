@@ -3,8 +3,8 @@
 package com.intellij.psi.impl.cache.impl;
 
 import com.intellij.injected.editor.VirtualFileWindow;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
+import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -19,9 +19,7 @@ import com.intellij.psi.impl.cache.impl.todo.TodoIndexers;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.search.IndexPattern;
 import com.intellij.psi.search.IndexPatternProvider;
-import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.LightVirtualFile;
-import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ConcurrentBitSet;
 import com.intellij.util.containers.ContainerUtil;
@@ -29,13 +27,10 @@ import com.intellij.util.indexing.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashSet;
 import java.util.Map;
 import java.util.function.IntPredicate;
 
 public class IndexTodoCacheManagerImpl implements TodoCacheManager {
-  private static final Logger LOG = Logger.getInstance(IndexTodoCacheManagerImpl.class);
-
   private final Project myProject;
 
   public IndexTodoCacheManagerImpl(@NotNull Project project) {
@@ -43,23 +38,27 @@ public class IndexTodoCacheManagerImpl implements TodoCacheManager {
   }
 
   @Override
-  public PsiFile @NotNull [] getFilesWithTodoItems() {
-    HashSet<PsiFile> files = new HashSet<>();
-    processFilesWithTodoItems(new CommonProcessors.CollectProcessor<>(files));
-    return PsiUtilCore.toPsiFileArray(files);
-  }
-
-  @Override
   public boolean processFilesWithTodoItems(@NotNull Processor<? super PsiFile> processor) {
     if (myProject.isDefault()) return true;
-    GlobalSearchScope scope = GlobalSearchScope.allScope(myProject);
+    GlobalSearchScope scope = new GlobalSearchScope(myProject) {
+      @Override
+      public boolean isSearchInModuleContent(@NotNull Module module) { return true; }
+
+      @Override
+      public boolean isSearchInLibraries() { return false; }
+
+      @Override
+      public boolean contains(@NotNull VirtualFile file) {
+        return TodoIndexers.belongsToProject(myProject, file);
+      }
+    };
     ConcurrentBitSet idSet = ConcurrentBitSet.create();
 
     ManagingFS fs = ManagingFS.getInstance();
     PsiManager psiManager = PsiManager.getInstance(myProject);
     IntPredicate consumer = fileId -> {
       VirtualFile file = fs.findFileById(fileId);
-      if (file == null || !file.isValid() || !scope.contains(file) || !TodoIndexers.belongsToProject(myProject, file)) return true;
+      if (file == null || !file.isValid() || !scope.contains(file)) return true;
       PsiFile psiFile = psiManager.findFile(file);
       return psiFile == null || processor.process(psiFile);
     };

@@ -1,11 +1,9 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.kotlin.tools.projectWizard.wizard.service
 
 import com.intellij.util.text.VersionComparatorUtil
 import org.jetbrains.annotations.NonNls
-import org.jetbrains.kotlin.config.JvmTarget
-import org.jetbrains.kotlin.config.KotlinCompilerVersion
 import org.jetbrains.kotlin.idea.compiler.configuration.KotlinPluginLayout
 import org.jetbrains.kotlin.idea.framework.ui.ConfigureDialogWithModulesAndVersion
 import org.jetbrains.kotlin.idea.util.application.isApplicationInternalMode
@@ -25,10 +23,6 @@ private const val SNAPSHOT_TAG = "snapshot"
 
 class IdeaKotlinVersionProviderService : KotlinVersionProviderService(), IdeaWizardService {
     override fun getKotlinVersion(projectKind: ProjectKind): WizardKotlinVersion {
-        if (projectKind == ProjectKind.COMPOSE) {
-            val version = Versions.KOTLIN_VERSION_FOR_COMPOSE
-            return kotlinVersionWithDefaultValues(version)
-        }
         val version = getPatchedKotlinVersion()
             ?: getKotlinVersionFromCompiler()
             ?: VersionsDownloader.downloadLatestEapOrStableKotlinVersion()
@@ -47,10 +41,11 @@ class IdeaKotlinVersionProviderService : KotlinVersionProviderService(), IdeaWiz
     companion object {
         private const val KOTLIN_COMPILER_VERSION_TAG = "kotlin.compiler.version"
 
-        private fun getKotlinVersionFromCompiler() =
-            KotlinPluginLayout.instance.standaloneCompilerVersion
-                .takeUnless { it.contains(SNAPSHOT_TAG, ignoreCase = true) }
-                ?.let { Version.fromString(it.substringBefore("-release")) }
+        private fun getKotlinVersionFromCompiler(): Version? {
+            val kotlinCompilerVersion = KotlinPluginLayout.standaloneCompilerVersion
+            val kotlinArtifactVersion = kotlinCompilerVersion.takeUnless { it.isSnapshot }?.artifactVersion ?: return null
+            return Version.fromString(kotlinArtifactVersion)
+        }
     }
 }
 

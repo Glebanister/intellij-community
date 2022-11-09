@@ -16,6 +16,7 @@ import com.intellij.openapi.util.SystemInfo;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.testFramework.IdeaTestUtil;
 import com.intellij.ui.ColorUtil;
+import com.intellij.util.ui.NamedColorUtil;
 import com.intellij.util.ui.StartupUiUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NonNls;
@@ -1038,7 +1039,7 @@ public class GenericsHighlighting8Test extends LightDaemonAnalyzerTestCase {
     doTest();
     String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
     String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
-    String red = ColorUtil.toHtmlColor(UIUtil.getErrorForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
     String expected = "<html><body><table>" +
                       "<tr>" +
                       "<td style='padding: 0px 16px 8px 4px;color: " + greyed + "'>Required type:</td>" +
@@ -1054,11 +1055,31 @@ public class GenericsHighlighting8Test extends LightDaemonAnalyzerTestCase {
       .forEach(info -> Assert.assertEquals(expected, info.getToolTip()));
   }
 
+  public void testTooltipNotEnoughArguments() {
+    doTest();
+    String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
+    String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
+    String expected = "<html><body><table>" +
+                      "<tr>" +
+                      "<td style='padding: 0px 16px 8px 4px;color: " + greyed + "'>Required type:</td>" +
+                      "<td style='padding: 0px 4px 8px 0px;'><font color=\"" + toolTipForeground + "\">int</font></td></tr>" +
+                      "<tr><td style='padding: 0px 16px 0px 4px;color: " + greyed + "'>Provided:</td>" +
+                      "<td style='padding: 0px 4px 0px 0px;'><font color=\"" + red + "\">String</font></td></tr>" +
+                      "</table>" +
+                      "</body></html>";
+
+    doHighlighting()
+      .stream()
+      .filter(info -> info.type == HighlightInfoType.ERROR)
+      .forEach(info -> Assert.assertEquals(expected, info.getToolTip()));
+  }
+
   public void testVarargsTooltip() {
     doTest();
     String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
     String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
-    String red = ColorUtil.toHtmlColor(UIUtil.getErrorForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
     String expected = "<html><body><table>" +
                       "<tr>" +
                       "<td style='padding: 0px 16px 8px 4px;color: " + greyed+ "'>Required type:</td>" +
@@ -1080,7 +1101,7 @@ public class GenericsHighlighting8Test extends LightDaemonAnalyzerTestCase {
     doTest();
     String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
     String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
-    String red = ColorUtil.toHtmlColor(UIUtil.getErrorForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
     String paramBgColor = ColorUtil.toHtmlColor(EditorColorsUtil.getGlobalOrDefaultColorScheme()
                                                   .getAttributes(DefaultLanguageHighlighterColors.INLINE_PARAMETER_HINT)
                                                   .getBackgroundColor());
@@ -1104,7 +1125,7 @@ public class GenericsHighlighting8Test extends LightDaemonAnalyzerTestCase {
     doTest();
     String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
     String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
-    String red = ColorUtil.toHtmlColor(UIUtil.getErrorForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
     String paramBgColor = ColorUtil.toHtmlColor(EditorColorsUtil.getGlobalOrDefaultColorScheme()
       .getAttributes(DefaultLanguageHighlighterColors.INLINE_PARAMETER_HINT)
       .getBackgroundColor());
@@ -1128,7 +1149,7 @@ public class GenericsHighlighting8Test extends LightDaemonAnalyzerTestCase {
     doTest();
     String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
     String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
-    String red = ColorUtil.toHtmlColor(UIUtil.getErrorForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
     String expected = "<html><body><table>" +
                       "<tr>" +
                       "<td style='padding: 0px 16px 8px 4px;color: " + greyed + "'>Required type:</td>" +
@@ -1151,7 +1172,7 @@ public class GenericsHighlighting8Test extends LightDaemonAnalyzerTestCase {
     doTest();
     String toolTipForeground = ColorUtil.toHtmlColor(UIUtil.getToolTipForeground());
     String greyed = ColorUtil.toHtmlColor(UIUtil.getContextHelpForeground());
-    String red = ColorUtil.toHtmlColor(UIUtil.getErrorForeground());
+    String red = ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground());
     String paramBgColor = ColorUtil.toHtmlColor(EditorColorsUtil.getGlobalOrDefaultColorScheme()
       .getAttributes(DefaultLanguageHighlighterColors.INLINE_PARAMETER_HINT)
       .getBackgroundColor());

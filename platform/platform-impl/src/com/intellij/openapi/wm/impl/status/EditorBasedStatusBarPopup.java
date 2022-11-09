@@ -3,18 +3,17 @@ package com.intellij.openapi.wm.impl.status;
 
 import com.intellij.ide.DataManager;
 import com.intellij.internal.statistic.service.fus.collectors.UIEventLogger;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
-import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
 import com.intellij.openapi.actionSystem.ex.ActionUtil;
-import com.intellij.openapi.actionSystem.impl.SimpleDataContext;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
+import com.intellij.openapi.editor.ex.util.EditorUtil;
 import com.intellij.openapi.fileEditor.*;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopup;
@@ -35,7 +34,7 @@ import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.popup.PopupState;
 import com.intellij.util.Alarm;
 import com.intellij.util.ObjectUtils;
-import com.intellij.util.SlowOperations;
+import com.intellij.util.concurrency.annotations.RequiresBackgroundThread;
 import com.intellij.util.indexing.IndexingBundle;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -61,7 +60,7 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
   public EditorBasedStatusBarPopup(@NotNull Project project, boolean writeableFileRequired) {
     super(project);
     myWriteableFileRequired = writeableFileRequired;
-    update = new Alarm(this);
+    update = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, this);
     myComponent = createComponent();
     myComponent.setVisible(false);
 
@@ -133,9 +132,8 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
     return createInstance(getProject());
   }
 
-  @Nullable
   @Override
-  public WidgetPresentation getPresentation() {
+  public @Nullable WidgetPresentation getPresentation() {
     return null;
   }
 
@@ -194,27 +192,15 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
     }
   }
 
-  @NotNull
-  protected DataContext getContext() {
+  protected @NotNull DataContext getContext() {
     Editor editor = getEditor();
-    DataContext parent = DataManager.getInstance().getDataContext((Component)myStatusBar);
-    VirtualFile selectedFile = getSelectedFile();
-    return SimpleDataContext.builder()
-      .add(CommonDataKeys.VIRTUAL_FILE, selectedFile)
-      .add(CommonDataKeys.VIRTUAL_FILE_ARRAY, selectedFile == null ? VirtualFile.EMPTY_ARRAY : new VirtualFile[] {selectedFile})
-      .add(CommonDataKeys.PROJECT, getProject())
-      .add(PlatformCoreDataKeys.CONTEXT_COMPONENT, editor == null ? null : editor.getComponent())
-      .setParent(parent)
-      .build();
+    return editor != null ? EditorUtil.getEditorDataContext(editor) :
+           DataManager.getInstance().getDataContext((Component)myStatusBar);
   }
 
   @Override
   public JComponent getComponent() {
     return myComponent;
-  }
-
-  protected Alarm getUpdateAlarm() {
-    return update;
   }
 
   protected boolean isEmpty() {
@@ -254,6 +240,7 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
   @TestOnly
   public void flushUpdateInTests() {
     update.drainRequestsInTest();
+    UIUtil.dispatchAllInvocationEvents();
   }
 
   public void update() {
@@ -261,45 +248,56 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
   }
 
   public void update(@Nullable Runnable finishUpdate) {
-    if (update.isDisposed()) return;
+    if (update.isDisposed()) {
+      return;
+    }
 
     update.cancelAllRequests();
     update.addRequest(() -> {
-      if (isDisposed()) return;
+      if (isDisposed()) {
+        return;
+      }
 
       VirtualFile file = getSelectedFile();
 
-      WidgetState state = SlowOperations.allowSlowOperations(() -> getWidgetState(file));
+      WidgetState state = ReadAction.compute(() -> {
+        return isDisposed() ? WidgetState.NO_CHANGE : getWidgetState(file);
+      });
       if (state == WidgetState.NO_CHANGE) {
         return;
       }
+      ApplicationManager.getApplication().invokeLater(() -> {
+        applyUpdate(finishUpdate, file, state);
+      }, ModalityState.NON_MODAL, __ -> isDisposed());
+    }, 200);
+  }
 
-      if (state == WidgetState.NO_CHANGE_MAKE_VISIBLE) {
-        myComponent.setVisible(true);
-        return;
-      }
-
-      if (state == WidgetState.HIDDEN) {
-        myComponent.setVisible(false);
-        return;
-      }
-
+  private void applyUpdate(@Nullable Runnable finishUpdate, VirtualFile file, WidgetState state) {
+    if (state == WidgetState.NO_CHANGE_MAKE_VISIBLE) {
       myComponent.setVisible(true);
+      return;
+    }
 
-      actionEnabled = state.actionEnabled && isEnabledForFile(file);
+    if (state == WidgetState.HIDDEN) {
+      myComponent.setVisible(false);
+      return;
+    }
 
-      myComponent.setEnabled(actionEnabled);
-      updateComponent(state);
+    myComponent.setVisible(true);
 
-      if (myStatusBar != null && !myComponent.isValid()) {
-        myStatusBar.updateWidget(ID());
-      }
+    actionEnabled = state.actionEnabled && isEnabledForFile(file);
 
-      if (finishUpdate != null) {
-        finishUpdate.run();
-      }
-      afterVisibleUpdate(state);
-    }, 200, ModalityState.any());
+    myComponent.setEnabled(actionEnabled);
+    updateComponent(state);
+
+    if (myStatusBar != null && !myComponent.isValid()) {
+      myStatusBar.updateWidget(ID());
+    }
+
+    if (finishUpdate != null) {
+      finishUpdate.run();
+    }
+    afterVisibleUpdate(state);
   }
 
   protected void afterVisibleUpdate(@NotNull WidgetState state) {}
@@ -339,7 +337,7 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
     /**
      * Returns a special state for dumb mode (when indexes are not ready).
      * Your widget should show this state if it depends on indexes, when DumbService.isDumb is true.
-     *
+     * <p>
      * Use myConnection.subscribe(DumbService.DUMB_MODE, your_listener) inside registerCustomListeners,
      *   and call update() inside listener callbacks, to refresh your widget state when indexes are loaded
      */
@@ -354,8 +352,7 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
       this.icon = icon;
     }
 
-    @Nls
-    public String getText() {
+    public @Nls String getText() {
       return text;
     }
 
@@ -372,8 +369,8 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
     }
   }
 
-  @NotNull
-  protected abstract WidgetState getWidgetState(@Nullable VirtualFile file);
+  @RequiresBackgroundThread
+  protected abstract @NotNull WidgetState getWidgetState(@Nullable VirtualFile file);
 
   /**
    * @param file result of {@link EditorBasedStatusBarPopup#getSelectedFile()}
@@ -384,12 +381,10 @@ public abstract class EditorBasedStatusBarPopup extends EditorBasedWidget implem
     return file == null || !myWriteableFileRequired || file.isWritable();
   }
 
-  @Nullable
-  protected abstract ListPopup createPopup(DataContext context);
+  protected abstract @Nullable ListPopup createPopup(@NotNull DataContext context);
 
   protected void registerCustomListeners() {
   }
 
-  @NotNull
-  protected abstract StatusBarWidget createInstance(@NotNull Project project);
+  protected abstract @NotNull StatusBarWidget createInstance(@NotNull Project project);
 }

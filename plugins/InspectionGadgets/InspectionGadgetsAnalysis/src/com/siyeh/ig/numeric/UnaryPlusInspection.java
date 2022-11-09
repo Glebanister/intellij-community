@@ -79,7 +79,7 @@ public final class UnaryPlusInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement parent = element.getParent();
       if (!(parent instanceof PsiPrefixExpression)) {
@@ -102,7 +102,7 @@ public final class UnaryPlusInspection extends BaseInspection {
   private class UnaryPlusVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitPrefixExpression(PsiPrefixExpression prefixExpression) {
+    public void visitPrefixExpression(@NotNull PsiPrefixExpression prefixExpression) {
       super.visitPrefixExpression(prefixExpression);
       if (!ConvertDoubleUnaryToPrefixOperationFix.isDesiredPrefixExpression(prefixExpression, true)) {
         return;
@@ -131,7 +131,7 @@ public final class UnaryPlusInspection extends BaseInspection {
         // unary plus might have been used as cast to int
         return;
       }
-      registerError(prefixExpression.getOperationSign(), ProblemHighlightType.LIKE_UNUSED_SYMBOL, isOnTheFly(), prefixExpression);
+      registerError(prefixExpression.getOperationSign(), ProblemHighlightType.GENERIC_ERROR_OR_WARNING, isOnTheFly(), prefixExpression);
     }
   }
 
@@ -210,7 +210,7 @@ public final class UnaryPlusInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiPrefixExpression prefixExpr = ObjectUtils.tryCast(descriptor.getPsiElement().getParent(), PsiPrefixExpression.class);
       if (prefixExpr == null) {
         return;

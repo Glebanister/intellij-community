@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package git4idea.config
 
 import com.intellij.application.options.editor.CheckboxDescriptor
@@ -30,13 +30,10 @@ import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.TextComponentEmptyText
 import com.intellij.ui.components.fields.ExpandableTextField
 import com.intellij.ui.dsl.builder.*
-import com.intellij.ui.dsl.builder.Cell
-import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
-import com.intellij.ui.layout.*
+import com.intellij.ui.layout.ComponentPredicate
+import com.intellij.ui.layout.PropertyBinding
 import com.intellij.util.Function
 import com.intellij.util.execution.ParametersListUtil
-import com.intellij.util.ui.UIUtil
 import com.intellij.vcs.commit.CommitModeManager
 import com.intellij.vcs.log.VcsLogFilterCollection.STRUCTURE_FILTER
 import com.intellij.vcs.log.impl.MainVcsLogUiProperties
@@ -53,7 +50,6 @@ import git4idea.index.enableStagingArea
 import git4idea.repo.GitRepositoryManager
 import git4idea.update.GitUpdateProjectInfoLogProperties
 import git4idea.update.getUpdateMethods
-import java.awt.Color
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import javax.swing.border.Border
@@ -120,7 +116,7 @@ internal class GitVcsPanel(private val project: Project) :
         protectedBranchesField.readOnlyText = ParametersListUtil.COLON_LINE_JOINER.`fun`(sharedSettings.additionalProhibitedPatterns)
       }
       cell(protectedBranchesField)
-        .horizontalAlign(HorizontalAlign.FILL)
+        .align(AlignX.FILL)
         .bind<List<String>>(
           { ParametersListUtil.COLON_LINE_PARSER.`fun`(it.text) },
           { component, value -> component.text = ParametersListUtil.COLON_LINE_JOINER.`fun`(value) },
@@ -139,7 +135,7 @@ internal class GitVcsPanel(private val project: Project) :
   override fun getId() = "vcs.${GitVcs.NAME}"
 
   override fun createConfigurables(): List<UnnamedConfigurable> {
-    return VcsEnvCustomizer.EP_NAME.extensions.mapNotNull { it.getConfigurable(project) }
+    return VcsEnvCustomizer.EP_NAME.extensionList.mapNotNull { it.getConfigurable(project) }
   }
 
   override fun createPanel(): DialogPanel = panel {
@@ -221,9 +217,14 @@ internal class GitVcsPanel(private val project: Project) :
       val roots = ProjectLevelVcsManager.getInstance(project).getRootsUnderVcs(GitVcs.getInstance(project)).toSet()
       val model = VcsLogClassicFilterUi.FileFilterModel(roots, currentUpdateInfoFilterProperties, null)
       val component = object : StructureFilterPopupComponent(currentUpdateInfoFilterProperties, model, VcsLogColorManagerImpl(roots)) {
-        override fun shouldDrawLabel(): Boolean = false
+        override fun shouldDrawLabel(): DrawLabelMode = DrawLabelMode.NEVER
+
         override fun shouldIndicateHovering(): Boolean = false
-        override fun getDefaultSelectorForeground(): Color = UIUtil.getLabelForeground()
+
+        override fun getEmptyFilterValue(): String {
+          return ALL_ACTION_TEXT.get()
+        }
+
         override fun createUnfocusedBorder(): Border {
           return FilledRoundedBorder(JBColor.namedColor("Component.borderColor", Gray.xBF), ARC_SIZE, BORDER_SIZE, true)
         }

@@ -7,6 +7,7 @@ import com.intellij.execution.impl.EditorHyperlinkSupport;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.impl.ProjectUtil;
+import com.intellij.notification.LogModel.StatusMessage;
 import com.intellij.notification.impl.NotificationCollector;
 import com.intellij.notification.impl.NotificationsConfigurationImpl;
 import com.intellij.notification.impl.NotificationsManagerImpl;
@@ -35,6 +36,7 @@ import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.*;
 import com.intellij.ui.BalloonLayoutData;
+import com.intellij.ui.Gray;
 import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.content.Content;
 import com.intellij.util.ArrayUtil;
@@ -56,6 +58,7 @@ import java.util.List;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -143,7 +146,7 @@ public final class EventLog {
     getProjectService(project).doClear();
   }
 
-  public static @Nullable Trinity<Notification, @NlsContexts.StatusBarText String, Long> getStatusMessage(@Nullable Project project) {
+  public static @Nullable StatusMessage getStatusMessage(@Nullable Project project) {
     return getLogModel(project).getStatusMessage();
   }
 
@@ -194,6 +197,9 @@ public final class EventLog {
           if (context != null) {
             project = context.getData(CommonDataKeys.PROJECT);
           }
+          if (source instanceof JComponent component) {
+            Notification.setDataProvider(notification, component);
+          }
           NotificationCollector.getInstance()
             .logNotificationActionInvoked(project, notification, action, NotificationCollector.NotificationPlace.EVENT_LOG);
           Notification.fire(notification, action, context);
@@ -215,7 +221,7 @@ public final class EventLog {
         showMore.set(true);
         continue;
       }
-      list.add(Pair.create(new TextRange(marker.getStartOffset(), marker.getEndOffset()), links.get(marker)));
+      list.add(Pair.create(marker.getTextRange(), links.get(marker)));
     }
 
     if (showMore.get()) {
@@ -231,15 +237,17 @@ public final class EventLog {
     return new LogEntry(logDoc.getText(), status, list, titleLength);
   }
 
-  public static void formatContent(@NotNull EditorEx editor, @NotNull Notification notification) {
+  public static @Nullable Runnable formatContent(@NotNull EditorEx editor,
+                                   @NotNull Notification notification,
+                                   @NotNull Supplier<? extends @Nullable Notification> notificationProvider) {
     DocumentImpl logDoc = new DocumentImpl("",true);
     Map<RangeMarker, HyperlinkInfo> links = new LinkedHashMap<>();
     List<RangeMarker> lineSeparators = new ArrayList<>();
     List<RangeMarker> boldMarkers = new ArrayList<>();
     List<RangeMarker> italicMarkers = new ArrayList<>();
 
-    boolean hasHtml = parseHtmlContent(addIndents(notification.getContent(), ""), notification, logDoc, new AtomicBoolean(false), links,
-                                       lineSeparators, boldMarkers, italicMarkers);
+    boolean hasHtml = parseHtmlContent(notification.getContent(), notification, logDoc, new AtomicBoolean(false), links, lineSeparators,
+                                       boldMarkers, italicMarkers);
 
     indentNewLines(logDoc, lineSeparators, null, hasHtml, "");
 
@@ -248,32 +256,48 @@ public final class EventLog {
       if (!marker.isValid()) {
         continue;
       }
-      list.add(Pair.create(new TextRange(marker.getStartOffset(), marker.getEndOffset()), links.get(marker)));
+      list.add(Pair.create(marker.getTextRange(), links.get(marker)));
     }
 
     int msgStart = editor.getDocument().getTextLength();
     editor.getDocument().insertString(0, logDoc.getText());
 
+    Runnable removeCallback = null;
+
     if (!list.isEmpty()) {
       EditorHyperlinkSupport rangeHighlighter = EditorHyperlinkSupport.get(editor);
+      List<RangeHighlighter> highlighters = new ArrayList<>();
 
       for (Pair<TextRange, HyperlinkInfo> link : list) {
         HyperlinkInfo hyperlinkInfo = new HyperlinkInfo() {
           @Override
           public void navigate(@NotNull Project project) {
-            NotificationListener listener = notification.getListener();
+            Notification notificationRef = notificationProvider.get();
+            NotificationListener listener = notificationRef == null ? null : notificationRef.getListener();
             if (listener != null) {
               JComponent component = editor.getComponent();
               String href = ((NotificationHyperlinkInfo)link.second).myHref;
-              listener.hyperlinkUpdate(notification, IJSwingUtilities.createHyperlinkEvent(href, component));
+              listener.hyperlinkUpdate(notificationRef, IJSwingUtilities.createHyperlinkEvent(href, component));
             }
           }
         };
-        rangeHighlighter.createHyperlink(link.first.getStartOffset() + msgStart, link.first.getEndOffset() + msgStart, null, hyperlinkInfo);
+        highlighters.add(rangeHighlighter.createHyperlink(link.first.getStartOffset() + msgStart, link.first.getEndOffset() + msgStart,
+                                                          null, hyperlinkInfo));
       }
+
+      removeCallback = () -> {
+        TextAttributes italic = new TextAttributes(Gray.x80, null, null, null, Font.PLAIN);
+
+        for (RangeHighlighter highlighter : highlighters) {
+          editor.getMarkupModel().addRangeHighlighter(highlighter.getStartOffset(), highlighter.getEndOffset(), HighlighterLayer.SYNTAX,
+                                                      italic, HighlighterTargetArea.EXACT_RANGE);
+          rangeHighlighter.removeHyperlink(highlighter);
+        }
+      };
     }
     highlightTags(boldMarkers, editor, Font.BOLD);
     highlightTags(italicMarkers, editor, Font.ITALIC);
+    return removeCallback;
   }
 
   private static void highlightTags(List<RangeMarker> markers, @NotNull EditorEx editor, int fontType) {

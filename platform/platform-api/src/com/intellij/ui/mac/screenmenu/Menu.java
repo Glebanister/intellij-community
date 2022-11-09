@@ -1,12 +1,15 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.mac.screenmenu;
 
+import com.intellij.DynamicBundle;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.SimpleTimer;
 import com.intellij.openapi.util.SystemInfo;
+import com.intellij.openapi.util.SystemInfoRt;
+import com.intellij.util.ArrayUtil;
 import com.intellij.util.ReflectionUtil;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
@@ -17,6 +20,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @SuppressWarnings("NonPrivateFieldAccessedInSynchronizedContext")
 public class Menu extends MenuItem {
@@ -48,6 +52,26 @@ public class Menu extends MenuItem {
       ourAppMenu.isInHierarchy = true;
     }
     return ourAppMenu;
+  }
+
+  public static void renameAppMenuItems(@Nullable DynamicBundle replacements) {
+    if (replacements == null) return;
+
+    Set<String> keySet = replacements.getResourceBundle().keySet();
+
+    ArrayList<String> replace = new ArrayList<>(keySet.size() * 2);
+    for (String title: keySet) {
+      replace.add(title);
+      replace.add(replacements.getMessage(title));
+    }
+
+    //macOS 13.0 Ventura uses Settings instead of Preferences. See IDEA-300314
+    if (SystemInfo.isMacOSVentura) {
+      replace.add("Prefer.*");
+      replace.add("Settings...");
+    }
+
+    nativeRenameAppMenuItems(ArrayUtil.toStringArray(replace));
   }
 
   public void setOnOpen(Runnable fillMenuProcedure, Component component) {
@@ -264,6 +288,9 @@ public class Menu extends MenuItem {
   static
   private native long nativeGetAppMenu();
 
+  static
+  private native void nativeRenameAppMenuItems(String[] replacements);
+
   //
   // Static API
   //
@@ -274,8 +301,9 @@ public class Menu extends MenuItem {
 
     IS_ENABLED = false;
 
-    if (!SystemInfo.isMac) return false;
-    if (!Boolean.getBoolean("jbScreenMenuBar.enabled")) return false;
+    if (!SystemInfoRt.isMac || !Boolean.getBoolean("jbScreenMenuBar.enabled")) {
+      return false;
+    }
     if (Boolean.getBoolean("apple.laf.useScreenMenuBar")) {
       Logger.getInstance(Menu.class).info("apple.laf.useScreenMenuBar==true, default screen menu implementation will be used");
       return false;
@@ -283,7 +311,7 @@ public class Menu extends MenuItem {
 
     Path lib = PathManager.findBinFile("libmacscreenmenu64.dylib");
     try {
-      System.load(lib.toFile().getAbsolutePath());
+      System.load(lib.toString());
       nativeInitClass();
       // create and dispose native object (just for to test)
       Menu test = new Menu("test");

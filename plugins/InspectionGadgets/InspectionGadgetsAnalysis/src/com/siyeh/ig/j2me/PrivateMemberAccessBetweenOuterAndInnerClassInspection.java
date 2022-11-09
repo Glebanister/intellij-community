@@ -105,7 +105,7 @@ public class PrivateMemberAccessBetweenOuterAndInnerClassInspection extends Base
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (constructor) {
         makeConstructorPackageLocal(project, element);
@@ -183,7 +183,7 @@ public class PrivateMemberAccessBetweenOuterAndInnerClassInspection extends Base
   private static class PrivateMemberAccessFromInnerClassVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitNewExpression(PsiNewExpression expression) {
+    public void visitNewExpression(@NotNull PsiNewExpression expression) {
       super.visitNewExpression(expression);
       if (expression.getType() instanceof PsiArrayType) {
         return;

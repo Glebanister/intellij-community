@@ -1,68 +1,84 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.diff.settings
 
-import com.intellij.diff.DiffContentFactory
-import com.intellij.diff.DiffRequestFactory
-import com.intellij.diff.merge.MergeResult
-import com.intellij.diff.merge.ThreesideMergeRequest
 import com.intellij.diff.tools.external.ExternalDiffSettings
 import com.intellij.diff.tools.external.ExternalDiffSettings.ExternalTool
 import com.intellij.diff.tools.external.ExternalDiffSettings.ExternalToolGroup
 import com.intellij.diff.tools.external.ExternalDiffToolUtil
+import com.intellij.execution.impl.ConsoleViewUtil
+import com.intellij.ide.util.treeView.TreeState
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.diff.DiffBundle
-import com.intellij.openapi.editor.impl.DocumentImpl
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
-import com.intellij.openapi.fileTypes.FileTypes
-import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.ui.*
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.NlsContexts
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.ui.CheckboxTree
-import com.intellij.ui.CheckedTreeNode
 import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.SimpleColoredComponent
+import com.intellij.ui.SmartExpander
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBTextField
-import com.intellij.ui.dsl.builder.DEFAULT_COMMENT_WIDTH
-import com.intellij.ui.dsl.builder.TopGap
-import com.intellij.ui.dsl.builder.components.DslLabel
-import com.intellij.ui.dsl.builder.components.DslLabelType
-import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
-import com.intellij.ui.layout.*
+import com.intellij.ui.dsl.builder.*
+import com.intellij.ui.layout.ComponentPredicate
+import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.PathUtilRt
+import com.intellij.util.concurrency.annotations.RequiresEdt
+import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
-import com.intellij.util.ui.components.BorderLayoutPanel
 import com.intellij.util.ui.tree.TreeUtil
+import java.awt.Component
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
+import javax.swing.event.TreeExpansionEvent
+import javax.swing.event.TreeExpansionListener
 import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreeCellRenderer
 import javax.swing.tree.TreePath
 
-internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) : BorderLayoutPanel() {
+internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) {
+  private var treeState: TreeState
   private val treeModel = models.treeModel
-  private val root = treeModel.root as CheckedTreeNode
-  private val tree = CheckboxTree(ExternalToolsTreeCellRenderer(), root).apply {
+  private val root = treeModel.root as DefaultMutableTreeNode
+  private val tree = Tree(treeModel).apply {
     visibleRowCount = 8
-    model = treeModel
+    isRootVisible = false
+    cellRenderer = ExternalToolsTreeCellRenderer()
+    treeState = TreeState.createOn(this)
+
     addMouseListener(object : MouseAdapter() {
       override fun mousePressed(mouseEvent: MouseEvent) {
         val treePath = selectionPath ?: return
         if (mouseEvent.clickCount == 2 && SwingUtilities.isLeftMouseButton(mouseEvent)) {
           mouseEvent.consume()
-          when ((treePath.lastPathComponent as DefaultMutableTreeNode).userObject) {
-            is ExternalToolGroup -> {
-              if (isExpanded(treePath)) collapsePath(treePath)
-              else expandPath(treePath)
-            }
+          val node = treePath.lastPathComponent as DefaultMutableTreeNode
+          when (node.userObject) {
             is ExternalTool -> editData()
             else -> {}
           }
         }
       }
     })
+    addTreeExpansionListener(object : TreeExpansionListener {
+      override fun treeExpanded(event: TreeExpansionEvent) {
+        treeState = TreeState.createOn(this@apply)
+      }
+
+      override fun treeCollapsed(event: TreeExpansionEvent) {
+        treeState = TreeState.createOn(this@apply)
+      }
+    })
+
+    SmartExpander.installOn(this)
   }
 
   val component: JComponent
@@ -70,7 +86,9 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
   init {
     val decoratedTree = ToolbarDecorator.createDecorator(tree)
       .setAddAction { addTool() }
+      .setRemoveActionUpdater { isExternalToolSelected(tree.selectionPath) }
       .setRemoveAction { removeData() }
+      .setEditActionUpdater { isExternalToolSelected(tree.selectionPath) }
       .setEditAction { editData() }
       .disableUpDownActions()
       .createPanel()
@@ -78,36 +96,16 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
     component = decoratedTree
   }
 
-  fun getData(): MutableMap<ExternalToolGroup, List<ExternalTool>> {
-    val data = mutableMapOf<ExternalToolGroup, List<ExternalTool>>()
+  fun onModified(settings: ExternalDiffSettings): Boolean = treeModel.toMap() != settings.externalTools
 
-    for (group in root.children()) {
-      val groupNode = group as DefaultMutableTreeNode
-
-      val tools = mutableListOf<ExternalTool>()
-      for (child in group.children()) {
-        val childNode = child as DefaultMutableTreeNode
-        val tool = childNode.userObject as ExternalTool
-        tools.add(tool)
-      }
-
-      data[groupNode.userObject as ExternalToolGroup] = tools
-    }
-
-    return data
+  fun onApply(settings: ExternalDiffSettings) {
+    settings.externalTools = treeModel.toMap()
+    treeState = TreeState.createOn(tree)
   }
 
-  fun updateData(value: Map<ExternalToolGroup, List<ExternalTool>>) {
-    root.removeAllChildren()
-
-    value.toSortedMap().forEach { (group, tools) ->
-      val groupNode = DefaultMutableTreeNode(group)
-      tools.forEach { groupNode.add(DefaultMutableTreeNode(it)) }
-      treeModel.insertNodeInto(groupNode, root, root.childCount)
-    }
-
-    treeModel.nodeStructureChanged(root)
-    TreeUtil.expandAll(tree)
+  fun onReset(settings: ExternalDiffSettings) {
+    treeModel.update(settings.externalTools)
+    treeState.applyTo(tree)
   }
 
   private fun addTool() {
@@ -139,12 +137,6 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
   private fun removeData() {
     val treePath = tree.selectionPath ?: return
     val node = treePath.lastPathComponent as DefaultMutableTreeNode
-    if (node.userObject !is ExternalTool) {
-      Messages.showWarningDialog(DiffBundle.message("settings.external.tool.tree.remove.group.warning.message"),
-                                 DiffBundle.message("settings.external.tool.tree.remove.group.warning.title"))
-      return
-    }
-
     val parentNode = treePath.parentPath.lastPathComponent as DefaultMutableTreeNode
     val toolGroup = parentNode.userObject as ExternalToolGroup
 
@@ -159,6 +151,9 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
                                                DiffBundle.message("settings.external.diff.table.remove.dialog.message"))
     if (dialog.guessWindowAndAsk()) {
       treeModel.removeNodeFromParent(node)
+      if (parentNode.childCount == 0) {
+        treeModel.removeNodeFromParent(parentNode)
+      }
     }
   }
 
@@ -192,26 +187,34 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
     }
   }
 
-  private class ExternalToolsTreeCellRenderer : CheckboxTree.CheckboxTreeCellRenderer() {
-    override fun customizeRenderer(tree: JTree?,
-                                   value: Any?,
-                                   selected: Boolean,
-                                   expanded: Boolean,
-                                   leaf: Boolean,
-                                   row: Int,
-                                   hasFocus: Boolean) {
-      val renderer = textRenderer
-      val text = when (val item = (value as DefaultMutableTreeNode).userObject) {
-        null -> return
-        is ExternalToolGroup -> {
-          if (value.childCount == 0) return
-          item.groupName // NON-NLS
-        }
-        is ExternalTool -> item.name // NON-NLS
-        else -> item.toString() // NON-NLS
-      }
+  private fun isExternalToolSelected(selectionPath: TreePath?): Boolean {
+    if (selectionPath == null) return false
 
-      renderer.append(text)
+    val node = selectionPath.lastPathComponent as DefaultMutableTreeNode
+    return when (node.userObject) {
+      is ExternalTool -> true
+      else -> false
+    }
+  }
+
+  private class ExternalToolsTreeCellRenderer : TreeCellRenderer {
+    private val renderer = SimpleColoredComponent()
+
+    override fun getTreeCellRendererComponent(tree: JTree, value: Any,
+                                              selected: Boolean, expanded: Boolean,
+                                              leaf: Boolean, row: Int, hasFocus: Boolean): Component {
+      return renderer.apply {
+        val node = value as DefaultMutableTreeNode
+        val text = when (val userObject = node.userObject) {
+          null -> "" // Special for root (not visible in tree)
+          is ExternalToolGroup -> userObject.groupName // NON-NLS
+          is ExternalTool -> userObject.name // NON-NLS
+          else -> userObject.toString() // NON-NLS
+        }
+
+        clear()
+        append(text)
+      }
     }
   }
 
@@ -245,9 +248,7 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
       })
     }
     private val programPathField = TextFieldWithBrowseButton().apply {
-      addBrowseFolderListener(DiffBundle.message("select.external.diff.program.dialog.title"),
-                              null,
-                              null,
+      addBrowseFolderListener(DiffBundle.message("select.external.program.dialog.title"), null, null,
                               FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor())
       textField.document.addDocumentListener(object : DocumentListener {
         override fun insertUpdate(event: DocumentEvent) {
@@ -273,10 +274,11 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
     private val testMergeButton = JButton(DiffBundle.message("settings.external.diff.test.merge")).apply {
       addActionListener { showTestMerge() }
     }
-    private val argumentPatternDescription = DslLabel(DslLabelType.COMMENT).apply {
-      maxLineLength = DEFAULT_COMMENT_WIDTH
-      text = createDescription(ExternalToolGroup.DIFF_TOOL)
+
+    private val toolOutputEditor = ConsoleViewUtil.setupConsoleEditor(null, false, false).also {
+      it.settings.additionalLinesCount = 3
     }
+    private var toolOutputConsole: MyTestOutputConsole? = null
 
     constructor(externalTool: ExternalTool) : this(externalTool.name, true) {
       isAutocompleteToolName = false
@@ -293,41 +295,47 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
     init {
       title = DiffBundle.message("settings.external.tool.tree.add.dialog.title")
 
+      Disposer.register(disposable) { toolOutputConsole?.let { Disposer.dispose(it) } }
+
       init()
     }
 
     override fun createCenterPanel(): JComponent = panel {
+      lateinit var argumentPatternDescription: JEditorPane
+
       row(DiffBundle.message("settings.external.tool.tree.add.dialog.field.group")) {
-        cell(groupField).horizontalAlign(HorizontalAlign.FILL)
+        cell(groupField).align(AlignX.FILL)
       }.visible(!isEditMode)
       row(DiffBundle.message("settings.external.tool.tree.add.dialog.field.program.path")) {
-        cell(programPathField).horizontalAlign(HorizontalAlign.FILL)
+        cell(programPathField).align(AlignX.FILL)
       }
       row(DiffBundle.message("settings.external.tool.tree.add.dialog.field.tool.name")) {
-        cell(toolNameField).horizontalAlign(HorizontalAlign.FILL).validationOnApply { toolFieldValidation(groupField.item, it.text) }
+        cell(toolNameField).align(AlignX.FILL).validationOnApply { toolFieldValidation(groupField.item, it.text) }
       }
       row(DiffBundle.message("settings.external.tool.tree.add.dialog.field.argument.pattern")) {
-        cell(argumentPatternField).horizontalAlign(HorizontalAlign.FILL)
+        cell(argumentPatternField).align(AlignX.FILL)
       }
       row {
-        cell(isMergeTrustExitCode).horizontalAlign(HorizontalAlign.FILL)
+        cell(isMergeTrustExitCode).align(AlignX.FILL)
           .visibleIf(object : ComponentPredicate() {
             override fun addListener(listener: (Boolean) -> Unit) {
               groupField.addItemListener {
-                val isMergeEnabled = invoke()
-                testDiffButton.isVisible = !isMergeEnabled
-                testThreeSideDiffButton.isVisible = !isMergeEnabled
-                testMergeButton.isVisible = isMergeEnabled
+                val isMergeGroup = invoke()
+                testDiffButton.isVisible = !isMergeGroup
+                testThreeSideDiffButton.isVisible = !isMergeGroup
+                testMergeButton.isVisible = isMergeGroup
 
-                argumentPatternField.text =
-                  if (isMergeEnabled) MERGE_TOOL_DEFAULT_ARGUMENT_PATTERN
-                  else DIFF_TOOL_DEFAULT_ARGUMENT_PATTERN
+                if (!isEditMode) {
+                  argumentPatternField.text =
+                    if (isMergeGroup) MERGE_TOOL_DEFAULT_ARGUMENT_PATTERN
+                    else DIFF_TOOL_DEFAULT_ARGUMENT_PATTERN
+                }
 
                 argumentPatternDescription.text =
-                  if (isMergeEnabled) createDescription(ExternalToolGroup.MERGE_TOOL)
+                  if (isMergeGroup) createDescription(ExternalToolGroup.MERGE_TOOL)
                   else createDescription(ExternalToolGroup.DIFF_TOOL)
 
-                listener(isMergeEnabled)
+                listener(isMergeGroup)
               }
             }
 
@@ -337,19 +345,26 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
             }
           })
       }
-      row { cell(argumentPatternDescription) }
       row {
-        val isMergeEnabled = isMergeTrustExitCode.isEnabled
-        cell(testDiffButton).visible(!isMergeEnabled)
-        cell(testThreeSideDiffButton).visible(!isMergeEnabled)
-        cell(testMergeButton).visible(isMergeEnabled)
+        argumentPatternDescription = comment(createDescription(ExternalToolGroup.DIFF_TOOL), DEFAULT_COMMENT_WIDTH).component
+      }
+      row {
+        val isMergeGroup = isMergeTrustExitCode.isVisible
+        cell(testDiffButton).visible(!isMergeGroup)
+        cell(testThreeSideDiffButton).visible(!isMergeGroup)
+        cell(testMergeButton).visible(isMergeGroup)
       }.topGap(TopGap.MEDIUM)
+      row {
+        cell(toolOutputEditor.component)
+          .align(Align.FILL)
+          .applyToComponent { preferredSize = JBUI.size(400, 150) }
+      }.resizableRow()
     }
 
     fun createExternalTool(): ExternalTool = ExternalTool(toolNameField.text,
                                                           programPathField.text,
                                                           argumentPatternField.text,
-                                                          isMergeTrustExitCode.isEnabled && isMergeTrustExitCode.isSelected,
+                                                          isMergeTrustExitCode.isVisible && isMergeTrustExitCode.isSelected,
                                                           groupField.item)
 
     fun getToolGroup(): ExternalToolGroup = groupField.item
@@ -377,6 +392,7 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
       return isNodeExist != null
     }
 
+    @NlsContexts.DetailedDescription
     private fun createDescription(toolGroup: ExternalToolGroup): String {
       val title = DiffBundle.message("settings.external.tools.parameters.description")
       val argumentPattern = when (toolGroup) {
@@ -388,57 +404,59 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
     }
 
     private fun showTestDiff() {
-      try {
-        val factory = DiffContentFactory.getInstance()
-        val contents = listOf(factory.create(DiffBundle.message("settings.external.diff.left.file.content"), FileTypes.PLAIN_TEXT),
-                              factory.create(DiffBundle.message("settings.external.diff.right.file.content"), FileTypes.PLAIN_TEXT))
-        val titles = listOf("Left", "Right")
-        ExternalDiffToolUtil.execute(null, createExternalTool(), contents, titles, null)
-      }
-      catch (e: Exception) {
-        Messages.showErrorDialog(e.message, DiffBundle.message("error.cannot.show.diff"))
-      }
+      ExternalDiffToolUtil.testDiffTool2(null, createExternalTool(), resetToolOutputConsole())
     }
 
     private fun showTestThreeDiff() {
-      try {
-        val factory = DiffContentFactory.getInstance()
-        val contents = listOf(factory.create(DiffBundle.message("settings.external.diff.left.file.content"), FileTypes.PLAIN_TEXT),
-                              factory.create(DiffBundle.message("settings.external.diff.base.file.content"), FileTypes.PLAIN_TEXT),
-                              factory.create(DiffBundle.message("settings.external.diff.right.file.content"), FileTypes.PLAIN_TEXT))
-        val titles = listOf("Left", "Base", "Right")
-        ExternalDiffToolUtil.execute(null, createExternalTool(), contents, titles, null)
-      }
-      catch (e: Exception) {
-        Messages.showErrorDialog(e.message, DiffBundle.message("error.cannot.show.diff"))
-      }
+      ExternalDiffToolUtil.testDiffTool3(null, createExternalTool(), resetToolOutputConsole())
     }
 
     private fun showTestMerge() {
-      try {
-        val factory = DiffRequestFactory.getInstance()
-        val document = DocumentImpl(DiffBundle.message("settings.external.diff.original.output.file.content"))
-
-        val callback = { result: MergeResult ->
-          val message = when (result) {
-            MergeResult.CANCEL -> DiffBundle.message("settings.external.diff.merge.conflict.resolve.was.canceled")
-            else -> DiffBundle.message("settings.external.diff.merge.conflict.resolve.successful",
-                                       StringUtil.shortenPathWithEllipsis(document.text, 60))
-
-          }
-          Messages.showInfoMessage(message, DiffBundle.message("settings.external.diff.test.complete"))
-        }
-        val contents = listOf(DiffBundle.message("settings.external.diff.left.file.content"),
-                              DiffBundle.message("settings.external.diff.base.file.content"),
-                              DiffBundle.message("settings.external.diff.right.file.content"))
-        val titles = listOf("Left", "Base", "Right")
-        val request = factory.createMergeRequest(null, PlainTextFileType.INSTANCE, document, contents, null, titles, callback)
-        ExternalDiffToolUtil.executeMerge(null, createExternalTool(), request as ThreesideMergeRequest, this.contentPanel)
-      }
-      catch (e: Exception) {
-        Messages.showErrorDialog(e.message, DiffBundle.message("error.cannot.show.merge"))
-      }
+      ExternalDiffToolUtil.testMergeTool(null, createExternalTool(), resetToolOutputConsole())
     }
+
+    @RequiresEdt
+    private fun resetToolOutputConsole(): ExternalDiffToolUtil.TestOutputConsole {
+      toolOutputConsole?.let { Disposer.dispose(it) }
+      toolOutputConsole = MyTestOutputConsole(toolOutputEditor)
+      return toolOutputConsole!!
+    }
+  }
+
+  private fun DefaultTreeModel.toMap(): MutableMap<ExternalToolGroup, List<ExternalTool>> {
+    val root = this.root as DefaultMutableTreeNode
+    val model = mutableMapOf<ExternalToolGroup, List<ExternalTool>>()
+
+    for (group in root.children()) {
+      if (group.childCount == 0) continue
+
+      val groupNode = group as DefaultMutableTreeNode
+      val tools = mutableListOf<ExternalTool>()
+      for (child in group.children()) {
+        val childNode = child as DefaultMutableTreeNode
+        val tool = childNode.userObject as ExternalTool
+        tools.add(tool)
+      }
+
+      model[groupNode.userObject as ExternalToolGroup] = tools
+    }
+
+    return model
+  }
+
+  private fun DefaultTreeModel.update(value: Map<ExternalToolGroup, List<ExternalTool>>) {
+    val root = this.root as DefaultMutableTreeNode
+    root.removeAllChildren()
+
+    value.toSortedMap().forEach { (group, tools) ->
+      if (tools.isEmpty()) return@forEach
+
+      val groupNode = DefaultMutableTreeNode(group)
+      tools.forEach { groupNode.add(DefaultMutableTreeNode(it)) }
+      insertNodeInto(groupNode, root, root.childCount)
+    }
+
+    nodeStructureChanged(root)
   }
 
   private fun ListTableModel<ExternalDiffSettings.ExternalToolConfiguration>.updateEntities(
@@ -463,5 +481,50 @@ internal class ExternalToolsTreePanel(private val models: ExternalToolsModels) :
   companion object {
     private const val DIFF_TOOL_DEFAULT_ARGUMENT_PATTERN = "%1 %2 %3"
     private const val MERGE_TOOL_DEFAULT_ARGUMENT_PATTERN = "%1 %2 %3 %4"
+  }
+
+  private class MyTestOutputConsole(private val editor: Editor) : ExternalDiffToolUtil.TestOutputConsole, Disposable {
+    private val document = editor.document
+    private val modalityState = ModalityState.stateForComponent(editor.component)
+
+    private var isDisposed: Boolean = false
+    private var wasTerminated: Boolean = false // better handling for out-of-order events
+
+    init {
+      document.setText("")
+    }
+
+    override fun getComponent(): JComponent = editor.component
+
+    override fun appendOutput(outputType: Key<*>, line: String) {
+      appendText("$outputType: $line", false)
+    }
+
+    override fun processTerminated(exitCode: Int) {
+      appendText(DiffBundle.message("settings.external.tools.test.process.exit.text", exitCode), true)
+    }
+
+    private fun appendText(text: String, isTermination: Boolean) {
+      runInEdt(modalityState) {
+        if (isDisposed) return@runInEdt // the next test session has started
+        if (isTermination) wasTerminated = true
+
+        val offset = if (!isTermination && wasTerminated && document.lineCount > 1) {
+          // the last line is termination line, insert output next-to-last-line
+          document.getLineStartOffset(document.lineCount - 2) // -2, as process termination line also ends with \n
+        }
+        else {
+          // insert into the end
+          document.textLength
+        }
+
+        val line = if (text.endsWith('\n')) text else text + '\n'
+        document.insertString(offset, line)
+      }
+    }
+
+    override fun dispose() {
+      isDisposed = true
+    }
   }
 }

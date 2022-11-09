@@ -15,16 +15,17 @@ import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.UsefulTestCase.assertOneElement
 import com.intellij.testFramework.rules.ProjectModelRule
+import com.intellij.testFramework.workspaceModel.updateProjectModel
 import com.intellij.workspaceModel.ide.impl.WorkspaceModelInitialTestContent
 import com.intellij.workspaceModel.ide.impl.jps.serialization.toConfigLocation
 import com.intellij.workspaceModel.ide.impl.legacyBridge.facet.FacetManagerBridge
 import com.intellij.workspaceModel.ide.impl.legacyBridge.facet.ModifiableFacetModelBridgeImpl
 import com.intellij.workspaceModel.ide.impl.legacyBridge.module.ModuleManagerBridgeImpl
-import com.intellij.workspaceModel.storage.WorkspaceEntityStorageBuilder
+import com.intellij.workspaceModel.storage.MutableEntityStorage
 import com.intellij.workspaceModel.storage.bridgeEntities.FacetEntity
-import com.intellij.workspaceModel.storage.bridgeEntities.ModifiableFacetEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.addFacetEntity
 import com.intellij.workspaceModel.storage.bridgeEntities.addModuleEntity
+import com.intellij.workspaceModel.storage.bridgeEntities.modifyEntity
 import com.intellij.workspaceModel.storage.toBuilder
 import com.intellij.workspaceModel.storage.url.VirtualFileUrlManager
 import junit.framework.AssertionFailedError
@@ -54,7 +55,7 @@ class FacetModelBridgeTest {
 
   @Before
   fun registerFacetType() {
-    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(disposableRule.disposable, {})
+    ProjectLoadingErrorsHeadlessNotifier.setErrorHandler(disposableRule.disposable) {}
     registerFacetType(MockFacetType(), disposableRule.disposable)
     registerFacetType(AnotherMockFacetType(), disposableRule.disposable)
   }
@@ -89,7 +90,7 @@ class FacetModelBridgeTest {
 
   @Test
   fun `facet with caching`() {
-    val builder = WorkspaceEntityStorageBuilder.create()
+    val builder = MutableEntityStorage.create()
 
     val baseDir = projectModel.baseProjectDir.rootPath.resolve("test")
     val iprFile = baseDir.resolve("testProject.ipr")
@@ -101,7 +102,7 @@ class FacetModelBridgeTest {
     builder.addFacetEntity("MyFacet", "MockFacetId", """<configuration data="foo" />""", moduleEntity,
                            null, source)
 
-    WorkspaceModelInitialTestContent.withInitialContent(builder.toStorage()) {
+    WorkspaceModelInitialTestContent.withInitialContent(builder.toSnapshot()) {
       val project = PlatformTestUtil.loadAndOpenProject(iprFile, disposableRule.disposable)
       Disposer.register(disposableRule.disposable, Disposable {
         PlatformTestUtil.forceCloseProjectWithoutSaving(project)
@@ -112,12 +113,13 @@ class FacetModelBridgeTest {
       val facet = assertOneElement(facets) as MockFacet
       assertEquals("MyFacet", facet.name)
       assertEquals("foo", facet.configuration.data)
+      assertTrue(facet.isInitialized)
     }
   }
 
   @Test
   fun `facet config immutable collections deserialization`() {
-    val builder = WorkspaceEntityStorageBuilder.create()
+    val builder = MutableEntityStorage.create()
 
     val baseDir = projectModel.baseProjectDir.rootPath.resolve("test")
     val iprFile = baseDir.resolve("testProject.ipr")
@@ -136,7 +138,7 @@ class FacetModelBridgeTest {
         </secondElement>
       </AnotherFacetConfigProperties>""", moduleEntity, null, source)
 
-    WorkspaceModelInitialTestContent.withInitialContent(builder.toStorage()) {
+    WorkspaceModelInitialTestContent.withInitialContent(builder.toSnapshot()) {
       val project = PlatformTestUtil.loadAndOpenProject(iprFile, disposableRule.disposable)
       Disposer.register(disposableRule.disposable, Disposable {
         PlatformTestUtil.forceCloseProjectWithoutSaving(project)
@@ -149,6 +151,7 @@ class FacetModelBridgeTest {
       val configProperties = facet.configuration.myProperties
       assertEquals("Android", configProperties.firstElement[0])
       assertEquals("Spring", configProperties.secondElement[0])
+      assertTrue(facet.isInitialized)
     }
   }
 
@@ -160,7 +163,7 @@ class FacetModelBridgeTest {
     runWriteActionAndWait {
       WorkspaceModel.getInstance(projectModel.project).updateProjectModel { builder ->
         val facetEntity = builder.entities(FacetEntity::class.java).single()
-        builder.modifyEntity(ModifiableFacetEntity::class.java, facetEntity) {
+        builder.modifyEntity(facetEntity) {
           configurationXmlTag = """<configuration data="bar" />"""
         }
       }

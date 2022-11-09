@@ -1,4 +1,4 @@
-// Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.hints
 
 import com.intellij.codeInsight.ExternalAnnotationsManager
@@ -11,6 +11,7 @@ import com.intellij.codeInsight.hints.presentation.SequencePresentation
 import com.intellij.codeInsight.javadoc.JavaDocInfoGenerator
 import com.intellij.java.JavaBundle
 import com.intellij.lang.java.JavaLanguage
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
@@ -35,7 +36,7 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
   override fun getCollectorFor(file: PsiFile,
                                editor: Editor,
                                settings: Settings,
-                               sink: InlayHintsSink): InlayHintsCollector? {
+                               sink: InlayHintsSink): InlayHintsCollector {
     val project = file.project
     val document = PsiDocumentManager.getInstance(project).getDocument(file)
     return object : FactoryInlayHintsCollector(editor) {
@@ -168,8 +169,12 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
   override val key: SettingsKey<Settings>
     get() = ourKey
 
-  override fun getProperty(key: String): String {
-    return JavaBundle.message(key)
+  override fun getCaseDescription(case: ImmediateConfigurable.Case): String? {
+    when (case.id) {
+      "inferred.annotations" -> return JavaBundle.message("inlay.annotation.hints.inferred.annotations")
+      "external.annotations" -> return JavaBundle.message("inlay.annotation.hints.external.annotations")
+    }
+    return null
   }
 
   override val previewText: String? = null
@@ -180,11 +185,9 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
     val psiMethod = (file as PsiJavaFile).classes[0].methods[0]
     val factory = PsiElementFactory.getInstance(file.project)
     if (psiMethod.parameterList.isEmpty) {
-      if (settings.showExternal) {
-        PREVIEW_ANNOTATION_KEY.set(psiMethod, factory.createAnnotationFromText("@Deprecated", psiMethod))
-      }
+      PREVIEW_ANNOTATION_KEY.set(psiMethod, factory.createAnnotationFromText("@Deprecated", psiMethod))
     }
-    else if (settings.showInferred)
+    else
       PREVIEW_ANNOTATION_KEY.set(psiMethod.parameterList.getParameter(0), factory.createAnnotationFromText("@NotNull", psiMethod))
   }
 
@@ -213,8 +216,11 @@ class AnnotationInlayProvider : InlayHintsProvider<AnnotationInlayProvider.Setti
   class ToggleSettingsAction(@NlsActions.ActionText val text: String, val prop: KMutableProperty0<Boolean>, val settings: Settings) : AnAction() {
 
     override fun update(e: AnActionEvent) {
-      val presentation = e.presentation
-      presentation.text = text
+      e.presentation.text = text
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread {
+      return ActionUpdateThread.BGT
     }
 
     override fun actionPerformed(e: AnActionEvent) {
@@ -234,6 +240,11 @@ class InsertAnnotationAction(
 ) : AnAction() {
   override fun update(e: AnActionEvent) {
     e.presentation.text = JavaBundle.message("settings.inlay.java.insert.annotation")
+  }
+
+
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.BGT
   }
 
   override fun actionPerformed(e: AnActionEvent) {

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.refactoring.changeSignature
 
@@ -24,13 +24,9 @@ import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.idea.KotlinBundle
-import org.jetbrains.kotlin.idea.caches.project.forcedModuleInfo
-import org.jetbrains.kotlin.idea.caches.project.getModuleInfo
-import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
-import org.jetbrains.kotlin.idea.caches.resolve.unsafeResolveToDescriptor
+import org.jetbrains.kotlin.idea.base.resources.KotlinBundle
+import org.jetbrains.kotlin.idea.base.projectStructure.forcedModuleInfo
+import org.jetbrains.kotlin.idea.base.projectStructure.moduleInfo
 import org.jetbrains.kotlin.idea.caches.resolve.util.getJavaMethodDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.util.getJavaOrKotlinMemberDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.util.javaResolutionFacade
@@ -46,7 +42,8 @@ import org.jetbrains.kotlin.idea.search.codeUsageScopeRestrictedToKotlinSources
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchOptions
 import org.jetbrains.kotlin.idea.search.ideaExtensions.KotlinReferencesSearchParameters
 import org.jetbrains.kotlin.idea.search.usagesSearch.processDelegationCallConstructorUsages
-import org.jetbrains.kotlin.idea.search.useScope
+import org.jetbrains.kotlin.idea.base.util.useScope
+import org.jetbrains.kotlin.idea.caches.resolve.*
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.idea.util.getReceiverTargetDescriptor
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
@@ -57,9 +54,8 @@ import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
 import org.jetbrains.kotlin.psi.psiUtil.getValueParameters
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.resolve.calls.util.getResolvedCall
-import org.jetbrains.kotlin.resolve.calls.model.VariableAsFunctionResolvedCall
 import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
+import org.jetbrains.kotlin.resolve.calls.util.getResolvedCall
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExtensionReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
@@ -426,8 +422,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
                         return null
                     }
 
-                    val (extensionReceiver, dispatchReceiver) = resolvedCall
-                        .let { (it as? VariableAsFunctionResolvedCall)?.variableCall ?: it }
+                    val (extensionReceiver, dispatchReceiver) = resolvedCall.variableCallOrThis()
                         .let { (it.extensionReceiver to it.dispatchReceiver) }
                     if (extensionReceiver != null || dispatchReceiver != null) {
                         val receiverValue = extensionReceiver ?: dispatchReceiver
@@ -769,10 +764,10 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
             val methodDescriptor = KotlinChangeSignatureData(baseCallableDescriptor, baseFunction, listOf(baseCallableDescriptor))
             val dummyClass = JavaPsiFacade.getElementFactory(method.project).createClass("Dummy")
             val dummyMethod = createJavaMethod(method, dummyClass)
-            dummyMethod.containingFile.forcedModuleInfo = baseFunction.getModuleInfo()
+            dummyMethod.containingFile.forcedModuleInfo = baseFunction.moduleInfo
             try {
                 changeInfo.updateMethod(dummyMethod)
-                JavaChangeSignatureUsageProcessor().processPrimaryMethod(changeInfo)
+                JavaChangeSignatureUsageProcessor.processPrimaryMethod(changeInfo, changeInfo.method, null, true)
                 changeInfo.toJetChangeInfo(methodDescriptor, resolutionFacade)
             } finally {
                 changeInfo.updateMethod(method)

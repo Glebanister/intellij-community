@@ -1,4 +1,4 @@
-// Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.codeInsight.daemon.impl;
 
 import com.intellij.codeHighlighting.Pass;
@@ -130,6 +130,7 @@ public final class UpdateHighlightersUtil {
                                                    @NotNull Collection<? extends HighlightInfo> highlights,
                                                    @Nullable EditorColorsScheme colorsScheme, // if null global scheme will be used
                                                    int group) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
     Document document = editor.getDocument();
     MarkupModelEx markup = (MarkupModelEx)editor.getMarkupModel();
     setHighlightersToEditor(project, document, startOffset, endOffset, highlights, colorsScheme, group, markup);
@@ -142,6 +143,7 @@ public final class UpdateHighlightersUtil {
                                              @NotNull Collection<? extends HighlightInfo> highlights,
                                              @Nullable EditorColorsScheme colorsScheme, // if null global scheme will be used
                                              int group) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
     MarkupModelEx markup = (MarkupModelEx)DocumentMarkupModel.forDocument(document, project, true);
     setHighlightersToEditor(project, document, startOffset, endOffset, highlights, colorsScheme, group, markup);
   }
@@ -155,7 +157,6 @@ public final class UpdateHighlightersUtil {
                                               int group,
                                               @NotNull MarkupModelEx markup) {
     TextRange range = new TextRange(startOffset, endOffset);
-    ApplicationManager.getApplication().assertIsDispatchThread();
 
     PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
     DaemonCodeAnalyzerEx codeAnalyzer = DaemonCodeAnalyzerEx.getInstanceEx(project);
@@ -193,8 +194,8 @@ public final class UpdateHighlightersUtil {
                                           int endOffset,
                                           @NotNull ProperTextRange priorityRange,
                                           int group) {
-    List<HighlightInfo> filteredInfos = applyPostFilter(project, infos);
     ApplicationManager.getApplication().assertIsDispatchThread();
+    List<HighlightInfo> filteredInfos = applyPostFilter(project, infos);
 
     DaemonCodeAnalyzerEx codeAnalyzer = DaemonCodeAnalyzerEx.getInstanceEx(project);
     if (startOffset == 0 && endOffset == document.getTextLength()) {
@@ -406,7 +407,7 @@ public final class UpdateHighlightersUtil {
     int layer = getLayer(info, severityRegistrar);
     RangeHighlighterEx highlighter = infosToRemove == null ? null : (RangeHighlighterEx)infosToRemove.pickupHighlighterFromGarbageBin(infoStartOffset, infoEndOffset, layer);
 
-    long finalInfoRange = TextRange.toScalarRange(infoStartOffset, infoEndOffset);
+    long finalInfoRange = TextRangeScalarUtil.toScalarRange(infoStartOffset, infoEndOffset);
     TextAttributes infoAttributes = info.getTextAttributes(psiFile, colorsScheme);
     Consumer<RangeHighlighterEx> changeAttributes = finalHighlighter -> {
       TextAttributesKey textAttributesKey = info.forcedTextAttributesKey == null ? info.type.getAttributesKey() : info.forcedTextAttributesKey;
@@ -433,24 +434,8 @@ public final class UpdateHighlightersUtil {
       GutterMark renderer = info.getGutterIconRenderer();
       finalHighlighter.setGutterIconRenderer((GutterIconRenderer)renderer);
 
-      ranges2markersCache.put(finalInfoRange, info.getHighlighter());
-      if (info.quickFixActionRanges != null) {
-        List<Pair<HighlightInfo.IntentionActionDescriptor, RangeMarker>> list =
-          new ArrayList<>(info.quickFixActionRanges.size());
-        for (Pair<HighlightInfo.IntentionActionDescriptor, TextRange> pair : info.quickFixActionRanges) {
-          TextRange textRange = pair.second;
-          RangeMarker marker = getOrCreate(document, ranges2markersCache, textRange);
-          list.add(Pair.create(pair.first, marker));
-        }
-        info.quickFixActionMarkers = ContainerUtil.createLockFreeCopyOnWriteList(list);
-      }
-      ProperTextRange fixRange = info.getFixTextRange();
-      if (fixRange.equalsToRange(finalInfoRange)) {
-        info.fixMarker = null; // null means it the same as highlighter'
-      }
-      else {
-        info.fixMarker = getOrCreate(document, ranges2markersCache, fixRange);
-      }
+      ranges2markersCache.put(finalInfoRange, finalHighlighter);
+      info.updateQuickFixFields(document, ranges2markersCache, finalInfoRange);
     };
 
     if (highlighter == null) {
@@ -473,16 +458,19 @@ public final class UpdateHighlightersUtil {
   }
 
   private static int getLayer(@NotNull HighlightInfo info, @NotNull SeverityRegistrar severityRegistrar) {
+    if (info instanceof InternalLayerSupplier) {
+      return ((InternalLayerSupplier)info).getLayer();
+    }
     HighlightSeverity severity = info.getSeverity();
     int layer;
-    if (severity == HighlightSeverity.WARNING) {
+    if (severityRegistrar.compare(severity, HighlightSeverity.ERROR) >= 0) {
+      layer = HighlighterLayer.ERROR;
+    }
+    else if (severityRegistrar.compare(severity, HighlightSeverity.WARNING) >= 0) {
       layer = HighlighterLayer.WARNING;
     }
-    else if (severity == HighlightSeverity.WEAK_WARNING) {
+    else if (severityRegistrar.compare(severity, HighlightSeverity.WEAK_WARNING) >= 0) {
       layer = HighlighterLayer.WEAK_WARNING;
-    }
-    else if (severityRegistrar.compare(severity, HighlightSeverity.ERROR) >= 0) {
-      layer = HighlighterLayer.ERROR;
     }
     else if (severity == HighlightInfoType.INJECTED_FRAGMENT_SEVERITY || severity == HighlightInfoType.HIGHLIGHTED_REFERENCE_SEVERITY) {
       layer = HighlighterLayer.CARET_ROW - 1;
@@ -493,15 +481,13 @@ public final class UpdateHighlightersUtil {
     else if (severity == HighlightInfoType.ELEMENT_UNDER_CARET_SEVERITY) {
       layer = HighlighterLayer.ELEMENT_UNDER_CARET;
     }
+    else if (severityRegistrar.getAllSeverities().contains(severity) && !SeverityRegistrar.isDefaultSeverity(severity)) {
+      layer = HighlighterLayer.WARNING;
+    }
     else {
       layer = HighlighterLayer.ADDITIONAL_SYNTAX;
     }
     return layer;
-  }
-
-  @NotNull
-  private static RangeMarker getOrCreate(@NotNull Document document, @NotNull Long2ObjectMap<RangeMarker> ranges2markersCache, TextRange textRange) {
-    return ranges2markersCache.computeIfAbsent(textRange.toScalarRange(), __ -> document.createRangeMarker(textRange));
   }
 
   private static final Key<Boolean> TYPING_INSIDE_HIGHLIGHTER_OCCURRED = Key.create("TYPING_INSIDE_HIGHLIGHTER_OCCURRED");
@@ -591,6 +577,7 @@ public final class UpdateHighlightersUtil {
    * This method currently works in O(total highlighter count in file) time.
    */
   public static void removeHighlightersWithExactRange(@NotNull Document document, @NotNull Project project, @NotNull Segment range) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
     MarkupModel model = DocumentMarkupModel.forDocument(document, project, false);
     if (model == null) return;
 

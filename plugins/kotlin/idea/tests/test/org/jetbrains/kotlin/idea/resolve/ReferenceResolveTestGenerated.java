@@ -6,7 +6,7 @@ import com.intellij.testFramework.TestDataPath;
 import org.jetbrains.kotlin.idea.test.JUnit3RunnerWithInners;
 import org.jetbrains.kotlin.idea.test.KotlinTestUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
-import org.jetbrains.kotlin.idea.test.TestRoot;
+import org.jetbrains.kotlin.idea.base.test.TestRoot;
 import org.junit.runner.RunWith;
 
 /**
@@ -809,6 +809,16 @@ public abstract class ReferenceResolveTestGenerated extends AbstractReferenceRes
         @TestMetadata("SeveralOverrides.kt")
         public void testSeveralOverrides() throws Exception {
             runTest("testData/resolve/references/SeveralOverrides.kt");
+        }
+
+        @TestMetadata("SuperTypePrimaryConstructor.kt")
+        public void testSuperTypePrimaryConstructor() throws Exception {
+            runTest("testData/resolve/references/SuperTypePrimaryConstructor.kt");
+        }
+
+        @TestMetadata("SuperTypeSecondaryConstructor.kt")
+        public void testSuperTypeSecondaryConstructor() throws Exception {
+            runTest("testData/resolve/references/SuperTypeSecondaryConstructor.kt");
         }
 
         @TestMetadata("SyntheticProperty.kt")

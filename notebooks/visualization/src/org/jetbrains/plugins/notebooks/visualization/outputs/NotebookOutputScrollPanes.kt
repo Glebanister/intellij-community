@@ -5,16 +5,13 @@ import com.intellij.openapi.util.registry.Registry
 import com.intellij.ui.ComponentUtil
 import com.intellij.ui.IdeBorderFactory
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.util.castSafelyTo
+import com.intellij.util.asSafely
 import com.intellij.util.ui.MouseEventHandler
 import java.awt.Component
 import java.awt.Insets
 import java.awt.Point
 import java.awt.event.*
-import javax.swing.JComponent
-import javax.swing.JPanel
-import javax.swing.JScrollBar
-import javax.swing.JScrollPane
+import javax.swing.*
 
 internal fun getEditorBackground() = EditorColorsManager.getInstance().globalScheme.defaultBackground
 
@@ -232,19 +229,32 @@ open class NotebookOutputNonStickyScrollPane(
       // to the situation when components not intended to receive mouse events receive
       // them. This makes the events invisible to the underlying parent components.
       // The code below ensures that events will reach parents that may be interested in them.
-      e.takeUnless { it.isConsumed }?.source?.castSafelyTo<Component>()?.parent?.let {
+      val source = e.source as Component  // source of MouseEvent should always be Component, see constructor of MouseEvent
+      e.takeUnless { it.isConsumed }?.source?.asSafely<Component>()?.parent?.let {
+        val adjustedPoint = SwingUtilities.convertPoint(source, e.point, it)
         it.dispatchEvent(MouseEvent(
-          it, e.id, e.`when`, e.modifiersEx, e.x, e.y, e.xOnScreen, e.yOnScreen, e.clickCount, e.isPopupTrigger, e.button,
+          it,
+          e.id,
+          e.`when`,
+          e.modifiersEx,
+          adjustedPoint.x,
+          adjustedPoint.y,
+          e.xOnScreen,
+          e.yOnScreen,
+          e.clickCount,
+          e.isPopupTrigger,
+          e.button,
         ))
       }
     }
 
     private fun contentFitsViewport(): Boolean {
+      val view = viewport.view ?: return true
       val viewRect = viewport.viewRect
       return viewRect.x == 0
              && viewRect.y == 0
-             && viewRect.height == viewport.view.height
-             && viewRect.width == viewport.view.width
+             && viewRect.height == view.height
+             && viewRect.width == view.width
     }
   }
 

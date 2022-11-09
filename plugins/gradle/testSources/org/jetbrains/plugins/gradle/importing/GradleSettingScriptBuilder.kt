@@ -1,27 +1,29 @@
-// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.plugins.gradle.importing
 
-import java.util.*
+import org.jetbrains.plugins.gradle.frameworkSupport.script.*
+import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptElement.Statement.Expression
+import org.jetbrains.plugins.gradle.frameworkSupport.script.ScriptElement.Statement.Expression.BlockElement
 
-class GradleSettingScriptBuilder(projectName: String) {
+interface GradleSettingScriptBuilder : ScriptElementBuilder {
 
-  private val builder = StringJoiner("\n")
-    .add("rootProject.name = '$projectName'")
-    .add("")
+  fun setProjectName(projectName: String): GradleSettingScriptBuilder
 
-  fun generate() = builder.toString()
+  fun include(name: String): GradleSettingScriptBuilder
 
-  fun include(name: String) = apply {
-    builder.add("include '$name'")
-  }
+  fun includeFlat(name: String): GradleSettingScriptBuilder
 
-  fun includeBuild(name: String) = apply {
-    builder.add("includeBuild '$name'")
-  }
+  fun includeBuild(name: String): GradleSettingScriptBuilder
 
-  companion object {
-    @JvmStatic
-    fun settingsScript(projectName: String, configure: GradleSettingScriptBuilder.() -> Unit) =
-      GradleSettingScriptBuilder(projectName).apply(configure).generate()
-  }
+  fun enableFeaturePreview(featureName: String): GradleSettingScriptBuilder
+
+  fun addCode(text: String): GradleSettingScriptBuilder
+
+  fun addCode(expression: Expression): GradleSettingScriptBuilder
+
+  fun addCode(configure: ScriptTreeBuilder.() -> Unit): GradleSettingScriptBuilder
+
+  fun generateTree(): BlockElement
+
+  fun generate(useKotlinDsl: Boolean): String
 }

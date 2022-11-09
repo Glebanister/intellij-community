@@ -1,10 +1,11 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.testFramework.fixtures.impl;
 
 import com.intellij.analysis.AnalysisScope;
 import com.intellij.application.options.CodeStyle;
 import com.intellij.codeHighlighting.RainbowHighlighter;
 import com.intellij.codeInsight.AutoPopupController;
+import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
@@ -14,15 +15,19 @@ import com.intellij.codeInsight.daemon.impl.*;
 import com.intellij.codeInsight.folding.CodeFoldingManager;
 import com.intellij.codeInsight.highlighting.actions.HighlightUsagesAction;
 import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.codeInsight.intention.IntentionActionDelegate;
 import com.intellij.codeInsight.intention.impl.CachedIntentions;
 import com.intellij.codeInsight.intention.impl.IntentionListStep;
 import com.intellij.codeInsight.intention.impl.ShowIntentionActionsHandler;
+import com.intellij.codeInsight.intention.impl.preview.IntentionPreviewPopupUpdateProcessor;
+import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupManager;
 import com.intellij.codeInsight.lookup.impl.LookupImpl;
 import com.intellij.codeInspection.InspectionProfileEntry;
 import com.intellij.codeInspection.InspectionToolProvider;
 import com.intellij.codeInspection.LocalInspectionTool;
+import com.intellij.codeInspection.actions.CleanupInspectionIntention;
 import com.intellij.codeInspection.ex.InspectionToolWrapper;
 import com.intellij.facet.Facet;
 import com.intellij.facet.FacetManager;
@@ -33,7 +38,6 @@ import com.intellij.find.findUsages.FindUsagesManager;
 import com.intellij.find.findUsages.FindUsagesOptions;
 import com.intellij.find.impl.FindManagerImpl;
 import com.intellij.find.usages.api.SearchTarget;
-import com.intellij.find.usages.api.UsageHandler;
 import com.intellij.find.usages.api.UsageOptions;
 import com.intellij.find.usages.impl.AllSearchOptions;
 import com.intellij.ide.IdeEventQueue;
@@ -88,15 +92,19 @@ import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootManager;
 import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.roots.impl.ProjectRootManagerComponent;
 import com.intellij.openapi.roots.impl.ProjectRootManagerImpl;
 import com.intellij.openapi.roots.impl.libraries.LibraryTableTracker;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.Segment;
+import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.readOnlyHandler.ReadonlyStatusHandlerImpl;
 import com.intellij.openapi.vfs.*;
 import com.intellij.openapi.vfs.impl.VirtualFilePointerTracker;
+import com.intellij.profile.codeInspection.ProjectInspectionProfileManager;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.PsiManagerEx;
 import com.intellij.psi.impl.PsiManagerImpl;
@@ -124,6 +132,7 @@ import com.intellij.usageView.UsageViewContentManager;
 import com.intellij.usages.*;
 import com.intellij.usages.impl.UsageViewImpl;
 import com.intellij.util.*;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.indexing.FileBasedIndex;
 import com.intellij.util.indexing.FileBasedIndexExtension;
@@ -131,6 +140,8 @@ import com.intellij.util.indexing.FindSymbolParameters;
 import com.intellij.util.io.ReadOnlyAttributeUtil;
 import com.intellij.util.ui.UIUtil;
 import junit.framework.ComparisonFailure;
+import kotlin.UninitializedPropertyAccessException;
+import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
@@ -142,13 +153,14 @@ import java.lang.ref.Reference;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.intellij.find.usages.api.UsageHandler.UsageAction.FIND_USAGES;
 import static com.intellij.find.usages.impl.ImplKt.buildUsageViewQuery;
 import static com.intellij.openapi.util.io.FileUtil.toSystemDependentName;
 import static com.intellij.testFramework.RunAll.runAll;
@@ -253,6 +265,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     DaemonCodeAnalyzerImpl codeAnalyzer = (DaemonCodeAnalyzerImpl)DaemonCodeAnalyzer.getInstance(project);
     TextEditor textEditor = TextEditorProvider.getInstance().getTextEditor(editor);
     DaemonCodeAnalyzerSettings settings = DaemonCodeAnalyzerSettings.getInstance();
+    ProjectInspectionProfileManager.getInstance(project); // avoid "severities changed, restart" event
 
     ProcessCanceledException exception = null;
     int retries = 1000;
@@ -262,7 +275,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
         settings.setAutoReparseDelay(0);
         List<HighlightInfo> infos = new ArrayList<>();
         EdtTestUtil.runInEdtAndWait(() -> {
-          codeAnalyzer.runPasses(file, editor.getDocument(), Collections.singletonList(textEditor), toIgnore, canChangeDocument, null);
+          codeAnalyzer.runPasses(file, editor.getDocument(), textEditor, toIgnore, canChangeDocument, null);
           IdeaTestExecutionPolicy policy = IdeaTestExecutionPolicy.current();
           if (policy != null) {
             policy.waitForHighlighting(project, editor);
@@ -309,6 +322,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   }
 
   @NotNull
+  @TestOnly
   public static List<IntentionAction> getAvailableIntentions(@NotNull Editor editor, @NotNull PsiFile file) {
     return ReadAction.compute(() -> doGetAvailableIntentions(editor, file));
   }
@@ -319,6 +333,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     if (current != null) {
       current.waitForHighlighting(file.getProject(), editor);
     }
+    waitForUnresolvedReferencesQuickFixesUnderCaret(file, editor);
     ShowIntentionsPass.IntentionsInfo intentions = ShowIntentionsPass.getActionsToShow(editor, file, false);
 
     List<IntentionAction> result = new ArrayList<>();
@@ -331,22 +346,31 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
     List<HighlightInfo> infos = DaemonCodeAnalyzerEx.getInstanceEx(file.getProject()).getFileLevelHighlights(file.getProject(), file);
     for (HighlightInfo info : infos) {
-      List<Pair<HighlightInfo.IntentionActionDescriptor, TextRange>> fixRanges = info.quickFixActionRanges;
-      if (fixRanges != null) {
-        for (Pair<HighlightInfo.IntentionActionDescriptor, TextRange> pair : fixRanges) {
-          HighlightInfo.IntentionActionDescriptor actionInGroup = pair.first;
-          if (actionInGroup.getAction().isAvailable(file.getProject(), editor, file)) {
-            result.add(actionInGroup.getAction());
-            for (IntentionAction subAction : actionInGroup.getOptions(file, editor)) {
-              if (subAction.isAvailable(file.getProject(), editor, file)) {
-                result.add(subAction);
-              }
+      info.findRegisteredQuickFix((descriptor, range) -> {
+        if (descriptor.getAction().isAvailable(file.getProject(), editor, file)) {
+          result.add(descriptor.getAction());
+          for (IntentionAction subAction : descriptor.getOptions(file, editor)) {
+            if (subAction.isAvailable(file.getProject(), editor, file)) {
+              result.add(subAction);
             }
           }
         }
-      }
+        return null;
+      });
     }
     return result;
+  }
+
+  public static void waitForUnresolvedReferencesQuickFixesUnderCaret(@NotNull PsiFile file, @NotNull Editor editor) {
+    if (ApplicationManager.getApplication().isDispatchThread()) {
+      ActionUtil.underModalProgress(file.getProject(), CodeInsightBundle.message("progress.title.searching.for.context.actions"), () -> {
+        DaemonCodeAnalyzerImpl.waitForUnresolvedReferencesQuickFixesUnderCaret(file, editor);
+        return null;
+      });
+    }
+    else {
+      DaemonCodeAnalyzerImpl.waitForUnresolvedReferencesQuickFixesUnderCaret(file, editor);
+    }
   }
 
   @NotNull
@@ -399,7 +423,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
 
     assertFileEndsWithCaseSensitivePath(sourceFile);
 
-    assertTrue("Cannot find source file: " + sourcePath + "; test data path: " + testDataPath, sourceFile.exists());
+    assertTrue("Cannot find source file: " + sourceFile + "; test data path: " + testDataPath+"; sourcePath: "+sourcePath, sourceFile.exists());
     assertTrue("Not a file: " + sourceFile, sourceFile.isFile());
 
     if (targetFile == null) {
@@ -531,7 +555,8 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
                                            boolean checkInfos,
                                            boolean checkWeakWarnings,
                                            @NotNull Stream<? extends VirtualFile> files) {
-    List<Trinity<PsiFile, Editor, ExpectedHighlightingData>> data = files.map(file -> {
+    record FileHighlighting(PsiFile file, Editor editor, ExpectedHighlightingData data) {}
+    List<FileHighlighting> data = files.map(file -> {
       PsiFile psiFile = myPsiManager.findFile(file);
       assertNotNull(psiFile);
       Document document = PsiDocumentManager.getInstance(getProject()).getDocument(psiFile);
@@ -539,13 +564,12 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       ExpectedHighlightingData datum =
         new ExpectedHighlightingData(document, checkWarnings, checkWeakWarnings, checkInfos, false, myMessageBundles);
       datum.init();
-      return Trinity.create(psiFile, createEditor(file), datum);
-    })
-      .collect(Collectors.toList());
+      return new FileHighlighting(psiFile, createEditor(file), datum);
+    }).toList();
     long elapsed = 0;
-    for (Trinity<PsiFile, Editor, ExpectedHighlightingData> trinity : data) {
-      setFileAndEditor(trinity.first.getVirtualFile(), trinity.second);
-      elapsed += collectAndCheckHighlighting(trinity.third);
+    for (FileHighlighting highlighting : data) {
+      setFileAndEditor(highlighting.file().getVirtualFile(), highlighting.editor());
+      elapsed += collectAndCheckHighlighting(highlighting.data());
     }
     return elapsed;
   }
@@ -627,7 +651,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
     if (filePaths.length > 0) {
       configureByFilesInner(filePaths);
     }
-    return getFile().findReferenceAt(myEditor.getCaretModel().getOffset());
+    return ReadAction.compute(() -> getFile().findReferenceAt(myEditor.getCaretModel().getOffset()));
   }
 
   @Override
@@ -701,6 +725,49 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       System.out.println(intentionName + " not found among " + StringUtil.join(intentions, IntentionAction::getText, ","));
     }
     return action;
+  }
+
+  @Override
+  public void checkPreviewAndLaunchAction(@NotNull IntentionAction action) {
+    if (skipPreview(action)) {
+      launchAction(action);
+    } else {
+      String text = getIntentionPreviewText(action);
+      assertNotNull(action.getText(), text);
+      launchAction(action);
+      assertEquals(action.getText(), getFile().getText(), text);
+    }
+  }
+
+  private static boolean skipPreview(@NotNull IntentionAction action) {
+    return IntentionActionDelegate.unwrap(action) instanceof CleanupInspectionIntention;
+  }
+
+  @Override
+  public @Nullable String getIntentionPreviewText(@NotNull IntentionAction action) {
+    // Run in background thread to catch accidental write-actions during preview generation
+    try {
+      return ReadAction.nonBlocking(() -> IntentionPreviewPopupUpdateProcessor.getPreviewText(getProject(), action, getFile(), getEditor()))
+        .submit(AppExecutorUtil.getAppExecutorService()).get();
+    }
+    catch (InterruptedException | ExecutionException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Override
+  public void checkIntentionPreviewHtml(@NotNull IntentionAction action, @NotNull @Language("HTML") String expected) {
+    // Run in background thread to catch accidental write-actions during preview generation
+    IntentionPreviewInfo info;
+    try {
+      info = ReadAction.nonBlocking(() -> IntentionPreviewPopupUpdateProcessor.getPreviewInfo(getProject(), action, getFile(), getEditor()))
+        .submit(AppExecutorUtil.getAppExecutorService()).get();
+    }
+    catch (InterruptedException | ExecutionException e) {
+      throw new RuntimeException(e);
+    }
+    assertTrue(action.getText(), info instanceof IntentionPreviewInfo.Html);
+    assertEquals(action.getText(), expected, ((IntentionPreviewInfo.Html)info).content().toString());
   }
 
   @Override
@@ -976,14 +1043,10 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   public @NotNull String getUsageViewTreeTextRepresentation(@NotNull SearchTarget target) {
     Project project = getProject();
 
-    //noinspection unchecked
-    UsageHandler<Object> handler = (UsageHandler<Object>)target.getUsageHandler();
     SearchScope searchScope = coalesce(target.getMaximalSearchScope(), GlobalSearchScope.allScope(project));
-    AllSearchOptions<Object> allOptions =
-      new AllSearchOptions<>(UsageOptions.createOptions(searchScope), true, handler.getCustomOptions(FIND_USAGES));
-
-    List<UsageTarget> usageTargets = List.of(new SearchTarget2UsageTarget<>(project, target, allOptions));
-    Collection<? extends Usage> usages = buildUsageViewQuery(getProject(), target, handler, allOptions).findAll();
+    AllSearchOptions allOptions = new AllSearchOptions(UsageOptions.createOptions(searchScope), true);
+    List<UsageTarget> usageTargets = List.of(new SearchTarget2UsageTarget(project, target, allOptions));
+    Collection<? extends Usage> usages = buildUsageViewQuery(getProject(), target, allOptions).findAll();
 
     return getUsageViewTreeTextRepresentation(usageTargets, usages);
   }
@@ -1278,6 +1341,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
   public void tearDown() throws Exception {
     // don't use method references here to make stack trace reading easier
     //noinspection Convert2MethodRef
+    AtomicReference<ProjectRootManagerComponent> projectRootManagerComponentRef = new AtomicReference<>();
     runAll(
       () -> EdtTestUtil.runInEdtAndWait(() -> {
         if (ApplicationManager.getApplication() == null) {
@@ -1288,7 +1352,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
         try {
           project = myProjectFixture.getProject();
         }
-        catch (AssertionError ignore) {
+        catch (AssertionError | UninitializedPropertyAccessException ignore) {
           project = null;
         }
 
@@ -1313,6 +1377,7 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
           ((DaemonCodeAnalyzerImpl)DaemonCodeAnalyzer.getInstance(project)).cleanupAfterTest();
           // needed for myVirtualFilePointerTracker check below
           ((ProjectRootManagerImpl)ProjectRootManager.getInstance(project)).clearScopesCachesForModules();
+          projectRootManagerComponentRef.set(ObjectUtils.tryCast(ProjectRootManager.getInstance(project), ProjectRootManagerComponent.class));
         }
       }),
       () -> {
@@ -1324,6 +1389,15 @@ public class CodeInsightTestFixtureImpl extends BaseFixture implements CodeInsig
       () -> EdtTestUtil.runInEdtAndWait(() -> myTempDirFixture.tearDown()),
       () -> super.tearDown(),
       () -> {
+        // Even ProjectRootManagerComponent is a project service implementing Disposable, it might be not disposed in test light projects.
+        // Virtual file pointers could be created too late - during `myProjectFixture.tearDown()` - on
+        // `fixture.getTestRootDisposable()` disposing or on project files cleanup.
+        // Need to dispose virtual file pointers after that moment.
+        // It wouldn't be needed if `ProjectRootManagerComponent.dispose()` would get called in tests, like in production.
+        ProjectRootManagerComponent projectRootManagerComponent = projectRootManagerComponentRef.getAndSet(null);
+        if (projectRootManagerComponent != null) {
+          projectRootManagerComponent.disposeVirtualFilePointersAfterTest();
+        }
         if (myVirtualFilePointerTracker != null) {
           myVirtualFilePointerTracker.assertPointersAreDisposed();
         }

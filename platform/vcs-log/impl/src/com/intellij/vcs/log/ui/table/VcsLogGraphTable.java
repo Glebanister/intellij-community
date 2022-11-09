@@ -1,14 +1,16 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.vcs.log.ui.table;
 
 import com.google.common.primitives.Ints;
 import com.intellij.ide.CopyProvider;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.actionSystem.PlatformDataKeys;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.ide.CopyPasteManager;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.ui.LoadingDecorator;
 import com.intellij.openapi.util.Couple;
 import com.intellij.openapi.util.Disposer;
@@ -18,6 +20,7 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vcs.FilePath;
 import com.intellij.openapi.vcs.VcsDataKeys;
 import com.intellij.openapi.vcs.changes.issueLinks.TableLinkMouseListener;
+import com.intellij.openapi.vcs.history.VcsRevisionNumber;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.ui.*;
@@ -27,6 +30,7 @@ import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.JBInsets;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.NamedColorUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.vcs.log.*;
 import com.intellij.vcs.log.VcsLogHighlighter.VcsCommitStyle;
@@ -69,6 +73,7 @@ import java.util.*;
 import static com.intellij.ui.hover.TableHoverListener.getHoveredRow;
 import static com.intellij.util.containers.ContainerUtil.getFirstItem;
 import static com.intellij.vcs.log.VcsCommitStyleFactory.createStyle;
+import static com.intellij.vcs.log.VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION;
 import static com.intellij.vcs.log.VcsLogHighlighter.TextStyle.BOLD;
 import static com.intellij.vcs.log.VcsLogHighlighter.TextStyle.ITALIC;
 import static com.intellij.vcs.log.ui.table.column.VcsLogColumnUtilKt.*;
@@ -88,6 +93,17 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   private static final Color HOVERED_BACKGROUND = JBColor.namedColor("VersionControl.Log.Commit.hoveredBackground",
                                                                      DEFAULT_HOVERED_BACKGROUND);
 
+  private static final Color SELECTION_BACKGROUND = JBColor.namedColor("VersionControl.Log.Commit.selectionBackground",
+                                                                       UIUtil.getListSelectionBackground(true));
+
+  private static final Color SELECTION_BACKGROUND_INACTIVE = JBColor.namedColor("VersionControl.Log.Commit.selectionInactiveBackground",
+                                                                                UIUtil.getListSelectionBackground(false));
+
+  private static final Color SELECTION_FOREGROUND = JBColor.namedColor("VersionControl.Log.Commit.selectionForeground",
+                                                                       NamedColorUtil.getListSelectionForeground(true));
+
+  private static final Color SELECTION_FOREGROUND_INACTIVE = JBColor.namedColor("VersionControl.Log.Commit.selectionInactiveForeground",
+                                                                                NamedColorUtil.getListSelectionForeground(false));
   @NotNull private final VcsLogData myLogData;
   @NotNull private final String myId;
   @NotNull private final VcsLogUiProperties myProperties;
@@ -104,7 +120,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
 
   @NotNull private final Collection<VcsLogHighlighter> myHighlighters = new LinkedHashSet<>();
 
-  @Nullable private Selection mySelection = null;
+  @Nullable private SelectionSnapshot mySelectionSnapshot = null;
 
   public VcsLogGraphTable(@NotNull String logId, @NotNull VcsLogData logData,
                           @NotNull VcsLogUiProperties uiProperties, @NotNull VcsLogColorManager colorManager,
@@ -145,7 +161,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     addMouseMotionListener(myMouseAdapter);
     addMouseListener(myMouseAdapter);
 
-    getSelectionModel().addListSelectionListener(e -> mySelection = null);
+    getSelectionModel().addListSelectionListener(e -> mySelectionSnapshot = null);
     getColumnModel().setColumnSelectionAllowed(false);
 
     ScrollingUtil.installActions(this, false);
@@ -157,6 +173,10 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
 
   @Override
   public void dispose() {
+  }
+
+  public @NotNull VcsLogCommitSelection getSelection() {
+    return getModel().createSelection(getSelectedRows());
   }
 
   private void initColumnModel() {
@@ -172,7 +192,6 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   protected void setErrorEmptyText(@NotNull Throwable error, @NlsContexts.StatusText @NotNull String defaultText) {
     String message = ObjectUtils.chooseNotNull(error.getLocalizedMessage(), defaultText);
     String shortenedMessage = StringUtil.shortenTextWithEllipsis(message, 150, 0, true);
-    //noinspection HardCodedStringLiteral
     getEmptyText().setText(shortenedMessage.replace('\n', ' '));
   }
 
@@ -183,7 +202,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   public void updateDataPack(@NotNull VisiblePack visiblePack, boolean permGraphChanged) {
     boolean filtersChanged = !getModel().getVisiblePack().getFilters().equals(visiblePack.getFilters());
 
-    Selection previousSelection = getSelection();
+    SelectionSnapshot previousSelection = getSelectionSnapshot();
     getModel().setVisiblePack(visiblePack);
     previousSelection.restore(visiblePack.getVisibleGraph(), true, permGraphChanged);
 
@@ -520,6 +539,25 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
         }
         return sb.toString();
       })
+      .ifEq(VCS_LOG_COMMIT_SELECTION).thenGet(() -> {
+        return getSelection();
+      })
+      .ifEq(VcsDataKeys.VCS_REVISION_NUMBER).thenGet(() -> {
+        List<CommitId> hashes = getSelection().getCommits();
+        if (hashes.isEmpty()) return null;
+        return VcsLogUtil.convertToRevisionNumber(Objects.requireNonNull(getFirstItem(hashes)).getHash());
+      })
+      .ifEq(VcsDataKeys.VCS_REVISION_NUMBERS).thenGet(() -> {
+        List<CommitId> hashes = getSelection().getCommits();
+        if (hashes.size() > VcsLogUtil.MAX_SELECTED_COMMITS) return null;
+        return ContainerUtil.map(hashes,
+                                 commitId -> VcsLogUtil.convertToRevisionNumber(commitId.getHash())).toArray(new VcsRevisionNumber[0]);
+      })
+      .ifEq(VcsDataKeys.VCS_COMMIT_SUBJECTS).thenGet(() -> {
+        List<VcsCommitMetadata> metadata = getSelection().getCachedMetadata();
+        if (metadata.size() > VcsLogUtil.MAX_SELECTED_COMMITS) return null;
+        return ContainerUtil.map2Array(metadata, String.class, data -> data.getSubject());
+      })
       .orNull();
   }
 
@@ -543,6 +581,11 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     }
 
     CopyPasteManager.getInstance().setContents(new StringSelection(sb.toString()));
+  }
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.EDT;
   }
 
   @Override
@@ -581,14 +624,11 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     rendererComponent.setBackground(style.getBackground());
     rendererComponent.setForeground(style.getForeground());
 
-    switch (style.getTextStyle()) {
-      case BOLD:
-        return SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES;
-      case ITALIC:
-        return SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES;
-      default:
-    }
-    return SimpleTextAttributes.REGULAR_ATTRIBUTES;
+    return switch (style.getTextStyle()) {
+      case BOLD -> SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES;
+      case ITALIC -> SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES;
+      default -> SimpleTextAttributes.REGULAR_ATTRIBUTES;
+    };
   }
 
   @NotNull
@@ -613,7 +653,17 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     int commitId = rowInfo.getCommit();
     VcsShortCommitDetails details = myLogData.getMiniDetailsGetter().getCommitDataIfAvailable(commitId);
     if (details != null) {
-      List<VcsCommitStyle> styles = ContainerUtil.map(myHighlighters, highlighter -> highlighter.getStyle(commitId, details, selected));
+      int columnModelIndex = convertColumnIndexToModel(column);
+      List<VcsCommitStyle> styles = ContainerUtil.map(myHighlighters, highlighter -> {
+          try {
+            return highlighter.getStyle(commitId, details, columnModelIndex, selected);
+          } catch (ProcessCanceledException e) {
+            return VcsCommitStyle.DEFAULT;
+          } catch (Throwable t) {
+            LOG.error("Exception while getting style from highlighter " + highlighter, t);
+            return VcsCommitStyle.DEFAULT;
+          }
+        });
       style = VcsCommitStyleFactory.combine(ContainerUtil.append(styles, style));
     }
 
@@ -642,7 +692,7 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
           model.fireTableChanged(evt);
         }
       }
-      mySelection = null;
+      mySelectionSnapshot = null;
     });
   }
 
@@ -662,9 +712,9 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
   }
 
   @NotNull
-  public Selection getSelection() {
-    if (mySelection == null) mySelection = new Selection(this);
-    return mySelection;
+  SelectionSnapshot getSelectionSnapshot() {
+    if (mySelectionSnapshot == null) mySelectionSnapshot = new SelectionSnapshot(this);
+    return mySelectionSnapshot;
   }
 
   public void handleAnswer(@NotNull GraphAnswer<Integer> answer) {
@@ -763,8 +813,19 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
     @NotNull
     public VcsCommitStyle getBaseStyle(int row, int column, boolean hasFocus, boolean selected) {
       Component dummyRendererComponent = myDummyRenderer.getTableCellRendererComponent(myTable, "", selected, hasFocus, row, column);
-      Color background = selected ? UIUtil.getListSelectionBackground(myTable.hasFocus()) : UIUtil.getListBackground();
+      Color background = selected ? getSelectionBackground(myTable.hasFocus()) : getBackground();
+
       return createStyle(dummyRendererComponent.getForeground(), background, VcsLogHighlighter.TextStyle.NORMAL);
+    }
+
+    @NotNull
+    private static Color getBackground() {
+      return ExperimentalUI.isNewUI() ? JBUI.CurrentTheme.ToolWindow.background() : UIUtil.getListBackground();
+    }
+
+    @NotNull
+    private static Color getSelectionBackground(boolean hasFocus) {
+      return hasFocus ? SELECTION_BACKGROUND : SELECTION_BACKGROUND_INACTIVE;
     }
   }
 
@@ -1040,5 +1101,10 @@ public class VcsLogGraphTable extends TableWithProgress implements DataProvider,
       myInitializedColumns.remove(column);
       onColumnOrderSettingChanged();
     }
+  }
+
+  @NotNull
+  public static Color getSelectionForeground(boolean hasFocus) {
+    return hasFocus ? SELECTION_FOREGROUND : SELECTION_FOREGROUND_INACTIVE;
   }
 }

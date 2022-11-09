@@ -1,17 +1,21 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ui.layout
 
 import com.intellij.BundleBase
 import com.intellij.icons.AllIcons
+import com.intellij.ide.DataManager
 import com.intellij.ide.ui.UINumericRange
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ActionUtil
-import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
-import com.intellij.openapi.observable.properties.*
+import com.intellij.openapi.observable.properties.GraphProperty
+import com.intellij.openapi.observable.util.bind
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.*
+import com.intellij.openapi.ui.ComboBox
+import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.openapi.ui.emptyText
 import com.intellij.openapi.ui.panel.ComponentPanelBuilder
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.NlsContexts.*
@@ -21,10 +25,9 @@ import com.intellij.ui.*
 import com.intellij.ui.components.*
 import com.intellij.ui.components.fields.ExpandableTextField
 import com.intellij.util.Function
-import com.intellij.util.MathUtil
 import com.intellij.util.execution.ParametersListUtil
-import com.intellij.openapi.observable.util.bind
-import com.intellij.util.ui.*
+import com.intellij.util.ui.JBFont
+import com.intellij.util.ui.UIUtil
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.Nls
 import org.jetbrains.annotations.NonNls
@@ -96,15 +99,12 @@ class ValidationInfoBuilder(val component: JComponent) {
   fun warning(@DialogMessage message: String): ValidationInfo = ValidationInfo(message, component).asWarning().withOKEnabled()
 }
 
+@JvmDefaultWithCompatibility
 interface CellBuilder<out T : JComponent> {
   val component: T
 
   fun comment(@DetailedDescription text: String, maxLineLength: Int = ComponentPanelBuilder.MAX_COMMENT_WIDTH,
               forComponent: Boolean = false): CellBuilder<T>
-
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use Kotlin UI DSL Version 2")
-  fun commentComponent(component: JComponent, forComponent: Boolean = false): CellBuilder<T>
 
   fun focused(): CellBuilder<T>
   fun withValidationOnApply(callback: ValidationInfoBuilder.(T) -> ValidationInfo?): CellBuilder<T>
@@ -119,6 +119,7 @@ interface CellBuilder<out T : JComponent> {
    */
   @Deprecated("Use Kotlin UI DSL Version 2, see Cell.widthGroup()")
   fun sizeGroup(name: String): CellBuilder<T>
+  @Deprecated("Use Kotlin UI DSL Version 2")
   fun growPolicy(growPolicy: GrowPolicy): CellBuilder<T>
   fun constraints(vararg constraints: CCFlags): CellBuilder<T>
 
@@ -177,10 +178,13 @@ interface CellBuilder<out T : JComponent> {
   fun withLeftGap(gapLeft: Int): CellBuilder<T>
 }
 
+@Deprecated("Use Kotlin UI DSL Version 2")
 internal interface CheckboxCellBuilder {
+  @Deprecated("Use Kotlin UI DSL Version 2")
   fun actsAsLabel()
 }
 
+@Deprecated("Use Kotlin UI DSL Version 2")
 fun <T : JCheckBox> CellBuilder<T>.actsAsLabel(): CellBuilder<T> {
   (this as CheckboxCellBuilder).actsAsLabel()
   return this
@@ -190,10 +194,13 @@ fun <T : JComponent> CellBuilder<T>.applyToComponent(task: T.() -> Unit): CellBu
   return also { task(component) }
 }
 
+@Deprecated("Use Kotlin UI DSL Version 2")
 internal interface ScrollPaneCellBuilder {
+  @Deprecated("Use Kotlin UI DSL Version 2")
   fun noGrowY()
 }
 
+@Deprecated("Use Kotlin UI DSL Version 2")
 fun <T : JScrollPane> CellBuilder<T>.noGrowY(): CellBuilder<T> {
   (this as ScrollPaneCellBuilder).noGrowY()
   return this
@@ -222,7 +229,6 @@ abstract class Cell : BaseBuilder {
    */
   val growX = CCFlags.growX
 
-  @Suppress("unused")
   val growY = CCFlags.growY
   val grow = CCFlags.grow
 
@@ -234,7 +240,6 @@ abstract class Cell : BaseBuilder {
   /**
    * Makes the row that the component is residing in grow with `weight`.
    */
-  @Suppress("unused")
   val pushY = CCFlags.pushY
   val push = CCFlags.push
 
@@ -265,6 +270,7 @@ abstract class Cell : BaseBuilder {
     return component(result)
   }
 
+  @Deprecated("Use Kotlin UI DSL Version 2")
   fun buttonFromAction(@Button text: String, @NonNls actionPlace: String, action: AnAction): CellBuilder<JButton> {
     val button = JButton(BundleBase.replaceMnemonicAmpersand(text))
     button.addActionListener { ActionUtil.invokeAction(action, button, actionPlace, null, null) }
@@ -323,11 +329,13 @@ abstract class Cell : BaseBuilder {
     return component(comment = comment)
   }
 
+  @Deprecated("Use Kotlin UI DSL Version 2")
   open fun radioButton(@RadioButton text: String, getter: () -> Boolean, setter: (Boolean) -> Unit, @Nls comment: String? = null): CellBuilder<JBRadioButton> {
     val component = JBRadioButton(text, getter())
     return component(comment = comment).withSelectedBinding(PropertyBinding(getter, setter))
   }
 
+  @Deprecated("Use Kotlin UI DSL Version 2")
   open fun radioButton(@RadioButton text: String, prop: KMutableProperty0<Boolean>, @Nls comment: String? = null): CellBuilder<JBRadioButton> {
     val component = JBRadioButton(text, prop.get())
     return component(comment = comment).withSelectedBinding(prop.toBinding())
@@ -407,7 +415,7 @@ abstract class Cell : BaseBuilder {
 
   fun scrollableTextArea(getter: () -> String, setter: (String) -> Unit, rows: Int? = null) = scrollableTextArea(PropertyBinding(getter, setter), rows)
 
-  fun scrollableTextArea(binding: PropertyBinding<String>, rows: Int? = null): CellBuilder<JBTextArea> {
+  private fun scrollableTextArea(binding: PropertyBinding<String>, rows: Int? = null): CellBuilder<JBTextArea> {
     val textArea = JBTextArea(binding.get(), rows ?: 0, 0)
     val scrollPane = JBScrollPane(textArea)
     return component(textArea, scrollPane)
@@ -424,39 +432,7 @@ abstract class Cell : BaseBuilder {
   @ApiStatus.ScheduledForRemoval
   @Deprecated("Use Kotlin UI DSL Version 2")
   fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
-    return intTextField(prop, columns, range, null)
-  }
-
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use Kotlin UI DSL Version 2")
-  fun intTextField(prop: KMutableProperty0<Int>, columns: Int? = null, range: IntRange? = null, step: Int? = null): CellBuilder<JBTextField> {
-    return intTextField(prop.toBinding(), columns, range, step)
-  }
-
-  @JvmOverloads
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use Kotlin UI DSL Version 2")
-  fun intTextField(getter: () -> Int, setter: (Int) -> Unit, columns: Int? = null, range: IntRange? = null, step: Int? = null): CellBuilder<JBTextField> {
-    return intTextField(PropertyBinding(getter, setter), columns, range, step)
-  }
-
-
-  @JvmOverloads
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use Kotlin UI DSL Version 2")
-  fun intTextField(binding: PropertyBinding<Int>, columns: Int? = null, range: IntRange? = null): CellBuilder<JBTextField> {
-    return intTextField(binding, columns, range, null)
-  }
-
-  /**
-   * @param step allows changing value by up/down keys on keyboard
-   */
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use Kotlin UI DSL Version 2")
-  fun intTextField(binding: PropertyBinding<Int>,
-                   columns: Int? = null,
-                   range: IntRange? = null,
-                   step: Int? = null): CellBuilder<JBTextField> {
+    val binding = prop.toBinding()
     return textField(
       { binding.get().toString() },
       { value -> value.toIntOrNull()?.let { intValue -> binding.set(range?.let { intValue.coerceIn(it.first, it.last) } ?: intValue) } },
@@ -467,29 +443,6 @@ abstract class Cell : BaseBuilder {
         value == null -> error(UIBundle.message("please.enter.a.number"))
         range != null && value !in range -> error(UIBundle.message("please.enter.a.number.from.0.to.1", range.first, range.last))
         else -> null
-      }
-    }.apply {
-      step?.let {
-        component.addKeyListener(object : KeyAdapter() {
-          override fun keyPressed(e: KeyEvent?) {
-            val increment: Int
-            when (e?.keyCode) {
-              KeyEvent.VK_UP -> increment = step
-              KeyEvent.VK_DOWN -> increment = -step
-              else -> return
-            }
-
-            var value = component.text.toIntOrNull()
-            if (value != null) {
-              value += increment
-              if (range != null) {
-                value = MathUtil.clamp(value, range.first, range.last)
-              }
-              component.text = value.toString()
-              e.consume()
-            }
-          }
-        })
       }
     }
   }
@@ -594,13 +547,6 @@ abstract class Cell : BaseBuilder {
       .applyToComponent { bind(property) }
   }
 
-  @ApiStatus.ScheduledForRemoval
-  @Deprecated("Use Kotlin UI DSL Version 2")
-  fun actionButton(action: AnAction, dimension: Dimension = ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE): CellBuilder<ActionButton> {
-    val actionButton = ActionButton(action, action.templatePresentation, ActionPlaces.UNKNOWN, dimension)
-    return actionButton()
-  }
-
   fun gearButton(vararg actions: AnAction): CellBuilder<JComponent> {
     val label = JLabel(LayeredIcon.GEAR_WITH_DROPDOWN)
     label.disabledIcon = AllIcons.General.GearPlain
@@ -608,12 +554,7 @@ abstract class Cell : BaseBuilder {
       override fun onClick(e: MouseEvent, clickCount: Int): Boolean {
         if (!label.isEnabled) return true
         JBPopupFactory.getInstance()
-          .createActionGroupPopup(null, DefaultActionGroup(*actions), DataContext { dataId ->
-            when (dataId) {
-              PlatformCoreDataKeys.CONTEXT_COMPONENT.name -> label
-              else -> null
-            }
-          }, true, null, 10)
+          .createActionGroupPopup(null, DefaultActionGroup(*actions), DataManager.getInstance().getDataContext(label), true, null, 10)
           .showUnderneathOf(label)
         return true
       }
@@ -663,6 +604,7 @@ abstract class Cell : BaseBuilder {
     return component(JBScrollPane(component))
   }
 
+  @Deprecated("Use Kotlin UI DSL Version 2")
   fun comment(@DetailedDescription text: String, maxLineLength: Int = -1): CellBuilder<JLabel> {
     return component(ComponentPanelBuilder.createCommentComponent(text, true, maxLineLength, true))
   }
@@ -723,11 +665,6 @@ fun <T> listCellRenderer(renderer: SimpleListCellRenderer<T?>.(value: T, index: 
     }
   }
 }
-
-@ApiStatus.ScheduledForRemoval
-@Deprecated("Use Kotlin UI DSL Version 2")
-fun <C : JTextComponent> C.bindIntProperty(property: ObservableClearableProperty<Int>): C =
-  bind(property.transform({ it.toString() }, { it.toInt() }))
 
 @ApiStatus.ScheduledForRemoval
 @Deprecated("Use Kotlin UI DSL Version 2")

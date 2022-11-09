@@ -16,7 +16,7 @@
 package org.jetbrains.ether;
 
 /**
- * @author: db
+ * @author db
  */
 public class MemberChangeTest extends IncrementalTestCase {
   public MemberChangeTest() {
@@ -64,6 +64,10 @@ public class MemberChangeTest extends IncrementalTestCase {
   }
 
   public void testAddFieldToInterface() {
+    doTest();
+  }
+
+  public void testAddFieldToEnum() {
     doTest();
   }
 

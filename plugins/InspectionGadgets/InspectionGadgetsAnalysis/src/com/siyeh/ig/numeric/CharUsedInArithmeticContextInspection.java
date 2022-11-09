@@ -83,7 +83,7 @@ public class CharUsedInArithmeticContextInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiLiteralExpression)) {
         return;
@@ -119,7 +119,7 @@ public class CharUsedInArithmeticContextInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiExpression)) {
         return;
@@ -139,7 +139,7 @@ public class CharUsedInArithmeticContextInspection extends BaseInspection {
   private static class CharUsedInArithmeticContextVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitPolyadicExpression(PsiPolyadicExpression expression) {
+    public void visitPolyadicExpression(@NotNull PsiPolyadicExpression expression) {
       super.visitPolyadicExpression(expression);
       final IElementType tokenType = expression.getOperationTokenType();
       if (ComparisonUtils.isComparisonOperation(tokenType)) {

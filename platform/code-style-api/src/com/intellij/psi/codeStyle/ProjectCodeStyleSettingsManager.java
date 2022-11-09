@@ -55,7 +55,8 @@ public final class ProjectCodeStyleSettingsManager extends CodeStyleSettingsMana
           if (!project.isDefault() &&
               !ApplicationManager.getApplication().isUnitTestMode() &&
               !ApplicationManager.getApplication().isHeadlessEnvironment()) {
-            saveProjectAndNotify(project);
+            getMainProjectCodeStyle().getModificationTracker().incModificationCount();
+            project.scheduleSave();
           }
           LOG.info("Imported old project code style settings.");
         }
@@ -65,11 +66,6 @@ public final class ProjectCodeStyleSettingsManager extends CodeStyleSettingsMana
         }
       }
     }
-  }
-
-  private void saveProjectAndNotify(@NotNull Project project) {
-    getMainProjectCodeStyle().getModificationTracker().incModificationCount();
-    project.save();
   }
 
   @Override
@@ -82,7 +78,9 @@ public final class ProjectCodeStyleSettingsManager extends CodeStyleSettingsMana
   @NotNull
   @Override
   public CodeStyleSettings getMainProjectCodeStyle() {
-    return mySettingsMap.get(MAIN_PROJECT_CODE_STYLE_NAME);
+    synchronized (myStateLock) {
+      return mySettingsMap.get(MAIN_PROJECT_CODE_STYLE_NAME);
+    }
   }
 
   private void initDefaults() {
@@ -146,8 +144,7 @@ public final class ProjectCodeStyleSettingsManager extends CodeStyleSettingsMana
     }
   }
 
-  @Override
-  protected void checkState() {
+  private void checkState() {
     if (mySettingsExist && !myIsLoaded) {
       LOG.error("Invalid state: project settings exist but not loaded yet. The call may cause settings damage.");
     }

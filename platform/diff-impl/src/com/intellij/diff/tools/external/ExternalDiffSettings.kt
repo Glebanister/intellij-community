@@ -18,6 +18,10 @@ class ExternalDiffSettings : BaseState(), PersistentStateComponent<ExternalDiffS
     copyFrom(state)
   }
 
+  override fun noStateLoaded() {
+    isSettingsMigrated = true
+  }
+
   @get:OptionTag("MIGRATE_OLD_SETTINGS")
   var isSettingsMigrated by property(false)
 
@@ -98,25 +102,23 @@ class ExternalDiffSettings : BaseState(), PersistentStateComponent<ExternalDiffS
       get() = FileTypeManager.getInstance()
 
     @JvmStatic
+    fun findDefaultDiffTool(): ExternalTool? {
+      val diffToolName = instance.defaultToolConfiguration.diffToolName
+      return findTool(diffToolName, ExternalToolGroup.DIFF_TOOL)
+    }
+
+    @JvmStatic
     fun findDiffTool(fileType: FileType): ExternalTool? {
       val diffToolName = findToolConfiguration(fileType)?.diffToolName
                          ?: instance.defaultToolConfiguration.diffToolName
-
-      if (diffToolName == ExternalToolConfiguration.BUILTIN_TOOL) return null
-      val diffTools = instance.externalTools[ExternalToolGroup.DIFF_TOOL] ?: return null
-
-      return findTool(diffTools, diffToolName)
+      return findTool(diffToolName, ExternalToolGroup.DIFF_TOOL)
     }
 
     @JvmStatic
     fun findMergeTool(fileType: FileType): ExternalTool? {
       val mergeToolName = findToolConfiguration(fileType)?.mergeToolName
                           ?: instance.defaultToolConfiguration.mergeToolName
-
-      if (mergeToolName == ExternalToolConfiguration.BUILTIN_TOOL) return null
-      val mergeTools = instance.externalTools[ExternalToolGroup.MERGE_TOOL] ?: return null
-
-      return findTool(mergeTools, mergeToolName)
+      return findTool(mergeToolName, ExternalToolGroup.MERGE_TOOL)
     }
 
     @JvmStatic
@@ -129,7 +131,11 @@ class ExternalDiffSettings : BaseState(), PersistentStateComponent<ExternalDiffS
       return instance.defaultToolConfiguration.mergeToolName != ExternalToolConfiguration.BUILTIN_TOOL
     }
 
-    private fun findTool(tools: List<ExternalTool>, toolName: String): ExternalTool? = tools.find { it.name == toolName }
+    private fun findTool(toolName: String, group: ExternalToolGroup): ExternalTool? {
+      if (toolName == ExternalToolConfiguration.BUILTIN_TOOL) return null
+      val tools = instance.externalTools[group] ?: return null
+      return tools.find { it.name == toolName }
+    }
 
     private fun findToolConfiguration(fileType: FileType): ExternalToolConfiguration? = instance.externalToolsConfiguration.find {
       fileTypeManager.findFileTypeByName(it.fileTypeName) == fileType
@@ -138,11 +144,11 @@ class ExternalDiffSettings : BaseState(), PersistentStateComponent<ExternalDiffS
     private fun migrateOldSettings(state: ExternalDiffSettings) {
       if (!state.isSettingsMigrated) {
         // load old settings
-        state.isExternalToolsEnabled = state.isDiffEnabled
+        state.isExternalToolsEnabled = state.isDiffEnabled || state.isMergeEnabled
 
         // save old settings
         state.defaultToolConfiguration = ExternalToolConfiguration().apply {
-          if (state.isDiffEnabled && state.diffExePath.isNotEmpty()) {
+          if (state.diffExePath.isNotEmpty()) {
             val oldDiffTool = ExternalTool(StringUtil.capitalize(PathUtilRt.getFileName(state.diffExePath)),
                                            state.diffExePath, state.diffParameters,
                                            false, ExternalToolGroup.DIFF_TOOL)
@@ -150,7 +156,7 @@ class ExternalDiffSettings : BaseState(), PersistentStateComponent<ExternalDiffS
             diffToolName = oldDiffTool.name
           }
 
-          if (state.isMergeEnabled && state.mergeExePath.isNotEmpty()) {
+          if (state.mergeExePath.isNotEmpty()) {
             val oldMergeTool = ExternalTool(StringUtil.capitalize(PathUtilRt.getFileName(state.mergeExePath)),
                                             state.mergeExePath, state.mergeParameters,
                                             state.isMergeTrustExitCode, ExternalToolGroup.MERGE_TOOL)

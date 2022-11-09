@@ -1,13 +1,15 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package org.jetbrains.uast.kotlin
 
 import com.intellij.openapi.components.ServiceManager
+import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.uast.UElement
 import org.jetbrains.uast.UastFacade
 import org.jetbrains.uast.UastLanguagePlugin
 import org.jetbrains.uast.kotlin.internal.KotlinUElementWithComments
 
+@ApiStatus.Internal
 abstract class KotlinAbstractUElement(
     givenParent: UElement?,
 ) : KotlinUElementWithComments {
@@ -16,7 +18,7 @@ abstract class KotlinAbstractUElement(
         psi?.let { UastFacade.findPlugin(it) }
     }
 
-    open val baseResolveProviderService: BaseKotlinUastResolveProviderService by lz {
+    val baseResolveProviderService: BaseKotlinUastResolveProviderService by lz {
         ServiceManager.getService(BaseKotlinUastResolveProviderService::class.java)
             ?: error("${BaseKotlinUastResolveProviderService::class.java.name} is not available for ${this::class.simpleName}")
     }

@@ -32,9 +32,7 @@ class NotebookTabs private constructor(private val editor: BorderLayoutPanel) : 
         return null
       }
 
-      val bottomComponent = componentLayout.getLayoutComponent(BorderLayout.SOUTH)
-
-      when (bottomComponent) {
+      when (val bottomComponent = componentLayout.getLayoutComponent(BorderLayout.SOUTH)) {
         null -> return NotebookTabs(component)
         is NotebookTabs -> return bottomComponent
         else -> return null
@@ -50,7 +48,7 @@ class NotebookTabs private constructor(private val editor: BorderLayoutPanel) : 
     addTab(VisualizationBundle.message("notebook.tabs.code.title"), center)
   }
 
-  fun addTab(@Nls name: String, page: Component) {
+  private fun addTab(@Nls name: String, page: Component) {
     val tab = JToggleButton(name)
 
     val action = {

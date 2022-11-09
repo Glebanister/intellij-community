@@ -2,7 +2,6 @@
 
 package com.intellij.ide.actions;
 
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.ide.structureView.StructureView;
 import com.intellij.ide.structureView.StructureViewBuilder;
 import com.intellij.ide.structureView.StructureViewModel;
@@ -11,6 +10,7 @@ import com.intellij.ide.structureView.impl.StructureViewComposite;
 import com.intellij.ide.util.FileStructurePopup;
 import com.intellij.ide.util.StructureViewCompositeModel;
 import com.intellij.ide.util.treeView.smartTree.TreeStructureUtil;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.PlatformCoreDataKeys;
@@ -52,8 +52,6 @@ public class ViewStructureAction extends DumbAwareAction {
     if (editor != null) {
       PsiDocumentManager.getInstance(project).commitDocument(editor.getDocument());
     }
-
-    FeatureUsageTracker.getInstance().triggerFeatureUsed("navigation.popup.file.structure");
 
     FileStructurePopup popup = createPopup(project, fileEditor);
     if (popup == null) return;
@@ -103,6 +101,11 @@ public class ViewStructureAction extends DumbAwareAction {
                       (!Boolean.TRUE.equals(EditorTextField.SUPPLEMENTARY_KEY.get(editor))) &&
                       fileEditor.getStructureViewBuilder() != null;
     e.getPresentation().setEnabled(enabled);
+  }
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
   }
 
   @NotNull

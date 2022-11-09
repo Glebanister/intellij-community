@@ -15,6 +15,7 @@ import com.intellij.openapi.util.NlsSafe
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.util.SystemInfoRt
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.openapi.util.registry.RegistryManager
 import com.intellij.serviceContainer.NonInjectable
 import com.intellij.ui.JreHiDpiUtil
 import com.intellij.ui.scale.JBUIScale
@@ -23,7 +24,6 @@ import com.intellij.util.ui.GraphicsUtil
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.xmlb.annotations.Transient
 import org.jetbrains.annotations.ApiStatus.ScheduledForRemoval
-import org.jetbrains.annotations.NonNls
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -38,7 +38,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
 
   private var state = UISettingsState()
 
-  private val myTreeDispatcher = ComponentTreeEventDispatcher.create(UISettingsListener::class.java)
+  private val treeDispatcher = ComponentTreeEventDispatcher.create(UISettingsListener::class.java)
 
   var ideAAType: AntialiasingType
     get() = notRoamableOptions.state.ideAAType
@@ -116,10 +116,9 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   var separateMainMenu: Boolean
-    get() = SystemInfoRt.isWindows && state.separateMainMenu
+    get() = (SystemInfoRt.isWindows || SystemInfoRt.isXWindow) && state.separateMainMenu
     set(value) {
       state.separateMainMenu = value
-      state.showMainToolbar = value
     }
 
   var useSmallLabelsOnTabs: Boolean
@@ -149,12 +148,6 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
   val cycleScrolling: Boolean
     get() = AdvancedSettings.getBoolean("ide.cycle.scrolling")
 
-  var selectedTabsLayoutInfoId: @NonNls String?
-    get() = state.selectedTabsLayoutInfoId
-    set(value) {
-      state.selectedTabsLayoutInfoId = value
-    }
-
   val scrollTabLayoutInEditor: Boolean
     get() = state.scrollTabLayoutInEditor
 
@@ -175,6 +168,15 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     set(value) {
       state.showNavigationBar = value
     }
+
+  var navBarLocation : NavBarLocation
+    get() = state.navigationBarLocation
+    set(value) {
+      state.navigationBarLocation = value
+    }
+
+  val showNavigationBarInBottom : Boolean
+    get() = showNavigationBar && navBarLocation == NavBarLocation.BOTTOM
 
   var showMembersInNavigationBar: Boolean
     get() = state.showMembersInNavigationBar
@@ -210,7 +212,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     }
 
   var showMainToolbar: Boolean
-    get() = state.showMainToolbar
+    get() = if (RegistryManager.getInstance().`is`("ide.experimental.ui")) separateMainMenu else state.showMainToolbar
     set(value) {
       state.showMainToolbar = value
 
@@ -378,7 +380,6 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       state.markModifiedTabsWithAsterisk = value
     }
 
-  @Suppress("unused")
   var overrideConsoleCycleBufferSize: Boolean
     get() = state.overrideConsoleCycleBufferSize
     set(value) {
@@ -401,6 +402,12 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     get() = state.sortTabsAlphabetically
     set(value) {
       state.sortTabsAlphabetically = value
+    }
+
+  var alwaysKeepTabsAlphabeticallySorted: Boolean
+    get() = state.alwaysKeepTabsAlphabeticallySorted
+    set(value) {
+      state.alwaysKeepTabsAlphabeticallySorted = value
     }
 
   var openTabsAtTheEnd: Boolean
@@ -439,7 +446,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
   companion object {
     init {
       if (JBUIScale.SCALE_VERBOSE) {
-        LOG.info(String.format("defFontSize=%d, defFontScale=%.2f", defFontSize, defFontScale))
+        LOG.info(String.format("defFontSize=%.1f, defFontScale=%.2f", defFontSize, defFontScale))
       }
     }
 
@@ -448,7 +455,6 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     /** Not tabbed pane.  */
     const val TABS_NONE = 0
 
-    @Suppress("ObjectPropertyName")
     @Volatile
     private var cachedInstance: UISettings? = null
 
@@ -529,7 +535,7 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
       g as Graphics2D
       g.setRenderingHint(RenderingHints.KEY_TEXT_LCD_CONTRAST, UIUtil.getLcdContrastValue())
 
-      if (LoadingState.CONFIGURATION_STORE_INITIALIZED.isOccurred && ApplicationManager.getApplication() == null) {
+      if (!LoadingState.COMPONENTS_REGISTERED.isOccurred) {
         // cannot use services while Application has not been loaded yet, so let's apply the default hints
         GraphicsUtil.applyRenderingHints(g)
         return
@@ -575,12 +581,6 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
     val defFontSize: Float
       get() = UISettingsState.defFontSize
 
-    @Deprecated("Use {@link #restoreFontSize(Float, Float?)} instead")
-    @JvmStatic
-    fun restoreFontSize(readSize: Int, readScale: Float?): Int {
-      return restoreFontSize(readSize.toFloat(), readScale).toInt();
-    }
-
     @JvmStatic
     fun restoreFontSize(readSize: Float, readScale: Float?): Float {
       var size = readSize
@@ -625,20 +625,14 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
 
     // if this is the main UISettings instance (and not on first call to getInstance) push event to bus and to all current components
     if (this === cachedInstance) {
-      myTreeDispatcher.multicaster.uiSettingsChanged(this)
+      treeDispatcher.multicaster.uiSettingsChanged(this)
       ApplicationManager.getApplication().messageBus.syncPublisher(UISettingsListener.TOPIC).uiSettingsChanged(this)
     }
   }
 
   @Suppress("DEPRECATION")
   private fun updateDeprecatedProperties() {
-    HIDE_TOOL_STRIPES = hideToolStripes
-    SHOW_MAIN_TOOLBAR = showMainToolbar
-    SHOW_CLOSE_BUTTON = showCloseButton
-    PRESENTATION_MODE = presentationMode
     OVERRIDE_NONIDEA_LAF_FONTS = overrideLafFonts
-    PRESENTATION_MODE_FONT_SIZE = presentationModeFontSize
-    CONSOLE_COMMAND_HISTORY_LIMIT = state.consoleCommandHistoryLimit
     FONT_SIZE = fontSize
     FONT_FACE = fontFace
     EDITOR_TAB_LIMIT = editorTabLimit
@@ -718,70 +712,32 @@ class UISettings @NonInjectable constructor(private val notRoamableOptions: NotR
   }
 
   //<editor-fold desc="Deprecated stuff.">
-  @Suppress("unused", "PropertyName")
+  @Suppress("PropertyName")
   @Deprecated("Use fontFace", replaceWith = ReplaceWith("fontFace"))
   @JvmField
   @Transient
+  @ScheduledForRemoval
   var FONT_FACE: String? = null
 
-  @Suppress("unused", "PropertyName")
+  @Suppress("PropertyName")
   @Deprecated("Use fontSize", replaceWith = ReplaceWith("fontSize"))
   @JvmField
   @Transient
+  @ScheduledForRemoval
   var FONT_SIZE: Int? = 0
 
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use hideToolStripes", replaceWith = ReplaceWith("hideToolStripes"))
-  @JvmField
-  @Transient
-  var HIDE_TOOL_STRIPES = true
-
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use consoleCommandHistoryLimit", replaceWith = ReplaceWith("consoleCommandHistoryLimit"))
-  @JvmField
-  @Transient
-  var CONSOLE_COMMAND_HISTORY_LIMIT = 300
-
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use cycleScrolling", replaceWith = ReplaceWith("cycleScrolling"), level = DeprecationLevel.ERROR)
-  @JvmField
-  @Transient
-  var CYCLE_SCROLLING = true
-
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use showMainToolbar", replaceWith = ReplaceWith("showMainToolbar"))
-  @JvmField
-  @Transient
-  var SHOW_MAIN_TOOLBAR = false
-
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use showCloseButton", replaceWith = ReplaceWith("showCloseButton"))
-  @JvmField
-  @Transient
-  var SHOW_CLOSE_BUTTON = true
-
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use presentationMode", replaceWith = ReplaceWith("presentationMode"))
-  @JvmField
-  @Transient
-  var PRESENTATION_MODE = false
-
-  @Suppress("unused", "PropertyName", "SpellCheckingInspection")
+  @Suppress("PropertyName", "SpellCheckingInspection")
   @Deprecated("Use overrideLafFonts", replaceWith = ReplaceWith("overrideLafFonts"))
   @JvmField
   @Transient
+  @ScheduledForRemoval
   var OVERRIDE_NONIDEA_LAF_FONTS = false
 
-  @Suppress("unused", "PropertyName")
-  @Deprecated("Use presentationModeFontSize", replaceWith = ReplaceWith("presentationModeFontSize"))
-  @JvmField
-  @Transient
-  var PRESENTATION_MODE_FONT_SIZE = 24
-
-  @Suppress("unused", "PropertyName")
+  @Suppress("PropertyName")
   @Deprecated("Use editorTabLimit", replaceWith = ReplaceWith("editorTabLimit"))
   @JvmField
   @Transient
+  @ScheduledForRemoval
   var EDITOR_TAB_LIMIT = editorTabLimit
   //</editor-fold>
 }

@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package org.jetbrains.uast.analysis
 
 import com.intellij.openapi.diagnostic.Attachment
@@ -9,7 +9,8 @@ import com.intellij.openapi.util.IntRef
 import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiArrayType
 import com.intellij.psi.PsiElement
-import com.intellij.util.castSafelyTo
+import com.intellij.psi.PsiType
+import com.intellij.util.asSafely
 import org.jetbrains.uast.*
 import org.jetbrains.uast.visitor.AbstractUastVisitor
 
@@ -30,7 +31,7 @@ internal class DependencyGraphBuilder private constructor(
   private fun createVisitor(scope: LocalScopeContext) =
     DependencyGraphBuilder(scope, currentDepth, dependents, dependencies, implicitReceivers, scopesStates, inlinedVariables)
 
-  inline fun <T> checkedDepthCall(node: UElement, body: () -> T): T {
+  private inline fun <T> checkedDepthCall(node: UElement, body: () -> T): T {
     currentDepth++
     try {
       if (currentDepth > maxBuildDepth) {
@@ -110,14 +111,11 @@ internal class DependencyGraphBuilder private constructor(
                          kotlin.runCatching { node.sourcePsi?.containingFile?.text ?: "<null>" }.getOrElse { it.stackTraceToString() })
             )
           }
-          registerDependency(
-            Dependent.CallExpression(i, node, componentType ?: parameter.type),
-            Dependency.ArgumentDependency(it, node)
-          )
+          registerParameterDependency(i, node, it, componentType ?: parameter.type)
         }
       }
       else {
-        registerDependency(Dependent.CallExpression(i, node, parameter.type), Dependency.ArgumentDependency(argument, node))
+        registerParameterDependency(i, node, argument, parameter.type)
       }
       // TODO: implicit this as receiver argument
       argument.takeIf { it == receiver }?.let { elementsProcessedAsReceiver.add(it) }
@@ -126,6 +124,21 @@ internal class DependencyGraphBuilder private constructor(
     node.getImplicitReceiver()?.accept(this)
 
     return@checkedDepthCall super.visitCallExpression(node)
+  }
+
+  private fun registerParameterDependency(
+    argumentIndex: Int,
+    callExpression: UCallExpression,
+    argument: UExpression,
+    paramType: PsiType
+  ) {
+    registerDependency(
+      Dependent.CallExpression(argumentIndex, callExpression, paramType),
+      Dependency.ArgumentDependency(argument, callExpression)
+    )
+    argument.extractBranchesResultAsDependency().takeIf { dep -> dep is Dependency.BranchingDependency }?.let { dep ->
+      registerDependency(Dependent.CommonDependent(argument), dep)
+    }
   }
 
   override fun afterVisitCallExpression(node: UCallExpression) {
@@ -148,7 +161,7 @@ internal class DependencyGraphBuilder private constructor(
     node.receiver.accept(this)
     node.selector.accept(this)
     if (node.receiver !in elementsProcessedAsReceiver) {
-      registerDependency(Dependent.CommonDependent(node.selector), Dependency.CommonDependency(node.receiver))
+      registerDependency(Dependent.CommonDependent(node.selector), node.receiver.extractBranchesResultAsDependency())
     }
     else {
       // this element unnecessary now, remove it to avoid memory leaks
@@ -295,7 +308,7 @@ internal class DependencyGraphBuilder private constructor(
     val firstExpression = (node.expressions.first() as? UDeclarationsExpression)
                             ?.declarations
                             ?.first()
-                            ?.castSafelyTo<ULocalVariable>()
+                            ?.asSafely<ULocalVariable>()
                             ?.uastInitializer
                             ?.extractBranchesResultAsDependency() ?: return@checkedDepthCall super.visitExpressionList(node)
     val ifExpression = node.expressions.getOrNull(1)
@@ -844,7 +857,6 @@ private interface UFakeExpression : UExpression, UResolvable {
   override val psi: PsiElement?
     get() = null
 
-  @JvmDefault
   override val uAnnotations: List<UAnnotation>
     get() = emptyList()
 

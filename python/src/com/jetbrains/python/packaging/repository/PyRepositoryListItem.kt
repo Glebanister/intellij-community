@@ -5,11 +5,10 @@ import com.intellij.openapi.observable.properties.GraphPropertyImpl.Companion.gr
 import com.intellij.openapi.observable.properties.PropertyGraph
 import com.intellij.openapi.ui.NamedConfigurable
 import com.intellij.openapi.util.NlsSafe
-import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBTextField
+import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
-import com.intellij.ui.dsl.gridLayout.HorizontalAlign
 import com.intellij.util.ui.JBUI
 import com.jetbrains.python.PyBundle.message
 import org.jetbrains.annotations.ApiStatus
@@ -84,7 +83,7 @@ class PyRepositoryListItem(val repository: PyPackageRepository) : NamedConfigura
     val repositoryForm = panel {
       row(message("python.packaging.repository.form.url")) {
         cell(JBTextField(repository.repositoryUrl))
-          .horizontalAlign(HorizontalAlign.FILL)
+          .align(AlignX.FILL)
           .bindText(urlProperty)
       }
       row(message("python.packaging.repository.form.authorization")) {
@@ -96,7 +95,7 @@ class PyRepositoryListItem(val repository: PyPackageRepository) : NamedConfigura
           .bindText(loginProperty)
       }.visible(repository.authorizationType != PyPackageRepositoryAuthenticationType.NONE)
       val row2 = row(message("python.packaging.repository.form.password")) {
-        cell(JBPasswordField().apply { text = repository.getPassword() })
+        passwordField().applyToComponent { text = repository.getPassword() }
           .apply { component.preferredSize = Dimension(250, component.preferredSize.height) }
           .bindText(passwordProperty)
       }.visible(repository.authorizationType != PyPackageRepositoryAuthenticationType.NONE)

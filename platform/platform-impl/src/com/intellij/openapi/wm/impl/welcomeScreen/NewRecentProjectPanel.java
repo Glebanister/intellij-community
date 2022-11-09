@@ -13,11 +13,11 @@ import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.panels.NonOpaquePanel;
 import com.intellij.ui.scale.JBUIScale;
 import com.intellij.ui.speedSearch.ListWithFilter;
-import com.intellij.ui.speedSearch.NameFilteringListModel;
 import com.intellij.util.IconUtil;
 import com.intellij.util.PathUtil;
 import com.intellij.util.ui.JBDimension;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.NamedColorUtil;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.accessibility.AccessibleContextUtil;
 import org.jetbrains.annotations.NotNull;
@@ -99,9 +99,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
         if (group != null) {
           if (!group.isExpanded()) {
             group.setExpanded(true);
-            ListModel model = ((NameFilteringListModel)list.getModel()).getOriginalModel();
             int index = list.getSelectedIndex();
-            RecentProjectsWelcomeScreenActionBase.rebuildRecentProjectDataModel(model);
             list.setSelectedIndex(group.getProjects().isEmpty() ? index : index + 1);
           }
         } else {
@@ -130,8 +128,6 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
         if (group != null && group.isExpanded()) {
           group.setExpanded(false);
           int index = list.getSelectedIndex();
-          ListModel model = ((NameFilteringListModel)list.getModel()).getOriginalModel();
-          RecentProjectsWelcomeScreenActionBase.rebuildRecentProjectDataModel(model);
           list.setSelectedIndex(index);
         }
       }
@@ -199,7 +195,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
         final JLabel name = new JLabel();
         final JLabel path = ComponentPanelBuilder.createNonWrappingCommentComponent("");
         name.setForeground(fore);
-        path.setForeground(UIUtil.getInactiveTextColor());
+        path.setForeground(NamedColorUtil.getInactiveTextColor());
 
         setBackground(back);
 
@@ -243,7 +239,7 @@ public class NewRecentProjectPanel extends RecentProjectPanel {
               }
               boolean isValid = !isPathValid((((ReopenProjectAction)value).getProjectPath()));
               if (isValid) {
-                name.setForeground(UIUtil.getInactiveTextColor());
+                name.setForeground(NamedColorUtil.getInactiveTextColor());
               }
               p.add(name, BorderLayout.NORTH);
               p.add(path, BorderLayout.SOUTH);

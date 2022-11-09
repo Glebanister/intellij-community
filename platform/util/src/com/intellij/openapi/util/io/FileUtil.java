@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.util.io;
 
 import com.intellij.UtilBundle;
@@ -13,7 +13,6 @@ import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
 import com.intellij.util.containers.JBTreeTraverser;
 import com.intellij.util.io.URLUtil;
-import com.intellij.util.text.CaseInsensitiveStringHashingStrategy;
 import gnu.trove.TObjectHashingStrategy;
 import org.intellij.lang.annotations.RegExp;
 import org.jetbrains.annotations.*;
@@ -23,15 +22,16 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.InvalidPathException;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
+import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+
+import static java.nio.file.attribute.PosixFilePermission.*;
 
 /**
  * Utilities for working with {@link File}.
@@ -42,17 +42,6 @@ public class FileUtil extends FileUtilRt {
   public static final String ASYNC_DELETE_EXTENSION = ".__del__";
 
   public static final int REGEX_PATTERN_FLAGS = SystemInfoRt.isFileSystemCaseSensitive ? 0 : Pattern.CASE_INSENSITIVE;
-
-  /**
-   * @deprecated use {@link com.intellij.util.containers.CollectionFactory#createFilePathSet()}, or other createFilePath*() methods from there
-   */
-  @SuppressWarnings("unchecked")
-  @Deprecated
-  @ApiStatus.ScheduledForRemoval
-  public static final TObjectHashingStrategy<String> PATH_HASHING_STRATEGY = 
-    SystemInfoRt.isFileSystemCaseSensitive
-    ? TObjectHashingStrategy.CANONICAL
-    : CaseInsensitiveStringHashingStrategy.INSTANCE;
 
   /**
    * @deprecated use {@link com.intellij.util.containers.CollectionFactory#createFilePathSet()}, or other createFilePath*() methods from there
@@ -127,6 +116,10 @@ public class FileUtil extends FileUtilRt {
    */
   public static boolean isAncestor(@NotNull File ancestor, @NotNull File file, boolean strict) {
     return isAncestor(ancestor.getPath(), file.getPath(), strict);
+  }
+
+  public static boolean isAncestor(@NotNull Path ancestor, @NotNull Path file, boolean strict) {
+    return isAncestor(ancestor.toString(), file.toString(), strict);
   }
 
   public static boolean isAncestor(@NotNull String ancestor, @NotNull String file, boolean strict) {
@@ -388,7 +381,7 @@ public class FileUtil extends FileUtilRt {
   }
 
   public static void delete(@NotNull Path path) throws IOException {
-    FileUtilRt.deleteRecursivelyNIO(path, null);
+    deleteRecursively(path, null);
   }
 
   public static boolean createParentDirs(@NotNull File file) {
@@ -415,43 +408,56 @@ public class FileUtil extends FileUtilRt {
     performCopy(fromFile, toFile, false);
   }
 
-  private static void performCopy(@NotNull File fromFile, @NotNull File toFile, boolean syncTimestamp) throws IOException {
-    if (filesEqual(fromFile, toFile)) return;
+  private static void performCopy(@NotNull File _fromFile, @NotNull File _toFile, boolean syncTimestamp) throws IOException {
+    if (filesEqual(_fromFile, _toFile)) return;
 
-    try (FileOutputStream fos = openOutputStream(toFile); FileInputStream fis = new FileInputStream(fromFile)) {
-      copy(fis, fos);
+    Path fromFile = _fromFile.toPath(), toFile = _toFile.toPath();
+    try (InputStream in = Files.newInputStream(fromFile); OutputStream out = openOutputStream(toFile)) {
+      copy(in, out);
     }
     catch (IOException e) {
       throw new IOException(String.format("Couldn't copy [%s] to [%s]", fromFile, toFile), e);
     }
 
     if (syncTimestamp) {
-      long timeStamp = fromFile.lastModified();
-      if (timeStamp < 0) {
-        LOG.warn("Invalid timestamp " + timeStamp + " of '" + fromFile + "'");
+      try {
+        FileTime timeStamp = Files.getLastModifiedTime(fromFile);
+        Files.setLastModifiedTime(toFile, timeStamp);
       }
-      else if (!toFile.setLastModified(timeStamp)) {
-        LOG.warn("Unable to set timestamp " + timeStamp + " to '" + toFile + "'");
+      catch (IOException e) {
+        LOG.warn("Unable to set timestamp of '" + toFile + "'");
       }
     }
 
-    if (SystemInfoRt.isUnix && fromFile.canExecute()) {
-      FileSystemUtil.clonePermissionsToExecute(fromFile.getPath(), toFile.getPath());
+    if (SystemInfoRt.isUnix) {
+      Set<PosixFilePermission> exec = EnumSet.of(OWNER_EXECUTE, GROUP_EXECUTE, OTHERS_EXECUTE);
+      try {
+        Set<PosixFilePermission> fromSet = Files.getPosixFilePermissions(fromFile);
+        if (ContainerUtil.exists(exec, fromSet::contains)) {
+          Set<PosixFilePermission> toSet = Files.getPosixFilePermissions(toFile);
+          for (PosixFilePermission permission : exec) {
+            if (fromSet.contains(permission)) toSet.add(permission); else toSet.remove(permission);
+          }
+          Files.setPosixFilePermissions(toFile, toSet);
+        }
+      }
+      catch (IOException e) {
+        LOG.warn("Unable to set permissions of '" + toFile + "'");
+      }
     }
   }
 
-  @NotNull
-  private static FileOutputStream openOutputStream(@NotNull File file) throws IOException {
+  private static OutputStream openOutputStream(Path file) throws IOException {
     try {
-      return new FileOutputStream(file);
+      return Files.newOutputStream(file);
     }
-    catch (FileNotFoundException e) {
-      File parentFile = file.getParentFile();
-      if (parentFile == null) {
-        throw new IOException("Parent file is null for " + file.getPath(), e);
+    catch (NoSuchFileException e) {
+      Path parentDir = file.getParent();
+      if (parentDir == null) {
+        throw new IOException("Parent file is null for " + file, e);
       }
-      createParentDirs(file);
-      return new FileOutputStream(file);
+      Files.createDirectories(parentDir);
+      return Files.newOutputStream(file);
     }
   }
 
@@ -666,7 +672,7 @@ public class FileUtil extends FileUtilRt {
 
     @Override
     public boolean isSymlink(@NotNull CharSequence path) {
-      return FileSystemUtil.isSymLink(new File(path.toString()));
+      return Files.isSymbolicLink(Paths.get(path.toString()));
     }
   };
 
@@ -863,7 +869,7 @@ public class FileUtil extends FileUtilRt {
   @Nullable
   public static String extractRootPath(@NotNull String normalizedPath) {
     if (SystemInfoRt.isWindows) {
-      if (normalizedPath.length() >= 2 && normalizedPath.charAt(1) == ':') {
+      if (OSAgnosticPathUtil.startsWithWindowsDrive(normalizedPath)) {
         // drive letter
         return StringUtil.toUpperCase(normalizedPath.substring(0, 2));
       }
@@ -871,9 +877,12 @@ public class FileUtil extends FileUtilRt {
         // UNC (https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/62e862f4-2a51-452e-8eeb-dc4ff5ee33cc)
         int p1 = normalizedPath.indexOf('/', 2);
         if (p1 > 2) {
-          int p2 = normalizedPath.indexOf('/', p1 + 1);
-          if (p2 > p1 + 1) return normalizedPath.substring(0, p2);
-          if (p2 < 0) return normalizedPath;
+          if (PathUtilRt.isWindowsUNCRoot(normalizedPath, p1)) {
+            int p2 = normalizedPath.indexOf('/', p1 + 1);
+            if (p2 > p1 + 1) return normalizedPath.substring(0, p2);
+            if (p2 < 0) return normalizedPath;
+          }
+          // else the path doesn't look like UNC, e.g. "//.."
         }
       }
     }
@@ -1079,14 +1088,21 @@ public class FileUtil extends FileUtilRt {
     return file.canExecute();
   }
 
+  /** @deprecated use {@link NioFiles#isWritable} */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval
   public static boolean canWrite(@NotNull String path) {
-    FileAttributes attributes = FileSystemUtil.getAttributes(path);
-    return attributes != null && attributes.isWritable();
+    return NioFiles.isWritable(Paths.get(path));
   }
 
+  /** @deprecated use {@link NioFiles#setReadOnly} */
+  @Deprecated
+  @ApiStatus.ScheduledForRemoval
   public static void setReadOnlyAttribute(@NotNull String path, boolean readOnlyFlag) {
-    boolean writableFlag = !readOnlyFlag;
-    if (!new File(path).setWritable(writableFlag, false) && canWrite(path) != writableFlag) {
+    try {
+      NioFiles.setReadOnly(Paths.get(path), readOnlyFlag);
+    }
+    catch (IOException e) {
       LOG.warn("Can't set writable attribute of '" + path + "' to '" + readOnlyFlag + "'");
     }
   }
@@ -1258,7 +1274,6 @@ public class FileUtil extends FileUtilRt {
 
   /** @deprecated ambiguous w.r.t. to normalized UNC paths; consider using {@link OSAgnosticPathUtil} or {@link java.nio.file NIO2} instead */
   @Deprecated
-  @ApiStatus.ScheduledForRemoval
   public static boolean isUnixAbsolutePath(@NotNull String path) {
     return path.startsWith("/");
   }
@@ -1267,12 +1282,8 @@ public class FileUtil extends FileUtilRt {
   @Deprecated
   @ApiStatus.ScheduledForRemoval
   public static boolean isWindowsAbsolutePath(@NotNull String path) {
-    boolean ok = path.length() >= 2 && Character.isLetter(path.charAt(0)) && path.charAt(1) == ':';
-    if (ok && path.length() > 2) {
-      char separatorChar = path.charAt(2);
-      ok = separatorChar == '/' || separatorChar == '\\';
-    }
-    return ok;
+    return path.length() <= 2 && OSAgnosticPathUtil.startsWithWindowsDrive(path)
+           || OSAgnosticPathUtil.isAbsoluteDosPath(path);
   }
 
   @Contract("null -> null; !null -> !null")
@@ -1505,6 +1516,10 @@ public class FileUtil extends FileUtilRt {
     return true;
   }
 
+  public static boolean deleteWithRenamingIfExists(@NotNull Path file) {
+    return Files.exists(file) && deleteWithRenaming(file);
+  }
+
   public static boolean deleteWithRenaming(@NotNull Path file) {
     return deleteWithRenaming(file.toFile());
   }
@@ -1513,17 +1528,6 @@ public class FileUtil extends FileUtilRt {
     File tempFileNameForDeletion = findSequentNonexistentFile(file.getParentFile(), file.getName(), "");
     boolean success = file.renameTo(tempFileNameForDeletion);
     return delete(success ? tempFileNameForDeletion:file);
-  }
-
-  public static boolean isFileSystemCaseSensitive(@NotNull String path) throws FileNotFoundException {
-    FileAttributes attributes = FileSystemUtil.getAttributes(path);
-    if (attributes == null) {
-      throw new FileNotFoundException(path);
-    }
-
-    FileAttributes upper = FileSystemUtil.getAttributes(Strings.toUpperCase(path));
-    FileAttributes lower = FileSystemUtil.getAttributes(Strings.toLowerCase(path));
-    return !(attributes.equals(upper) && attributes.equals(lower));
   }
 
   @NotNull

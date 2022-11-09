@@ -8,6 +8,8 @@ import com.intellij.ide.projectWizard.ProjectSettingsStep;
 import com.intellij.ide.util.EditorHelper;
 import com.intellij.ide.util.projectWizard.*;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.GitSilentFileAdder;
+import com.intellij.openapi.GitSilentFileAdderProvider;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
@@ -200,17 +202,13 @@ public abstract class AbstractGradleModuleBuilder extends AbstractExternalModule
 
     GradleSettings settings = GradleSettings.getInstance(project);
     GradleProjectSettings projectSettings = getExternalProjectSettings();
-    // TODO: replace with isCreatingNewLinkedProject when GradleModuleBuilder will be removed
-    if (myParentProject == null) {
+
+    if (isCreatingNewLinkedProject) {
       GradleProjectImportUtil.setupGradleSettings(settings);
       GradleProjectImportUtil.setupGradleProjectSettings(projectSettings, project, rootProjectPath);
-    }
-    if (isCreatingNewLinkedProject) {
       GradleJvmResolutionUtil.setupGradleJvm(project, projectSettings, gradleVersion);
       GradleJvmValidationUtil.validateJavaHome(project, rootProjectPath, gradleVersion);
-    }
-    // TODO: replace with isCreatingNewLinkedProject when GradleModuleBuilder will be removed
-    if (myParentProject == null) {
+
       settings.linkProject(projectSettings);
     }
     if (isCreatingNewProject) {
@@ -255,7 +253,14 @@ public abstract class AbstractGradleModuleBuilder extends AbstractExternalModule
   }
 
   private void createWrapper(@NotNull Project project, @NotNull Runnable callback) {
-    GradleExecutionUtil.ensureInstalledWrapper(project, rootProjectPath, gradleVersion, callback);
+    GitSilentFileAdder vcsFileAdder = GitSilentFileAdderProvider.create(project);
+    vcsFileAdder.markFileForAdding(rootProjectPath.resolve("gradle"), true);
+    vcsFileAdder.markFileForAdding(rootProjectPath.resolve("gradlew"), false);
+    vcsFileAdder.markFileForAdding(rootProjectPath.resolve("gradlew.bat"), false);
+    GradleExecutionUtil.ensureInstalledWrapper(project, rootProjectPath, gradleVersion, () -> {
+      vcsFileAdder.finish();
+      callback.run();
+    });
   }
 
   public void configureBuildScript(@NotNull Consumer<GradleBuildScriptBuilder<?>> configure) {
@@ -480,7 +485,7 @@ public abstract class AbstractGradleModuleBuilder extends AbstractExternalModule
 
   public void setParentProject(@Nullable ProjectData parentProject) {
     myParentProject = parentProject;
-    isCreatingNewLinkedProject = myParentProject == null;
+    isCreatingNewLinkedProject = parentProject == null;
   }
 
   public boolean isInheritGroupId() {

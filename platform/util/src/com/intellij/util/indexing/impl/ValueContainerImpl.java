@@ -11,6 +11,7 @@ import com.intellij.util.io.DataExternalizer;
 import com.intellij.util.io.DataInputOutputUtil;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -24,7 +25,8 @@ import java.util.function.IntPredicate;
 @ApiStatus.Internal
 public final class ValueContainerImpl<Value> extends UpdatableValueContainer<Value> implements Cloneable{
   static final Logger LOG = Logger.getInstance(ValueContainerImpl.class);
-  private static final boolean DO_EXPENSIVE_CHECKS = IndexDebugProperties.IS_UNIT_TEST_MODE || IndexDebugProperties.EXTRA_SANITY_CHECKS;
+  private static final boolean DO_EXPENSIVE_CHECKS = (IndexDebugProperties.IS_UNIT_TEST_MODE ||
+                                                     IndexDebugProperties.EXTRA_SANITY_CHECKS) && !IndexDebugProperties.IS_IN_STRESS_TESTS;
 
   // there is no volatile as we modify under write lock and read under read lock
   // Most often (80%) we store 0 or one mapping, then we store them in two fields: myInputIdMapping, myInputIdMappingValue
@@ -222,90 +224,45 @@ public final class ValueContainerImpl<Value> extends UpdatableValueContainer<Val
       //noinspection unchecked
       return (InvertedIndexValueIterator<Value>)EmptyValueIterator.INSTANCE;
     }
-    Map<Value, Object> mapping = asMapping();
-    if (mapping == null) {
-      return new InvertedIndexValueIterator<Value>() {
-        private Value value = asValue();
+    Map<Value, Object> mapping = ObjectUtils.notNull(asMapping(),
+                                                     Collections.singletonMap(wrapValue(asValue()), myInputIdMappingValue));
+    return new InvertedIndexValueIterator<Value>() {
+      private Value current;
+      private Object currentValue;
+      private final Iterator<Map.Entry<Value, Object>> iterator = mapping.entrySet().iterator();
 
-        @NotNull
-        @Override
-        public IntIterator getInputIdsIterator() {
-          return getIntIteratorOutOfFileSetObject(getFileSetObject());
-        }
+      @Override
+      public boolean hasNext() {
+        return iterator.hasNext();
+      }
 
-        @NotNull
-        @Override
-        public IntPredicate getValueAssociationPredicate() {
-          return getPredicateOutOfFileSetObject(getFileSetObject());
-        }
+      @Override
+      public Value next() {
+        Map.Entry<Value, Object> entry = iterator.next();
+        current = entry.getKey();
+        Value next = current;
+        currentValue = entry.getValue();
+        return unwrap(next);
+      }
 
-        @Override
-        public Object getFileSetObject() {
-          return myInputIdMappingValue;
-        }
+      @NotNull
+      @Override
+      public IntIterator getInputIdsIterator() {
+        return getIntIteratorOutOfFileSetObject(getFileSetObject());
+      }
 
-        @Override
-        public boolean hasNext() {
-          return value != null;
-        }
+      @NotNull
+      @Override
+      public IntPredicate getValueAssociationPredicate() {
+        return getPredicateOutOfFileSetObject(getFileSetObject());
+      }
 
-        @Override
-        public Value next() {
-          Value next = unwrap(value);
-          value = null;
-          return next;
-        }
-
-        @Override
-        public void remove() {
-          throw new UnsupportedOperationException();
-        }
-      };
-    }
-    else {
-      return new InvertedIndexValueIterator<Value>() {
-        private Value current;
-        private Object currentValue;
-        private final Iterator<Map.Entry<Value, Object>> iterator = mapping.entrySet().iterator();
-
-        @Override
-        public boolean hasNext() {
-          return iterator.hasNext();
-        }
-
-        @Override
-        public Value next() {
-          Map.Entry<Value, Object> entry = iterator.next();
-          current = entry.getKey();
-          Value next = current;
-          currentValue = entry.getValue();
-          return unwrap(next);
-        }
-
-        @Override
-        public void remove() {
-          throw new UnsupportedOperationException();
-        }
-
-        @NotNull
-        @Override
-        public IntIterator getInputIdsIterator() {
-          return getIntIteratorOutOfFileSetObject(getFileSetObject());
-        }
-
-        @NotNull
-        @Override
-        public IntPredicate getValueAssociationPredicate() {
-          return getPredicateOutOfFileSetObject(getFileSetObject());
-        }
-
-        @Override
-        public Object getFileSetObject() {
-          if (current == null) throw new IllegalStateException();
-          return currentValue;
-        }
-      };
-    }
+      @Override
+      public Object getFileSetObject() {
+        if (current == null) throw new IllegalStateException();
+        return currentValue;
+      }
+    };
   }
 
   private static class EmptyValueIterator<Value> implements InvertedIndexValueIterator<Value> {
@@ -345,7 +302,7 @@ public final class ValueContainerImpl<Value> extends UpdatableValueContainer<Val
   }
 
   private static @NotNull IntPredicate getPredicateOutOfFileSetObject(@Nullable Object input) {
-    if (input == null) return EMPTY_PREDICATE;
+    if (input == null) return __ -> false;
 
     if (input instanceof Integer) {
       final int singleId = (Integer)input;
@@ -662,10 +619,8 @@ public final class ValueContainerImpl<Value> extends UpdatableValueContainer<Val
     }
   }
 
-  private static final IntPredicate EMPTY_PREDICATE = __ -> false;
-
-  // a class to distinguish a difference between user-value with THashMap type and internal value container
-  private static final class ValueToInputMap<Value> extends HashMap<Value, Object> {
+  // a class to distinguish a difference between user-value with Object2ObjectOpenHashMap type and internal value container
+  private static final class ValueToInputMap<Value> extends Object2ObjectOpenHashMap<Value, Object> {
     ValueToInputMap(int size) {
       super(size);
     }

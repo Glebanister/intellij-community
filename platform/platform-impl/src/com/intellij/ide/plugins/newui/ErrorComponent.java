@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.ide.plugins.newui;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -8,6 +8,7 @@ import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.ui.ColorUtil;
 import com.intellij.ui.HyperlinkAdapter;
 import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.NamedColorUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 
@@ -31,12 +32,12 @@ final class ErrorComponent extends JEditorPane {
     setCaret(EmptyCaret.INSTANCE);
 
     StyleSheet sheet = ((HTMLEditorKit)getEditorKit()).getStyleSheet();
-    sheet.addRule("span {color: " + ColorUtil.toHtmlColor(UIUtil.getErrorForeground()) + "}");
+    sheet.addRule("span {color: " + ColorUtil.toHtmlColor(NamedColorUtil.getErrorForeground()) + "}");
     sheet.addRule("a {color: " + ColorUtil.toHtmlColor(JBUI.CurrentTheme.Link.Foreground.ENABLED) + "}");
 
     addHyperlinkListener(new HyperlinkAdapter() {
       @Override
-      protected void hyperlinkActivated(HyperlinkEvent e) {
+      protected void hyperlinkActivated(@NotNull HyperlinkEvent e) {
         Object callback = getClientProperty(KEY);
         if (callback instanceof Runnable) {
           ApplicationManager.getApplication().invokeLater((Runnable)callback, ModalityState.any());

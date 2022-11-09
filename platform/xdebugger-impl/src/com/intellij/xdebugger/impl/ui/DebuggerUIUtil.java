@@ -4,7 +4,9 @@ package com.intellij.xdebugger.impl.ui;
 import com.intellij.codeInsight.hint.HintUtil;
 import com.intellij.ide.nls.NlsMessages;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.LogicalPosition;
@@ -21,21 +23,19 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.WindowManager;
-import com.intellij.ui.*;
+import com.intellij.ui.AppUIUtil;
+import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.EditorTextField;
+import com.intellij.ui.ScreenUtil;
 import com.intellij.ui.awt.RelativePoint;
-import com.intellij.ui.components.AnActionLink;
-import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import com.intellij.util.Consumer;
-import com.intellij.util.ui.GridBag;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
 import com.intellij.xdebugger.*;
 import com.intellij.xdebugger.breakpoints.XBreakpoint;
 import com.intellij.xdebugger.breakpoints.XBreakpointListener;
 import com.intellij.xdebugger.breakpoints.XBreakpointManager;
 import com.intellij.xdebugger.frame.XFullValueEvaluator;
-import com.intellij.xdebugger.frame.XValue;
 import com.intellij.xdebugger.frame.XValueModifier;
 import com.intellij.xdebugger.impl.XDebugSessionImpl;
 import com.intellij.xdebugger.impl.XDebuggerUtilImpl;
@@ -51,13 +51,10 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.concurrency.Promise;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.intellij.openapi.wm.IdeFocusManager.getGlobalInstance;
@@ -442,26 +439,28 @@ public final class DebuggerUIUtil {
     return res;
   }
 
-  /**
-   * @deprecated avoid, {@link XValue#calculateEvaluationExpression()} may produce side effects
-   */
-  @Deprecated(forRemoval = true)
-  public static boolean hasEvaluationExpression(@NotNull XValue value) {
-    Promise<XExpression> promise = value.calculateEvaluationExpression();
-    try {
-      return promise.getState() == Promise.State.PENDING || promise.blockingGet(0) != null;
-    }
-    catch (ExecutionException | TimeoutException e) {
-      return true;
-    }
-  }
-
   public static void addToWatches(@NotNull XWatchesView watchesView, @NotNull XValueNodeImpl node) {
     node.calculateEvaluationExpression().onSuccess(expression -> {
       if (expression != null) {
         invokeLater(() -> watchesView.addWatchExpression(expression, -1, false));
       }
     });
+  }
+
+  @Nullable
+  public static XWatchesView getWatchesView(@NotNull AnActionEvent e) {
+    XWatchesView view = e.getData(XWatchesView.DATA_KEY);
+    Project project = e.getProject();
+    if (view == null && project != null) {
+      XDebugSession session = getSession(e);
+      if (session != null) {
+        XDebugSessionTab tab = ((XDebugSessionImpl)session).getSessionTab();
+        if (tab != null) {
+          return tab.getWatchesView();
+        }
+      }
+    }
+    return view;
   }
 
   public static void registerActionOnComponent(String name, JComponent component, Disposable parentDisposable) {

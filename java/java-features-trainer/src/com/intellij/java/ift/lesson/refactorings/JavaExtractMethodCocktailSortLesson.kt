@@ -20,7 +20,7 @@ class JavaExtractMethodCocktailSortLesson
       showWarningIfInplaceRefactoringsDisabled()
 
       actionTask("ExtractMethod") {
-        restoreIfModifiedOrMoved()
+        restoreIfModifiedOrMoved(javaSortSample)
         LessonsBundle.message("extract.method.invoke.action", action(it))
       }
 
@@ -65,8 +65,6 @@ class JavaExtractMethodCocktailSortLesson
 
       restoreRefactoringOptionsInformer()
     }
-
-  override val suitableTips = listOf("ExtractMethod")
 
   override val helpLinks: Map<String, String> get() = mapOf(
     Pair(LessonsBundle.message("extract.method.help.link"),

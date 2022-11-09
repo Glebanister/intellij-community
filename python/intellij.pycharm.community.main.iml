@@ -39,5 +39,8 @@
     <orderEntry type="module" module-name="intellij.color.scheme.twilight" />
     <orderEntry type="module" module-name="intellij.color.scheme.warmNeon" />
     <orderEntry type="module" module-name="intellij.color.scheme.github" />
+    <orderEntry type="module" module-name="intellij.dev" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.fullLine" scope="RUNTIME" />
+    <orderEntry type="module" module-name="intellij.fullLine.python" scope="RUNTIME" />
   </component>
 </module>

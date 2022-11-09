@@ -5,14 +5,16 @@ import com.intellij.formatting.Alignment
 import com.intellij.formatting.SpacingBuilder
 import com.intellij.lang.ASTNode
 import com.intellij.psi.codeStyle.CodeStyleSettings
+import com.intellij.psi.tree.TokenSet
 import org.intellij.plugins.markdown.lang.MarkdownElementTypes
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypeSets
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
+import org.intellij.plugins.markdown.lang.formatter.blocks.special.EmphasisFormattingBlock
 import org.intellij.plugins.markdown.lang.formatter.blocks.special.MarkdownRangedFormattingBlock
 import org.intellij.plugins.markdown.lang.formatter.blocks.special.MarkdownWrappingFormattingBlock
 import org.intellij.plugins.markdown.lang.formatter.settings.MarkdownCustomCodeStyleSettings
-import org.intellij.plugins.markdown.lang.psi.MarkdownAstUtils.parents
-import org.intellij.plugins.markdown.util.hasType
+import org.intellij.plugins.markdown.lang.psi.util.hasType
+import org.intellij.plugins.markdown.lang.psi.util.parents
 
 internal object MarkdownBlocks {
   /**
@@ -39,11 +41,10 @@ internal object MarkdownBlocks {
       in MarkdownTokenTypeSets.LIST_MARKERS, in MarkdownTokenTypeSets.WHITE_SPACES, MarkdownTokenTypes.BLOCK_QUOTE -> {
         MarkdownRangedFormattingBlock.trimmed(node, settings, spacing, align(node), null)
       }
-      in elementsToWrap -> {
-        when {
-          isInsideBlockquote(node) && !shouldWrapInsideBlockquote(settings) -> MarkdownFormattingBlock(node, settings, spacing, align(node))
-          else -> MarkdownWrappingFormattingBlock(settings, spacing, node, align(node))
-        }
+      in emphasisLikeElements -> EmphasisFormattingBlock(settings, spacing, node, align(node))
+      MarkdownElementTypes.PARAGRAPH -> when {
+        isInsideBlockquote(node) && !shouldWrapInsideBlockquote(settings) -> MarkdownFormattingBlock(node, settings, spacing, align(node))
+        else -> MarkdownWrappingFormattingBlock(settings, spacing, node, align(node))
       }
       else -> MarkdownFormattingBlock(node, settings, spacing, align(node))
     }
@@ -65,8 +66,7 @@ internal object MarkdownBlocks {
     || (it.elementType in MarkdownTokenTypeSets.WHITE_SPACES && it.text.isNotBlank())
   }
 
-  private val elementsToWrap = hashSetOf(
-    MarkdownElementTypes.PARAGRAPH,
+  private val emphasisLikeElements = TokenSet.create(
     MarkdownElementTypes.EMPH,
     MarkdownElementTypes.STRONG,
     MarkdownElementTypes.STRIKETHROUGH

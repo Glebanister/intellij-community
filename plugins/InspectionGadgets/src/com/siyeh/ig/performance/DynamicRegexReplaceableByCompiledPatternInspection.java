@@ -74,7 +74,7 @@ public class DynamicRegexReplaceableByCompiledPatternInspection extends BaseInsp
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiClass aClass = ClassUtils.getContainingStaticClass(element);
       if (aClass == null) {
@@ -179,7 +179,7 @@ public class DynamicRegexReplaceableByCompiledPatternInspection extends BaseInsp
   private static class DynamicRegexReplaceableByCompiledPatternVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethodCallExpression(PsiMethodCallExpression expression) {
+    public void visitMethodCallExpression(@NotNull PsiMethodCallExpression expression) {
       super.visitMethodCallExpression(expression);
       if (!isCallToRegexMethod(expression)) {
         return;

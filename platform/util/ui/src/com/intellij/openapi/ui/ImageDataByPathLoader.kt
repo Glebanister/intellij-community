@@ -9,13 +9,11 @@ import com.intellij.openapi.util.Pair
 import com.intellij.ui.icons.IconLoadMeasurer
 import com.intellij.ui.icons.IconTransform
 import com.intellij.ui.icons.ImageDataLoader
-import com.intellij.ui.scale.ScaleContext
+import com.intellij.ui.icons.LoadIconParameters
 import com.intellij.util.ImageLoader
 import org.jetbrains.annotations.ApiStatus
 import org.jetbrains.annotations.NonNls
 import java.awt.Image
-import java.awt.image.ImageFilter
-import java.net.MalformedURLException
 import java.net.URL
 import javax.swing.Icon
 
@@ -72,12 +70,7 @@ class ImageDataByPathLoader private constructor(val path: String,
       val patched = transform.patchPath(originalLoader.path, originalLoader.classLoader) ?: return if (isOriginal) null else originalLoader
       val classLoader = if (patched.second == null) originalLoader.classLoader else patched.second!!
       return if (patched.first.startsWith("file:/")) {
-        try {
-          ImageDataByUrlLoader(URL(patched.first), patched.first, classLoader, false)
-        }
-        catch (e: MalformedURLException) {
-          throw RuntimeException(e)
-        }
+        ImageDataByUrlLoader(URL(patched.first), patched.first, classLoader, false)
       }
       else {
         ImageDataByPathLoader(normalizePath(patched.first), classLoader, originalLoader)
@@ -85,14 +78,12 @@ class ImageDataByPathLoader private constructor(val path: String,
     }
   }
 
-  override fun loadImage(filters: List<ImageFilter?>,
-                         scaleContext: ScaleContext,
-                         isDark: Boolean): Image? {
+  override fun loadImage(parameters: LoadIconParameters): Image? {
     var flags = ImageLoader.ALLOW_FLOAT_SCALING or ImageLoader.USE_CACHE
-    if (isDark) {
+    if (parameters.isDark) {
       flags = flags or ImageLoader.USE_DARK
     }
-    return ImageLoader.loadImage(path, filters, null, classLoader, flags, scaleContext, !path.endsWith(".svg"))
+    return ImageLoader.loadImage(path, parameters, null, classLoader, flags, !path.endsWith(".svg"))
   }
 
   override fun getURL(): URL? {

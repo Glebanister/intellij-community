@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.java.codeInsight.daemon;
 
 import com.intellij.JavaTestUtil;
@@ -54,7 +54,7 @@ public class LightAdvHighlightingFixtureTest extends LightJavaCodeInsightFixture
       PsiTreeUtil.getParentOfType(file.findElementAt(myFixture.getEditor().getCaretModel().getOffset()), PsiCallExpression.class);
     assertNotNull(callExpression);
     CandidateInfo[] candidates =
-      PsiResolveHelper.SERVICE.getInstance(myFixture.getProject()).getReferencedMethodCandidates(callExpression, false);
+      PsiResolveHelper.getInstance(myFixture.getProject()).getReferencedMethodCandidates(callExpression, false);
     assertSize(27, candidates);
     String generateDoc = new JavaDocumentationProvider().generateDoc(callExpression, callExpression);
     assertEquals("<html>Candidates for method call <b>new StringBuilder().append()</b> are:<br><br>&nbsp;&nbsp;" +
@@ -112,33 +112,37 @@ public class LightAdvHighlightingFixtureTest extends LightJavaCodeInsightFixture
   }
 
   public void testReferenceThroughInheritance() {
-    myFixture.addClass("package test;\n" +
-                       "public class A {\n" +
-                       "  public static class B {}\n" +
-                       "}");
+    myFixture.addClass("""
+                         package test;
+                         public class A {
+                           public static class B {}
+                         }""");
     doTest();
   }
 
   public void testReferenceThroughInheritance1() {
     //noinspection UnnecessaryInterfaceModifier
-    myFixture.addClass("package me;\n" +
-                       "import me.Serializer.Format;\n" +
-                       "public interface Serializer<F extends Format> {\n" +
-                       "    public static interface Format {}\n" +
-                       "}\n");
+    myFixture.addClass("""
+                         package me;
+                         import me.Serializer.Format;
+                         public interface Serializer<F extends Format> {
+                             public static interface Format {}
+                         }
+                         """);
     doTest();
   }
 
   public void testUsageOfProtectedAnnotationOutsideAPackage() {
-    myFixture.addClass("package a;\n" +
-                       "import java.lang.annotation.ElementType;\n" +
-                       "import java.lang.annotation.Target;\n" +
-                       "\n" +
-                       "public class A {\n" +
-                       "    @Target( { ElementType.METHOD, ElementType.TYPE } )\n" +
-                       "    protected @interface Test{\n" +
-                       "    }\n" +
-                       "}");
+    myFixture.addClass("""
+                         package a;
+                         import java.lang.annotation.ElementType;
+                         import java.lang.annotation.Target;
+
+                         public class A {
+                             @Target( { ElementType.METHOD, ElementType.TYPE } )
+                             protected @interface Test{
+                             }
+                         }""");
     doTest();
   }
 
@@ -160,20 +164,21 @@ public class LightAdvHighlightingFixtureTest extends LightJavaCodeInsightFixture
   }
 
   public void testAmbiguousMethodCallWhenStaticImported() {
-    myFixture.addClass("package p;" +
-                       "class A<K> {\n" +
-                       "  static <T> A<T> of(T t) {\n" +
-                       "    return null;\n" +
-                       "  }\n" +
-                       "}\n" +
-                       "class B<K> {\n" +
-                       "  static <T> B<T> of(T t) {\n" +
-                       "    return null;\n" +
-                       "  }\n" +
-                       "  static <T> B<T> of(T... t) {\n" +
-                       "    return null;\n" +
-                       "  }\n" +
-                       "}\n");
+    myFixture.addClass("""
+                         package p;class A<K> {
+                           static <T> A<T> of(T t) {
+                             return null;
+                           }
+                         }
+                         class B<K> {
+                           static <T> B<T> of(T t) {
+                             return null;
+                           }
+                           static <T> B<T> of(T... t) {
+                             return null;
+                           }
+                         }
+                         """);
     doTest();
   }
 
@@ -190,16 +195,19 @@ public class LightAdvHighlightingFixtureTest extends LightJavaCodeInsightFixture
   }
 
   public void testTypeAnnotations() {
-    myFixture.addClass("import java.lang.annotation.ElementType;\n" +
-                       "import java.lang.annotation.Target;\n" +
-                       "@Target({ElementType.TYPE_USE})\n" +
-                       "@interface Nullable {}\n");
+    myFixture.addClass("""
+                         import java.lang.annotation.ElementType;
+                         import java.lang.annotation.Target;
+                         @Target({ElementType.TYPE_USE})
+                         @interface Nullable {}
+                         """);
     myFixture.addClass("class Middle<R> extends Base<@Nullable R, String>{}");
     myFixture.addClass("class Child<R> extends Middle<R>{}");
     PsiClass baseClass = myFixture.addClass("class Base<R, C> {}");
-    PsiClass fooClass = myFixture.addClass("class Foo {\n" +
-                                           "  Child<String> field;\n" +
-                                           "}");
+    PsiClass fooClass = myFixture.addClass("""
+                                             class Foo {
+                                               Child<String> field;
+                                             }""");
     PsiField fooField = fooClass.findFieldByName("field", false);
     PsiType substituted =
       TypeConversionUtil.getSuperClassSubstitutor(baseClass, (PsiClassType)fooField.getType()).substitute(baseClass.getTypeParameters()[0]);
@@ -222,10 +230,10 @@ public class LightAdvHighlightingFixtureTest extends LightJavaCodeInsightFixture
   }
 
   public void testImplicitConstructorAccessibility() {
-    myFixture.addClass("package a; public class Base {" +
-                       "private Base() {}\n" +
-                       "protected Base(int... i) {}\n" +
-                       "}");
+    myFixture.addClass("""
+                         package a; public class Base {private Base() {}
+                         protected Base(int... i) {}
+                         }""");
     doTest();
   }
 
@@ -252,6 +260,34 @@ public class LightAdvHighlightingFixtureTest extends LightJavaCodeInsightFixture
     IntentionAction action = myFixture.findSingleIntention("Remove 'for' statement");
     myFixture.launchAction(action);
     myFixture.checkResultByFile(getTestName(false) + "_after.java");
+  }
+
+  public void testProtectedInnerClass() {
+    myFixture.addClass("""
+                         package a;
+                         public class Outer {
+                          public Object get(Inner key) {
+                           return null;
+                          }
+                          public Inner get1() {return null;}\s
+                          public Inner f;\s
+                          protected class Inner {}
+                         }""");
+    doTest();
+  }
+  
+  public void testProtectedInnerClass1() {
+    myFixture.addClass("""
+                         package a;
+                         public class A<T> {
+                           public T getData() {return null;}
+                         }""");
+    myFixture.addClass("""
+                         package a;
+                         public class Outer extends A<Outer.Inner> {
+                          protected class Inner {}
+                         }""");
+    doTest();
   }
 
   private void doTest() {

@@ -15,6 +15,7 @@
  */
 package com.siyeh.ig.junit;
 
+import com.intellij.codeInspection.CleanupLocalInspectionTool;
 import com.intellij.codeInspection.CommonQuickFixBundle;
 import com.intellij.codeInspection.ProblemDescriptor;
 import com.intellij.openapi.project.Project;
@@ -29,8 +30,7 @@ import com.siyeh.ig.InspectionGadgetsFix;
 import com.siyeh.ig.psiutils.TestUtils;
 import org.jetbrains.annotations.NotNull;
 
-public class MultipleExceptionsDeclaredOnTestMethodInspection
-  extends BaseInspection {
+public class MultipleExceptionsDeclaredOnTestMethodInspection extends BaseInspection implements CleanupLocalInspectionTool {
 
   @NotNull
   @Override
@@ -54,7 +54,7 @@ public class MultipleExceptionsDeclaredOnTestMethodInspection
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       if (!(element instanceof PsiReferenceList)) {
         return;
@@ -84,7 +84,7 @@ public class MultipleExceptionsDeclaredOnTestMethodInspection
     extends BaseInspectionVisitor {
 
     @Override
-    public void visitMethod(PsiMethod method) {
+    public void visitMethod(@NotNull PsiMethod method) {
       super.visitMethod(method);
       if (!TestUtils.isJUnitTestMethod(method)) {
         return;

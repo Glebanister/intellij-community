@@ -2,10 +2,12 @@
 package com.intellij.openapi.progress.impl;
 
 import com.intellij.codeWithMe.ClientId;
+import com.intellij.concurrency.ThreadContext;
 import com.intellij.diagnostic.ThreadDumper;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityKt;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ex.ApplicationEx;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
@@ -14,14 +16,9 @@ import com.intellij.openapi.diagnostic.Attachment;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.*;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.NlsContexts;
-import com.intellij.openapi.util.Ref;
-import com.intellij.openapi.util.ThrowableComputable;
+import com.intellij.openapi.util.*;
 import com.intellij.openapi.wm.ex.ProgressIndicatorEx;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.ExceptionUtil;
-import com.intellij.util.ObjectUtils;
 import com.intellij.util.SystemProperties;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.containers.ConcurrentLongObjectMap;
@@ -48,7 +45,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   private final AtomicInteger myUnsafeProgressCount = new AtomicInteger(0);
 
   public static final boolean ENABLED = !"disabled".equals(System.getProperty("idea.ProcessCanceledException"));
-  private static CheckCanceledHook ourCheckCanceledHook;
+
   private ScheduledFuture<?> myCheckCancelledFuture; // guarded by threadsUnderIndicator
 
   // indicator -> threads which are running under this indicator.
@@ -75,13 +72,6 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
    * ProgressIndicator -> count of this indicator occurrences in this multiset.
    */
   private static final Map<ProgressIndicator, AtomicInteger> nonStandardIndicators = new ConcurrentHashMap<>();
-
-  /**
-   * true if running in non-cancelable section started with
-   * {@link #executeNonCancelableSection(Runnable)} in this thread
-   */
-  private static final ThreadLocal<Boolean> isInNonCancelableSection = new ThreadLocal<>();
-    // do not supply initial value to conserve memory
 
   // must be under threadsUnderIndicator lock
   private void startBackgroundNonStandardIndicatorsPing() {
@@ -125,16 +115,26 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   @ApiStatus.Internal
-  public static boolean runCheckCanceledHooks(@Nullable ProgressIndicator indicator) {
-    CheckCanceledHook hook = ourCheckCanceledHook;
-    return hook != null && hook.runHook(indicator);
+  public boolean runCheckCanceledHooks(@Nullable ProgressIndicator indicator) {
+    return false;
+  }
+  @ApiStatus.Internal
+  protected boolean hasCheckCanceledHooks() {
+    return false;
   }
 
   @Override
   protected void doCheckCanceled() throws ProcessCanceledException {
-    if (!isInNonCancelableSection()) {
-      Cancellation.checkCancelled();
+    if (isInNonCancelableSection()) {
+      CheckCanceledBehavior behavior = ourCheckCanceledBehavior;
+      if (behavior != CheckCanceledBehavior.NONE) {
+        ProgressIndicator indicator = behavior == CheckCanceledBehavior.INDICATOR_PLUS_HOOKS ? getProgressIndicator() : null;
+        runCheckCanceledHooks(indicator);
+      }
+      return;
     }
+
+    Cancellation.checkCancelled();
 
     CheckCanceledBehavior behavior = ourCheckCanceledBehavior;
     if (behavior == CheckCanceledBehavior.NONE) return;
@@ -211,8 +211,9 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
         else {
           StringWriter stackTrace = new StringWriter();
           ThreadDumper.dumpCallStack(other, stackTrace, other.getStackTrace());
-          LOG.error("Other (" + other +") is already running under this indicator (" + progress+", " + progress.getClass()+ ")," +
-                    " starting/stopping it here might be a data race. Its stack trace:\n" + stackTrace);
+          LOG.error("Other (" + other +") is already running under this indicator (" + progress+ ", " + progress.getClass() + "), starting/stopping it here might be a data race.\n" +
+                    "Consider using com.intellij.openapi.progress.ProgressManager.executeProcessUnderProgress\n" +
+                    "The other stack trace:\n" + stackTrace);
         }
       }
     }
@@ -230,28 +231,12 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   // FROM EDT: bg OR calling if can't
   @Override
   public <T, E extends Exception> T computeInNonCancelableSection(@NotNull ThrowableComputable<T, E> computable) throws E {
-    try {
-      if (isInNonCancelableSection()) {
-        return computable.compute();
-      }
-      else {
-        try {
-          isInNonCancelableSection.set(Boolean.TRUE);
-          return computeUnderProgress(computable, NonCancelableIndicator.INSTANCE);
-        }
-        finally {
-          isInNonCancelableSection.remove();
-        }
-      }
-    }
-    catch (ProcessCanceledException e) {
-      throw new RuntimeException("PCE is not expected in non-cancellable section execution", e);
-    }
+    return Cancellation.computeInNonCancelableSection(() -> computeUnderProgress(computable, NonCancelableIndicator.INSTANCE));
   }
 
   @Override
   public boolean runProcessWithProgressSynchronously(@NotNull Runnable process,
-                                                     @NotNull @NlsContexts.ProgressTitle String progressTitle,
+                                                     @NotNull @NlsContexts.DialogTitle String progressTitle,
                                                      boolean canBeCanceled,
                                                      @Nullable Project project) {
     return runProcessWithProgressSynchronously(process, progressTitle, canBeCanceled, project, null);
@@ -259,12 +244,11 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
 
   @Override
   public <T, E extends Exception> T runProcessWithProgressSynchronously(@NotNull ThrowableComputable<T, E> process,
-                                                                        @NotNull String progressTitle,
+                                                                        @NotNull @NlsContexts.DialogTitle String progressTitle,
                                                                         boolean canBeCanceled,
                                                                         @Nullable Project project) throws E {
     AtomicReference<T> result = new AtomicReference<>();
     AtomicReference<Throwable> exception = new AtomicReference<>();
-
     runProcessWithProgressSynchronously(new Task.Modal(project, progressTitle, canBeCanceled) {
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
@@ -436,10 +420,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   @Deprecated
-  protected void startTask(@NotNull Task task,
-                           @NotNull ProgressIndicator indicator,
-                           @Nullable Runnable continuation) {
-
+  protected void startTask(@NotNull Task task, @NotNull ProgressIndicator indicator, @Nullable Runnable continuation) {
     try {
       task.run(indicator);
     }
@@ -675,7 +656,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
           startBackgroundNonStandardIndicatorsPing();
         }
 
-        oneOfTheIndicatorsIsCanceled |= thisIndicator.isCanceled();
+        oneOfTheIndicatorsIsCanceled = oneOfTheIndicatorsIsCanceled || thisIndicator.isCanceled();
       }
 
       updateThreadUnderCanceledIndicator(currentThread, oneOfTheIndicatorsIsCanceled);
@@ -698,7 +679,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
           boolean isStandard = thisIndicator instanceof StandardProgressIndicator;
           if (!isStandard) {
             AtomicInteger newCount = nonStandardIndicators.compute(thisIndicator, (__, count) -> {
-              if (count.decrementAndGet() == 0) {
+              if (count == null || count.decrementAndGet() == 0) {
                 return null;
               }
               return count;
@@ -723,18 +704,11 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
 
   final void updateShouldCheckCanceled() {
     synchronized (threadsUnderIndicator) {
-      CheckCanceledHook hook = createCheckCanceledHook();
       boolean hasCanceledIndicator = !threadsUnderCanceledIndicator.isEmpty();
-      ourCheckCanceledHook = hook;
-      ourCheckCanceledBehavior = hook == null && !hasCanceledIndicator ? CheckCanceledBehavior.NONE :
+      ourCheckCanceledBehavior = !hasCheckCanceledHooks() && !hasCanceledIndicator ? CheckCanceledBehavior.NONE :
                                  hasCanceledIndicator && ENABLED ? CheckCanceledBehavior.INDICATOR_PLUS_HOOKS :
                                  CheckCanceledBehavior.ONLY_HOOKS;
     }
-  }
-
-  @Nullable
-  protected CheckCanceledHook createCheckCanceledHook() {
-    return null;
   }
 
   @Override
@@ -773,58 +747,50 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
 
   @Override
   public boolean isInNonCancelableSection() {
-    return isInNonCancelableSection.get() != null;
+    return Cancellation.isInNonCancelableSection();
   }
 
-  private static final long MAX_PRIORITIZATION_NANOS = TimeUnit.SECONDS.toNanos(12);
-  private static final Thread[] EMPTY_THREAD_ARRAY = new Thread[0];
+  private static final long MAX_PRIORITIZATION_NANOS = TimeUnit.SECONDS.toNanos(12); // maximum duration of process to run under low priority
+  private static final long MIN_PRIORITIZATION_NANOS = TimeUnit.MILLISECONDS.toNanos(5); // minimum duration of process to consider prioritizing it down
   private final Set<Thread> myPrioritizedThreads = ContainerUtil.newConcurrentSet();
-  private volatile Thread[] myEffectivePrioritizedThreads = EMPTY_THREAD_ARRAY;
-  private int myDeprioritizations; //guarded by myPrioritizationLock
-  private final Object myPrioritizationLock = ObjectUtils.sentinel("myPrioritizationLock");
-  private volatile long myPrioritizingStarted;
+  private final AtomicInteger myDeprioritizations = new AtomicInteger();
+  private volatile long myPrioritizingStartedNanos;
 
   @Override
   public <T, E extends Throwable> T computePrioritized(@NotNull ThrowableComputable<T, E> computable) throws E {
     Thread thread = Thread.currentThread();
     boolean prioritize;
-    synchronized (myPrioritizationLock) {
-      if (isCurrentThreadPrioritized()) {
-        prioritize = false;
+    if (isCurrentThreadPrioritized()) {
+      prioritize = false;
+    }
+    else {
+      prioritize = true;
+      if (myPrioritizedThreads.isEmpty()) {
+        myPrioritizingStartedNanos = System.nanoTime();
       }
-      else {
-        prioritize = true;
-        if (myPrioritizedThreads.isEmpty()) {
-          myPrioritizingStarted = System.nanoTime();
-        }
-        myPrioritizedThreads.add(thread);
-        updateEffectivePrioritized();
-      }
+      changePrioritizing(()->myPrioritizedThreads.add(thread));
     }
     try {
       return computable.compute();
     }
     finally {
       if (prioritize) {
-        synchronized (myPrioritizationLock) {
-          myPrioritizedThreads.remove(thread);
-          updateEffectivePrioritized();
-        }
+        changePrioritizing(()->myPrioritizedThreads.remove(thread));
       }
     }
   }
 
-  private void updateEffectivePrioritized() {
-    Thread[] prev = myEffectivePrioritizedThreads;
-    Thread[] current = myDeprioritizations > 0 || myPrioritizedThreads.isEmpty() ? EMPTY_THREAD_ARRAY
-                                                                                 : myPrioritizedThreads.toArray(EMPTY_THREAD_ARRAY);
-    myEffectivePrioritizedThreads = current;
-    if (prev.length == 0 && current.length > 0) {
+  private <T> T changePrioritizing(@NotNull Computable<? extends T> runnable) {
+    boolean prevIsEmpty = myDeprioritizations.get() > 0 || myPrioritizedThreads.isEmpty();
+    T result = runnable.compute();
+    boolean currentIsEmpty = myDeprioritizations.get() > 0 || myPrioritizedThreads.isEmpty();
+    if (prevIsEmpty && !currentIsEmpty) {
       prioritizingStarted();
     }
-    else if (prev.length > 0 && current.length == 0) {
+    else if (!prevIsEmpty && currentIsEmpty) {
       prioritizingFinished();
     }
+    return result;
   }
 
   protected void prioritizingStarted() {}
@@ -838,29 +804,25 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
 
   @ApiStatus.Internal
   public void suppressPrioritizing() {
-    synchronized (myPrioritizationLock) {
-      if (++myDeprioritizations == 100 + ForkJoinPool.getCommonPoolParallelism() * 2) {
-        Attachment attachment = new Attachment("threadDump.txt", ThreadDumper.dumpThreadsToString());
-        attachment.setIncluded(true);
-        LOG.error("A suspiciously high nesting of suppressPrioritizing, forgot to call restorePrioritizing?", attachment);
-      }
-      updateEffectivePrioritized();
+    int newDeprioritizations = changePrioritizing(()->myDeprioritizations.incrementAndGet());
+    if (newDeprioritizations == 100 + ForkJoinPool.getCommonPoolParallelism() * 2) {
+      Attachment attachment = new Attachment("threadDump.txt", ThreadDumper.dumpThreadsToString());
+      attachment.setIncluded(true);
+      LOG.error("A suspiciously high nesting of suppressPrioritizing, forgot to call restorePrioritizing?", attachment);
     }
   }
 
   @ApiStatus.Internal
   public void restorePrioritizing() {
-    synchronized (myPrioritizationLock) {
-      if (--myDeprioritizations < 0) {
-        myDeprioritizations = 0;
-        LOG.error("Unmatched suppressPrioritizing/restorePrioritizing");
-      }
-      updateEffectivePrioritized();
+    int newDeprioritizations = changePrioritizing(()->myDeprioritizations.decrementAndGet());
+    if (newDeprioritizations < 0) {
+      changePrioritizing(()->myDeprioritizations.getAndSet(0));
+      LOG.error("Unmatched suppressPrioritizing/restorePrioritizing");
     }
   }
 
   protected boolean sleepIfNeededToGivePriorityToAnotherThread() {
-    if (!isCurrentThreadEffectivelyPrioritized() && checkLowPriorityReallyApplicable()) {
+    if (isDeprioritizationEnabled() && !isCurrentThreadEffectivelyPrioritized() && isLowPriorityReallyApplicable()) {
       LockSupport.parkNanos(1_000_000);
       avoidBlockingPrioritizingThread();
       return true;
@@ -869,12 +831,15 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   private boolean isCurrentThreadEffectivelyPrioritized() {
-    return ArrayUtil.indexOfIdentity(myEffectivePrioritizedThreads, Thread.currentThread()) != -1;
+    if (myDeprioritizations.get()>0) {
+      return false;
+    }
+    return isCurrentThreadPrioritized();
   }
 
-  private boolean checkLowPriorityReallyApplicable() {
-    long time = System.nanoTime() - myPrioritizingStarted;
-    if (time < 5_000_000) {
+  private boolean isLowPriorityReallyApplicable() {
+    long time = System.nanoTime() - myPrioritizingStartedNanos;
+    if (time < MIN_PRIORITIZATION_NANOS) {
       return false; // don't sleep when activities are very short (e.g., empty processing of mouseMoved events)
     }
 
@@ -921,14 +886,14 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   private void stopAllPrioritization() {
-    synchronized (myPrioritizationLock) {
-      myPrioritizedThreads.clear();
-      updateEffectivePrioritized();
-    }
+    changePrioritizing(()->{myPrioritizedThreads.clear(); return null;});
   }
 
   private boolean isAnyPrioritizedThreadBlocked() {
-    for (Thread thread : myEffectivePrioritizedThreads) {
+    if (myDeprioritizations.get()>0) {
+      return false;
+    }
+    for (Thread thread : myPrioritizedThreads) {
       Thread.State state = thread.getState();
       if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING || state == Thread.State.BLOCKED) {
         return true;
@@ -937,11 +902,29 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     return false;
   }
 
+  private boolean isDeprioritizationEnabled() {
+    return myDeprioritizations.get() < 1_000_000;
+  }
+  @TestOnly
+  @ApiStatus.Internal
+  public <T,E extends Throwable> T suppressAllDeprioritizationsDuringLongTestsExecutionIn(@NotNull ThrowableComputable<T, E> runnable) throws E {
+    myDeprioritizations.addAndGet(1_000_000);
+    try {
+      return runnable.compute();
+    }
+    finally {
+      myDeprioritizations.addAndGet(-1_000_000);
+    }
+  }
+
   @NotNull
   public static ModalityState getCurrentThreadProgressModality() {
-    ProgressIndicator indicator = threadTopLevelIndicators.get(Thread.currentThread().getId());
-    ModalityState modality = indicator == null ? null : indicator.getModalityState();
-    return modality != null ? modality : ModalityState.NON_MODAL;
+    ModalityState contextModality = ModalityKt.contextModality(ThreadContext.currentThreadContext());
+    if (contextModality != null) {
+      return contextModality;
+    }
+    ModalityState progressModality = ProgressManager.getInstance().getCurrentProgressModality();
+    return progressModality != null ? progressModality : ModalityState.NON_MODAL;
   }
 
   private static void setCurrentIndicator(long threadId, ProgressIndicator indicator) {
@@ -960,7 +943,7 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   @Override
-  public <X> X silenceGlobalIndicator(@NotNull Supplier<X> computable) {
+  public <X> X silenceGlobalIndicator(@NotNull Supplier<? extends X> computable) {
     long id = Thread.currentThread().getId();
     ProgressIndicator indicator = currentIndicators.get(id);
     setCurrentIndicator(id, null);
@@ -972,8 +955,15 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     }
   }
 
+  @Override
+  public @Nullable ModalityState getCurrentProgressModality() {
+    ProgressIndicator indicator = threadTopLevelIndicators.get(Thread.currentThread().getId());
+    return indicator == null ? null : indicator.getModalityState();
+  }
+
   @FunctionalInterface
   interface CheckCanceledHook {
+    CheckCanceledHook[] EMPTY_ARRAY = new CheckCanceledHook[0];
     /**
      * @param indicator the indicator whose {@link ProgressIndicator#checkCanceled()} was called,
      *                  or null if {@link ProgressManager#checkCanceled()} was called (even on a thread with indicator)

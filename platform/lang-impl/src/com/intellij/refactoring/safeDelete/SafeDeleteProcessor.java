@@ -318,7 +318,6 @@ public final class SafeDeleteProcessor extends BaseRefactoringProcessor {
   }
 
   /**
-   * @param usages
    * @return Map from elements to UsageHolders
    */
   private static HashMap<PsiElement,UsageHolder> sortUsages(UsageInfo @NotNull [] usages) {
@@ -389,6 +388,7 @@ public final class SafeDeleteProcessor extends BaseRefactoringProcessor {
         for (SafeDeleteProcessorDelegate delegate : SafeDeleteProcessorDelegate.EP_NAME.getExtensionList()) {
           if (delegate.handlesElement(element)) {
             delegate.prepareForDeletion(element);
+            break;
           }
         }
       }

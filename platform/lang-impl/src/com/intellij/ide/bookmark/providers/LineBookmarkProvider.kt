@@ -154,6 +154,7 @@ class LineBookmarkProvider(private val project: Project) : BookmarkProvider, Edi
 
   override fun mouseClicked(event: EditorMouseEvent) {
     if (event.isUnexpected) return
+    event.editor.project?.let { if (it != project) return }
     val manager = BookmarksManager.getInstance(project) ?: return
     val bookmark = createBookmark(event.editor, event.logicalPosition.line) ?: return
     manager.getType(bookmark)?.let { manager.remove(bookmark) } ?: manager.add(bookmark, BookmarkType.DEFAULT)
@@ -235,7 +236,7 @@ class LineBookmarkProvider(private val project: Project) : BookmarkProvider, Edi
 
     fun readLineText(bookmark: LineBookmark?) = bookmark?.let { readLineText(it.file, it.line) }
 
-    fun readLineText(file: VirtualFile, line: Int): String? {
+    private fun readLineText(file: VirtualFile, line: Int): String? {
       val document = FileDocumentManager.getInstance().getDocument(file) ?: return null
       if (line < 0 || document.lineCount <= line) return null
       val start = document.getLineStartOffset(line)

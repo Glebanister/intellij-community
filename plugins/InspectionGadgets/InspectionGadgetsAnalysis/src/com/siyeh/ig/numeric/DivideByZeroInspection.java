@@ -72,7 +72,7 @@ public class DivideByZeroInspection extends BaseInspection {
   private static class DivisionByZeroVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitPolyadicExpression(PsiPolyadicExpression expression) {
+    public void visitPolyadicExpression(@NotNull PsiPolyadicExpression expression) {
       super.visitPolyadicExpression(expression);
       final IElementType tokenType = expression.getOperationTokenType();
       if (!JavaTokenType.DIV.equals(tokenType) && !JavaTokenType.PERC.equals(tokenType)) {
@@ -89,7 +89,7 @@ public class DivideByZeroInspection extends BaseInspection {
     }
 
     @Override
-    public void visitAssignmentExpression(PsiAssignmentExpression expression) {
+    public void visitAssignmentExpression(@NotNull PsiAssignmentExpression expression) {
       super.visitAssignmentExpression(expression);
       final PsiExpression rhs = expression.getRExpression();
       if (rhs == null) {
@@ -116,7 +116,7 @@ public class DivideByZeroInspection extends BaseInspection {
 
   private static class ReplaceWithNaNFix extends InspectionGadgetsFix {
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       PsiBinaryExpression division = PsiTreeUtil.getNonStrictParentOfType(descriptor.getStartElement(), PsiBinaryExpression.class);
       if (division == null) return;
       PsiType type = division.getType();

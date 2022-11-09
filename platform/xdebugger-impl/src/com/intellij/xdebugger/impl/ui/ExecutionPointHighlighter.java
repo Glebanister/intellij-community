@@ -26,7 +26,6 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
 import com.intellij.ui.AppUIUtil;
-import com.intellij.util.DocumentUtil;
 import com.intellij.util.SlowOperations;
 import com.intellij.xdebugger.XSourcePosition;
 import com.intellij.xdebugger.impl.XDebuggerUtilImpl;
@@ -34,6 +33,7 @@ import com.intellij.xdebugger.impl.settings.XDebuggerSettingManagerImpl;
 import com.intellij.xdebugger.ui.DebuggerColors;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.concurrency.Promise;
 
 import javax.swing.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,10 +57,15 @@ public class ExecutionPointHighlighter {
     project.getMessageBus().connect().subscribe(EditorColorsManager.TOPIC, scheme -> update(false));
   }
 
-  public void show(final @NotNull XSourcePosition position, final boolean notTopFrame,
-                   @Nullable final GutterIconRenderer gutterIconRenderer) {
+  public void show(@NotNull XSourcePosition position, boolean notTopFrame,
+                   @Nullable GutterIconRenderer gutterIconRenderer) {
+    show(position, notTopFrame, gutterIconRenderer, true);
+  }
+
+  public @NotNull Promise<?> show(@NotNull XSourcePosition position, boolean notTopFrame,
+                                  @Nullable GutterIconRenderer gutterIconRenderer, boolean navigate) {
     updateRequested.set(false);
-    AppUIExecutor
+    return AppUIExecutor
       .onWriteThread(ModalityState.NON_MODAL)
       .expireWith(myProject)
       .submit(() -> {
@@ -80,10 +85,9 @@ public class ExecutionPointHighlighter {
         myGutterIconRenderer = gutterIconRenderer;
         myNotTopFrame = notTopFrame;
       }).thenAsync(ignored -> AppUIExecutor
-      .onUiThread()
-      .expireWith(myProject)
-      .submit(() -> doShow(true))
-    );
+        .onUiThread()
+        .expireWith(myProject)
+        .submit(() -> doShow(navigate)));
   }
 
   public void hide() {
@@ -189,12 +193,9 @@ public class ExecutionPointHighlighter {
     if (mySourcePosition instanceof HighlighterProvider) {
       TextRange range = SlowOperations.allowSlowOperations(() -> ((HighlighterProvider)mySourcePosition).getHighlightRange());
       if (range != null) {
-        TextRange lineRange = DocumentUtil.getLineTextRange(document, line);
-        if (!range.equals(lineRange)) {
-          myRangeHighlighter = markupModel
-            .addRangeHighlighter(attributesKey, range.getStartOffset(), range.getEndOffset(), DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER,
-                                 HighlighterTargetArea.EXACT_RANGE);
-        }
+        myRangeHighlighter = markupModel
+          .addRangeHighlighter(attributesKey, range.getStartOffset(), range.getEndOffset(), DebuggerColors.EXECUTION_LINE_HIGHLIGHTERLAYER,
+                               HighlighterTargetArea.EXACT_RANGE);
       }
     }
     if (myRangeHighlighter == null) {

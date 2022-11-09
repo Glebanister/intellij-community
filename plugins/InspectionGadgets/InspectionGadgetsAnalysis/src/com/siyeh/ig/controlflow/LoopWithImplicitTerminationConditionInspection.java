@@ -61,7 +61,7 @@ public class LoopWithImplicitTerminationConditionInspection
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiConditionalLoopStatement parent = ObjectUtils.tryCast(element.getParent(), PsiConditionalLoopStatement.class);
       if (parent == null) return;
@@ -151,19 +151,19 @@ public class LoopWithImplicitTerminationConditionInspection
   private static class LoopWithImplicitTerminationConditionVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitWhileStatement(PsiWhileStatement statement) {
+    public void visitWhileStatement(@NotNull PsiWhileStatement statement) {
       super.visitWhileStatement(statement);
       check(statement, false);
     }
 
     @Override
-    public void visitDoWhileStatement(PsiDoWhileStatement statement) {
+    public void visitDoWhileStatement(@NotNull PsiDoWhileStatement statement) {
       super.visitDoWhileStatement(statement);
       check(statement, true);
     }
 
     @Override
-    public void visitForStatement(PsiForStatement statement) {
+    public void visitForStatement(@NotNull PsiForStatement statement) {
       super.visitForStatement(statement);
       check(statement, false);
     }

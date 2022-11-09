@@ -2,8 +2,10 @@
 package git4idea.actions.branch
 
 import com.intellij.dvcs.DvcsUtil.disableActionIfAnyRepositoryIsFresh
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.DumbAwareAction
+import git4idea.actions.branch.GitBranchActionsUtil.getAffectedRepositories
 import git4idea.branch.GitBrancher
 import git4idea.i18n.GitBundle
 import git4idea.ui.branch.GitRefDialog
@@ -13,15 +15,19 @@ class GitCheckoutFromInputAction
 
   override fun update(e: AnActionEvent) {
     val project = e.project
-    val repositories = e.getData(GitBranchActionsUtil.REPOSITORIES_KEY)
-    e.presentation.isEnabledAndVisible = project != null && !repositories.isNullOrEmpty()
+    val repositories = getAffectedRepositories(e)
+    e.presentation.isEnabledAndVisible = project != null && !repositories.isEmpty()
 
     disableActionIfAnyRepositoryIsFresh(e, repositories.orEmpty(), GitBundle.message("action.not.possible.in.fresh.repo.checkout"))
   }
 
+  override fun getActionUpdateThread(): ActionUpdateThread {
+    return ActionUpdateThread.BGT
+  }
+
   override fun actionPerformed(e: AnActionEvent) {
     val project = e.project!!
-    val repositories = e.getRequiredData(GitBranchActionsUtil.REPOSITORIES_KEY)
+    val repositories = getAffectedRepositories(e)
 
     // TODO: on type check ref validity, on OK check ref existence.
     val dialog = GitRefDialog(project, repositories,

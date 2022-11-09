@@ -4,6 +4,7 @@ package com.intellij.ide.ui.laf.darcula.ui;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.impl.ToolbarComboWidget;
+import com.intellij.ui.JBColor;
 import com.intellij.util.ui.JBEmptyBorder;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
@@ -22,8 +23,6 @@ import java.util.Objects;
 public class ToolbarComboWidgetUI extends ComponentUI {
 
   private static final int ELEMENTS_GAP = 5;
-  private static final int ICONS_GAP = 5;
-  private static final Icon EXPAND_ICON = AllIcons.General.ChevronDown;
   private static final int MIN_TEXT_LENGTH = 5;
   private static final int SEPARATOR_WIDTH = 1;
 
@@ -51,10 +50,11 @@ public class ToolbarComboWidgetUI extends ComponentUI {
   }
 
   private static void setUIDefaults(ToolbarComboWidget c) {
-    c.setBackground(UIManager.getColor("ToolbarComboWidget.background"));
-    c.setHoverBackground(UIManager.getColor("ToolbarComboWidget.hoverBackground"));
+    c.setForeground(JBColor.namedColor("MainToolbar.Dropdown.foreground", JBColor.foreground()));
+    c.setBackground(JBColor.namedColor("MainToolbar.Dropdown.background", JBColor.foreground()));
+    c.setHoverBackground(JBColor.namedColor("MainToolbar.Dropdown.hoverBackground", JBColor.background()));
 
-    Insets insets = UIManager.getInsets("ToolbarComboWidget.borderInsets");
+    Insets insets = UIManager.getInsets("MainToolbar.Dropdown.borderInsets");
     JBEmptyBorder border = JBUI.Borders.empty(insets.top, insets.left, insets.bottom, insets.right);
     c.setBorder(border);
   }
@@ -62,78 +62,87 @@ public class ToolbarComboWidgetUI extends ComponentUI {
   @Override
   public void paint(Graphics g, JComponent c) {
     ToolbarComboWidget combo = (ToolbarComboWidget)c;
-    if (c.isOpaque()) paintBackground(g, combo);
+    paintBackground(g, combo);
 
     List<Icon> leftIcons = combo.getLeftIcons();
     List<Icon> rightIcons = combo.getRightIcons();
 
-    Rectangle paintRect = SwingUtilities.calculateInnerArea(c, null);
-
-    Graphics2D g2 = (Graphics2D)g.create(paintRect.x, paintRect.y, paintRect.width, paintRect.height);
+    Rectangle innerArea = SwingUtilities.calculateInnerArea(c, null);
+    Graphics2D g2 = (Graphics2D)g.create(innerArea.x, innerArea.y, innerArea.width, innerArea.height);
+    Rectangle paintRect = new Rectangle(0, 0, innerArea.width, innerArea.height);
+    int maxTextWidth = calcMaxTextWidth(combo, paintRect);
     try {
       if (!leftIcons.isEmpty()) {
-        Rectangle iconsRect = paintIcons(leftIcons, combo, g2);
-        doClip(g2, iconsRect.width + ELEMENTS_GAP);
+        Rectangle iconsRect = paintIcons(leftIcons, combo, g2, paintRect, combo.getLeftIconsGap());
+        doClip(paintRect, iconsRect.width + ELEMENTS_GAP);
       }
 
       String text = combo.getText();
       if (!StringUtil.isEmpty(text)) {
-        int maxTextWidth = calcMaxTextWidth(combo, paintRect);
         g2.setColor(c.getForeground());
-        Rectangle textRect = drawText(c, text, maxTextWidth, g2);
-        doClip(g2, textRect.width + ELEMENTS_GAP);
+        Rectangle textRect = new Rectangle(paintRect.x, paintRect.y, maxTextWidth, paintRect.height);
+        drawText(c, text, g2, textRect);
+        doClip(paintRect, maxTextWidth + ELEMENTS_GAP);
       }
 
       if (!rightIcons.isEmpty()) {
-        Rectangle iconsRect = paintIcons(rightIcons, combo, g2);
-        doClip(g2, iconsRect.width + ELEMENTS_GAP);
+        Rectangle iconsRect = paintIcons(rightIcons, combo, g2, paintRect, combo.getRightIconsGap());
+        doClip(paintRect, iconsRect.width + ELEMENTS_GAP);
       }
 
       if (isSeparatorShown(combo)) {
         g2.setColor(UIManager.getColor("Separator.separatorColor"));
-        Rectangle bounds = g2.getClipBounds();
-        g2.fillRect(bounds.x, bounds.y, SEPARATOR_WIDTH, bounds.height);
-        doClip(g2, SEPARATOR_WIDTH + ELEMENTS_GAP);
+        g2.fillRect(paintRect.x, paintRect.y, SEPARATOR_WIDTH, paintRect.height);
+        doClip(paintRect, SEPARATOR_WIDTH + ELEMENTS_GAP);
       }
-
-      paintIcons(Collections.singletonList(EXPAND_ICON), combo, g2);
     }
     finally {
       g2.dispose();
     }
   }
 
+  @Override
+  public int getBaseline(JComponent c, int width, int height) {
+    super.getBaseline(c, width, height);
+    ToolbarComboWidget widget = (ToolbarComboWidget)c;
+    Rectangle iconRect = new Rectangle();
+    Rectangle textRect = new Rectangle();
+    SwingUtilities.layoutCompoundLabel(c, c.getFontMetrics(c.getFont()), widget.getText(), null,
+                                       SwingConstants.CENTER, SwingConstants.CENTER, SwingConstants.CENTER, SwingConstants.CENTER,
+                                       new Rectangle(width, height), iconRect, textRect, 0);
+    FontMetrics fm = c.getFontMetrics(c.getFont());
+    return textRect.y + fm.getAscent();
+  }
+
   private void paintBackground(Graphics g, ToolbarComboWidget c) {
     Graphics g2 = g.create();
     try {
-      g2.setColor(c.getBackground());
-      Rectangle bounds = g2.getClipBounds();
-      g2.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      if (c.isOpaque()) {
+        g2.setColor(c.getBackground());
+        Rectangle bounds = g2.getClipBounds();
+        g2.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
 
       Rectangle hoverRect = hoverTracker.getHoverRect();
-      if (hoverRect != null) {
-        g2.setColor(c.getHoverBackground());
+      Color hoverBackground = c.getHoverBackground();
+      if (hoverRect != null && hoverBackground != null) {
+        g2.setColor(hoverBackground);
         g2.fillRect(hoverRect.x, hoverRect.y, hoverRect.width, hoverRect.height);
       }
     }
     finally {
       g2.dispose();
     }
-
   }
 
-  private static Rectangle drawText(JComponent c, @NotNull String fullText, int maxWidth, Graphics2D g) {
+  private static void drawText(JComponent c, @NotNull String fullText, Graphics2D g, Rectangle textBounds) {
     FontMetrics metrics = c.getFontMetrics(c.getFont());
-    Rectangle clipBounds = g.getClipBounds();
-    clipBounds.width = maxWidth;
 
-    String text = calcShownText(fullText, metrics, maxWidth);
+    int baseline = c.getBaseline(textBounds.width, textBounds.height);
+    String text = calcShownText(fullText, metrics, textBounds.width);
     Rectangle strBounds = metrics.getStringBounds(text, g).getBounds();
-    strBounds.setLocation((int)(clipBounds.getCenterX() - strBounds.getCenterX()),
-                          (int)(clipBounds.getCenterY() - strBounds.getCenterY()));
-
+    strBounds.setLocation((int)(textBounds.getCenterX() - strBounds.getCenterX()), baseline);
     SwingUtilities2.drawString(c, g, text, strBounds.x, strBounds.y);
-    return clipBounds;
   }
 
   private static String calcShownText(String text, FontMetrics metrics, int maxWidth) {
@@ -148,40 +157,38 @@ public class ToolbarComboWidgetUI extends ComponentUI {
   }
 
   private static int calcMaxTextWidth(ToolbarComboWidget c, Rectangle paintRect) {
-    int left = calcIconsWidth(c.getLeftIcons());
+    int left = calcIconsWidth(c.getLeftIcons(), c.getLeftIconsGap());
     if (left > 0) left += ELEMENTS_GAP;
 
-    int right = calcIconsWidth(c.getRightIcons());
+    int right = calcIconsWidth(c.getRightIcons(), c.getRightIconsGap());
     if (right > 0) right += ELEMENTS_GAP;
 
     int separator = isSeparatorShown(c) ? ELEMENTS_GAP + SEPARATOR_WIDTH : 0;
 
-    int otherElementsWidth = left + right + separator + ELEMENTS_GAP + EXPAND_ICON.getIconWidth();
+    int otherElementsWidth = left + right + separator + ELEMENTS_GAP;
     return paintRect.width - otherElementsWidth;
   }
 
-  private static int calcIconsWidth(List<Icon> icons) {
+  private static int calcIconsWidth(List<Icon> icons, int gapBetweenIcons) {
     int res = 0;
     for (Icon icon : icons) {
-      if (res > 0) res += ICONS_GAP;
+      if (res > 0) res += gapBetweenIcons;
       res += icon.getIconWidth();
     }
     return res;
   }
 
-  private static void doClip(Graphics2D g, int shift) {
-    Rectangle bounds = g.getClipBounds();
-    g.clipRect(bounds.x + shift, bounds.y, bounds.width - shift, bounds.height);
+  private static void doClip(Rectangle bounds, int shift) {
+    bounds.setBounds(bounds.x + shift, bounds.y, bounds.width - shift, bounds.height);
   }
 
-  private static Rectangle paintIcons(List<Icon> icons, JComponent c, Graphics g) {
+  private static Rectangle paintIcons(List<Icon> icons, JComponent c, Graphics g, Rectangle bounds, int gapBetweenIcons) {
     if (icons.isEmpty()) return new Rectangle();
 
-    Rectangle bounds = g.getClipBounds();
     int maxHeight = 0;
     int shift = 0;
     for (Icon icon : icons) {
-      if (shift != 0) shift += ICONS_GAP;
+      if (shift != 0) shift += gapBetweenIcons;
 
       int x = bounds.x + shift;
       int y = bounds.y + bounds.height / 2 - icon.getIconHeight() / 2;
@@ -201,7 +208,7 @@ public class ToolbarComboWidgetUI extends ComponentUI {
 
     List<Icon> icons = combo.getLeftIcons();
     if (!icons.isEmpty()) {
-      res.width += calcIconsWidth(icons);
+      res.width += calcIconsWidth(icons, combo.getLeftIconsGap());
       res.height = icons.stream().mapToInt(Icon::getIconHeight).max().orElse(0);
     }
 
@@ -215,7 +222,7 @@ public class ToolbarComboWidgetUI extends ComponentUI {
     icons = combo.getRightIcons();
     if (!icons.isEmpty()) {
       if (res.width > 0) res.width += ELEMENTS_GAP;
-      res.width += calcIconsWidth(icons);
+      res.width += calcIconsWidth(icons, combo.getRightIconsGap());
       res.height = Math.max(res.height, icons.stream().mapToInt(Icon::getIconHeight).max().orElse(0));
     }
 
@@ -225,8 +232,6 @@ public class ToolbarComboWidgetUI extends ComponentUI {
     }
 
     if (res.width > 0) res.width += ELEMENTS_GAP;
-    res.width += EXPAND_ICON.getIconWidth();
-    res.height = Math.max(res.height, EXPAND_ICON.getIconHeight());
 
     Insets insets = c.getInsets();
     res.height += insets.top + insets.bottom;
@@ -288,7 +293,8 @@ public class ToolbarComboWidgetUI extends ComponentUI {
         return;
       }
 
-      int rightPart = SEPARATOR_WIDTH + ELEMENTS_GAP + EXPAND_ICON.getIconWidth() + comp.getInsets().right;
+      int rightPart = SEPARATOR_WIDTH + ELEMENTS_GAP + comp.getInsets().right;
+
       Rectangle right = new Rectangle((int)(compBounds.getMaxX() - rightPart), compBounds.y, rightPart, compBounds.height);
       Rectangle left = new Rectangle(compBounds.x, compBounds.y, compBounds.width - rightPart + SEPARATOR_WIDTH, compBounds.height);
 
@@ -311,9 +317,13 @@ public class ToolbarComboWidgetUI extends ComponentUI {
         return;
       }
 
-      int leftPartWidth = comp.getWidth() - (ELEMENTS_GAP + EXPAND_ICON.getIconWidth() + comp.getInsets().right);
-      if (e.getPoint().x <= leftPartWidth) notifyPressListeners(e);
-      else comp.doExpand(e);
+      int leftPartWidth = comp.getWidth() - (ELEMENTS_GAP + comp.getInsets().right);
+      if (e.getPoint().x <= leftPartWidth) {
+        notifyPressListeners(e);
+      }
+      else {
+        comp.doExpand(e);
+      }
     }
 
     private void notifyPressListeners(MouseEvent e) {

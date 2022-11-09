@@ -1,4 +1,4 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.jetbrains.uast.test.kotlin.comparison
 
 import com.intellij.testFramework.LightProjectDescriptor
@@ -13,7 +13,7 @@ class FE1UastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
     override val isFirUastPlugin: Boolean = false
 
     override fun getProjectDescriptor(): LightProjectDescriptor =
-        KotlinWithJdkAndRuntimeLightProjectDescriptor.INSTANCE
+        KotlinWithJdkAndRuntimeLightProjectDescriptor.getInstance()
 
     fun testResolveStringFromUast() {
         checkResolveStringFromUast(myFixture, project)
@@ -39,6 +39,10 @@ class FE1UastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         checkMultiResolveInClass(myFixture)
     }
 
+    fun testResolveToFacade() {
+        checkResolveToFacade(myFixture)
+    }
+
     fun testMultiConstructorResolve() {
         checkMultiConstructorResolve(myFixture, project)
     }
@@ -55,19 +59,88 @@ class FE1UastResolveApiFixtureTest : KotlinLightCodeInsightFixtureTestCase(), Ua
         checkLocalResolve(myFixture)
     }
 
+    fun testResolveLocalDefaultConstructor() {
+        checkResolveLocalDefaultConstructor(myFixture)
+    }
+
+    fun testResolveJavaClassAsAnonymousObjectSuperType() {
+        checkResolveJavaClassAsAnonymousObjectSuperType(myFixture)
+    }
+
     fun testResolveCompiledAnnotation() {
         checkResolveCompiledAnnotation(myFixture)
     }
 
-    fun testAssigningArrayElementType() {
-        checkAssigningArrayElementType(myFixture)
+    fun testResolveExplicitLambdaParameter() {
+        checkResolveExplicitLambdaParameter(myFixture)
     }
 
-    fun testDivByZero() {
-        checkDivByZero(myFixture)
+    fun testResolveImplicitLambdaParameter() {
+        checkResolveImplicitLambdaParameter(myFixture)
     }
 
-    fun testDetailsOfDeprecatedHidden() {
-        checkDetailsOfDeprecatedHidden(myFixture)
+    fun testResolveSyntheticMethod() {
+        checkResolveSyntheticMethod(myFixture)
     }
+
+    fun testMapFunctions() {
+        checkMapFunctions(myFixture)
+    }
+
+    fun testListIterator() {
+        checkListIterator(myFixture)
+    }
+
+    fun testStringJVM() {
+        checkStringJVM(myFixture)
+    }
+
+    fun testArgumentMappingDefaultValue() {
+        checkArgumentMappingDefaultValue(myFixture)
+    }
+
+    fun testArgumentMappingExtensionFunction() {
+        checkArgumentMappingExtensionFunction(myFixture)
+    }
+
+    fun testArgumentMappingVararg() {
+        checkArgumentMappingVararg(myFixture)
+    }
+
+    fun testArgumentMappingOOBE() {
+        checkArgumentMappingOOBE(myFixture)
+    }
+
+    fun testSyntheticEnumMethods() {
+        checkSyntheticEnumMethods(myFixture)
+    }
+
+    fun testArrayAccessOverloads() {
+        checkArrayAccessOverloads(myFixture)
+    }
+
+    fun testOperatorOverloads() {
+        checkOperatorOverloads(myFixture)
+    }
+
+    fun testResolveSyntheticJavaPropertyAccessor() {
+        checkResolveSyntheticJavaPropertyAccessor(myFixture)
+    }
+
+    fun testResolveKotlinPropertyAccessor() {
+        checkResolveKotlinPropertyAccessor(myFixture)
+    }
+
+    fun testResolveToSubstituteOverride() {
+        checkResolveToSubstituteOverride(myFixture)
+    }
+
+    fun testResolveEnumEntrySuperType() {
+        checkResolveEnumEntrySuperType(myFixture)
+    }
+
+    fun testResolveLambdaInvoke() {
+        checkLambdaInvoke(myFixture)
+    }
+
 }

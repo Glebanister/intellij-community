@@ -49,7 +49,7 @@ public class NullThrownInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElementFactory factory = JavaPsiFacade.getElementFactory(project);
       final PsiExpression newExpression = factory.createExpressionFromText("new java.lang.NullPointerException()", element);
@@ -65,7 +65,7 @@ public class NullThrownInspection extends BaseInspection {
   private static class ThrowNullVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitThrowStatement(PsiThrowStatement statement) {
+    public void visitThrowStatement(@NotNull PsiThrowStatement statement) {
       super.visitThrowStatement(statement);
       final PsiExpression exception =
         PsiUtil.skipParenthesizedExprDown(statement.getException());

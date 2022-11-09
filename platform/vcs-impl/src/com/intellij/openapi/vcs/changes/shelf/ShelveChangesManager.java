@@ -4,6 +4,7 @@ package com.intellij.openapi.vcs.changes.shelf;
 import com.google.common.collect.Lists;
 import com.intellij.concurrency.JobScheduler;
 import com.intellij.configurationStore.XmlSerializer;
+import com.intellij.diagnostic.telemetry.TraceManager;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
@@ -52,10 +53,10 @@ import com.intellij.util.ui.UIUtil;
 import com.intellij.util.xmlb.annotations.Attribute;
 import com.intellij.util.xmlb.annotations.OptionTag;
 import com.intellij.util.xmlb.annotations.XCollection;
-import com.intellij.vcs.log.util.StopWatch;
 import com.intellij.vcsUtil.FilesProgress;
 import com.intellij.vcsUtil.VcsImplUtil;
 import com.intellij.vcsUtil.VcsUtil;
+import io.opentelemetry.api.trace.Tracer;
 import org.jdom.Element;
 import org.jdom.Parent;
 import org.jetbrains.annotations.CalledInAny;
@@ -77,6 +78,9 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 
+import static com.intellij.diagnostic.telemetry.TraceKt.*;
+import static com.intellij.diagnostic.telemetry.TraceUtil.computeWithSpanThrows;
+import static com.intellij.diagnostic.telemetry.TraceUtil.runWithSpanThrows;
 import static com.intellij.openapi.util.text.StringUtil.notNullize;
 import static com.intellij.openapi.vcs.VcsNotificationIdsHolder.SHELVE_FAILED;
 import static com.intellij.openapi.vcs.VcsNotificationIdsHolder.SHELVE_SUCCESSFUL;
@@ -106,6 +110,7 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   private ScheduledFuture<?> myCleaningFuture;
   private final ReadWriteLock SHELVED_FILES_LOCK = new ReentrantReadWriteLock(true);
   @Nullable private Set<VirtualFile> myShelvingFiles;
+  private final Tracer myTracer = TraceManager.INSTANCE.getTracer("vcs");
 
   public static ShelveChangesManager getInstance(@NotNull Project project) {
     return project.getService(ShelveChangesManager.class);
@@ -145,7 +150,8 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
    */
   public static @NotNull Path getDefaultShelfPath(@NotNull Project project) {
     IProjectStore store = ProjectKt.getStateStore(project);
-    return store.getProjectFilePath().getParent().resolve(ProjectKt.isDirectoryBased(project) ? SHELVE_MANAGER_DIR_PATH : "." + SHELVE_MANAGER_DIR_PATH);
+    return store.getProjectFilePath().getParent().resolve(ProjectKt.isDirectoryBased(project) ? SHELVE_MANAGER_DIR_PATH
+                                                                                              : "." + SHELVE_MANAGER_DIR_PATH);
   }
 
   /**
@@ -338,6 +344,17 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   }
 
   @NotNull
+  private static List<ShelvedChange> copyTextFiles(@NotNull Project project,
+                                                   @NotNull ShelvedChangeList changeList,
+                                                   @NotNull Path newPatchPath) {
+    List<ShelvedChange> copied = new ArrayList<>();
+    for (ShelvedChange change : changeList.getChanges()) {
+      copied.add(ShelvedChange.copyToNewPatch(project, newPatchPath, change));
+    }
+    return copied;
+  }
+
+  @NotNull
   private static List<ShelvedBinaryFile> copyBinaryFiles(@NotNull ShelvedChangeList list, @NotNull Path targetDirectory)
     throws IOException {
     Files.createDirectories(targetDirectory);
@@ -349,7 +366,8 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
           Path newShelvedFile = targetDirectory.resolve(PathUtil.getFileName(file.AFTER_PATH));
           try {
             Files.copy(shelvedFile, newShelvedFile);
-            copied.add(new ShelvedBinaryFile(file.BEFORE_PATH, file.AFTER_PATH, FileUtil.toSystemIndependentName(newShelvedFile.toString())));
+            copied.add(new ShelvedBinaryFile(file.BEFORE_PATH, file.AFTER_PATH,
+                                             FileUtil.toSystemIndependentName(newShelvedFile.toString())));
           }
           catch (IOException e) {
             LOG.error("Can't copy binary file: " + list.path);
@@ -366,7 +384,8 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   }
 
   private @NotNull List<ShelvedChangeList> getRecycled(boolean recycled) {
-    return ContainerUtil.newUnmodifiableList(ContainerUtil.filter(mySchemeManager.getAllSchemes(), list -> recycled == list.isRecycled() && !list.isDeleted()));
+    return ContainerUtil.newUnmodifiableList(ContainerUtil.filter(mySchemeManager.getAllSchemes(),
+                                                                  list -> recycled == list.isRecycled() && !list.isDeleted()));
   }
 
   @NotNull
@@ -416,43 +435,52 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   private ShelvedChangeList createShelfFromChanges(@NotNull Collection<? extends Change> changes,
                                                    String commitMessage,
                                                    boolean markToBeDeleted,
-                                                   boolean honorExcludedFromCommit)
-    throws IOException, VcsException {
-
+                                                   boolean honorExcludedFromCommit) throws VcsException, IOException {
     LOG.debug("Shelving of " + changes.size() + " changes...");
-    StopWatch totalSW = StopWatch.start("Total shelving");
 
-    Path schemePatchDir = generateUniqueSchemePatchDir(commitMessage, true);
-    List<Change> textChanges = new ArrayList<>();
-    final List<ShelvedBinaryFile> binaryFiles = new ArrayList<>();
-    for (Change change : changes) {
-      if (ChangesUtil.getFilePath(change).isDirectory()) {
-        continue;
-      }
-      if (change.getBeforeRevision() instanceof BinaryContentRevision || change.getAfterRevision() instanceof BinaryContentRevision) {
-        binaryFiles.add(shelveBinaryFile(schemePatchDir, change));
-      }
-      else {
-        textChanges.add(change);
-      }
+    try {
+      return computeWithSpanThrows(myTracer, "total shelving", (span) -> {
+        span.setAttribute("changesSize", changes.size());
+
+        Path schemePatchDir = generateUniqueSchemePatchDir(commitMessage, true);
+        List<Change> textChanges = new ArrayList<>();
+        final List<ShelvedBinaryFile> binaryFiles = new ArrayList<>();
+        for (Change change : changes) {
+          if (ChangesUtil.getFilePath(change).isDirectory()) {
+            continue;
+          }
+          if (IdeaTextPatchBuilder.isBinaryRevision(change.getBeforeRevision()) ||
+              IdeaTextPatchBuilder.isBinaryRevision(change.getAfterRevision())) {
+            binaryFiles.add(shelveBinaryFile(schemePatchDir, change));
+          }
+          else {
+            textChanges.add(change);
+          }
+        }
+
+        Path patchFile = getPatchFileInConfigDir(schemePatchDir);
+        List<FilePatch> patches = new ArrayList<>(buildAndSavePatchInBatches(patchFile, textChanges, honorExcludedFromCommit));
+
+        ShelvedChangeList changeList = new ShelvedChangeList(patchFile, commitMessage.replace('\n', ' '), binaryFiles,
+                                                             createShelvedChangesFromFilePatches(myProject, patchFile, patches));
+        changeList.markToDelete(markToBeDeleted);
+        changeList.setName(schemePatchDir.getFileName().toString());
+        ProgressManager.checkCanceled();
+        mySchemeManager.addScheme(changeList, false);
+        return changeList;
+      });
     }
-
-    Path patchFile = getPatchFileInConfigDir(schemePatchDir);
-    List<FilePatch> patches = new ArrayList<>(buildAndSavePatchInBatches(patchFile, textChanges, honorExcludedFromCommit));
-
-    ShelvedChangeList changeList = new ShelvedChangeList(patchFile, commitMessage.replace('\n', ' '), binaryFiles,
-                                                         createShelvedChangesFromFilePatches(myProject, patchFile, patches));
-    changeList.markToDelete(markToBeDeleted);
-    changeList.setName(schemePatchDir.getFileName().toString());
-    ProgressManager.checkCanceled();
-    mySchemeManager.addScheme(changeList, false);
-    totalSW.report(LOG);
-    return changeList;
+    catch (IOException | VcsException | RuntimeException e) {
+      throw e;
+    }
+    catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
   private List<FilePatch> buildAndSavePatchInBatches(@NotNull Path patchFile,
                                                      @NotNull List<Change> textChanges,
-                                                     boolean honorExcludedFromCommit) throws VcsException, IOException {
+                                                     boolean honorExcludedFromCommit) throws IOException, VcsException {
     List<FilePatch> patches = new ArrayList<>();
     if (textChanges.isEmpty()) {
       savePatchFile(myProject, patchFile, patches, null, new CommitContext());
@@ -465,36 +493,47 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
     List<List<Change>> partition = Lists.partition(textChanges, partitionSize);
     for (List<Change> list : partition) {
       batchIndex++;
-      String inbatch = partition.size() > 1 ? " in batch #" + batchIndex : ""; //NON-NLS
-      StopWatch totalSw = StopWatch.start("Total shelving" + inbatch);
+      int finalBatchIndex = batchIndex;
       try {
-        StopWatch iterSw;
-        if (baseContentsPreloadSize > 0) {
-          iterSw = StopWatch.start("Preloading base revisions for " + list.size() + " changes");
-          preloadBaseRevisions(list);
-          iterSw.report(LOG);
-        }
+        runWithSpanThrows(myTracer, "batch shelving", (span) -> {
+          span.setAttribute("batch", finalBatchIndex);
 
-        ProgressManager.checkCanceled();
-        iterSw = StopWatch.start("Building patches" + inbatch);
-        patches.addAll(IdeaTextPatchBuilder
-                         .buildPatch(myProject, list, ProjectKt.getStateStore(myProject).getProjectBasePath(), false,
-                                     honorExcludedFromCommit));
-        iterSw.report(LOG);
-        ProgressManager.checkCanceled();
+          try {
+            if (baseContentsPreloadSize > 0) {
+              runWithSpan(myTracer, "preloading base revisions", (preloadSpan) -> {
+                preloadSpan.setAttribute("changesSize", list.size());
+                preloadBaseRevisions(list);
+              });
+            }
 
-        iterSw = StopWatch.start("Storing base revisions" + inbatch);
-        CommitContext commitContext = new CommitContext();
-        baseRevisionsOfDvcsIntoContext(list, commitContext);
-        iterSw.report(LOG);
+            ProgressManager.checkCanceled();
+            runWithSpanThrows(myTracer, "building patches", (__) -> {
+              patches.addAll(IdeaTextPatchBuilder
+                               .buildPatch(myProject, list, ProjectKt.getStateStore(myProject).getProjectBasePath(), false,
+                                           honorExcludedFromCommit));
+            });
+            ProgressManager.checkCanceled();
 
-        iterSw = StopWatch.start("Saving patch file" + inbatch);
-        savePatchFile(myProject, patchFile, patches, null, commitContext);
-        iterSw.report(LOG);
+            CommitContext commitContext = computeWithSpan(myTracer, "storing base revisions", (__) -> {
+              CommitContext context = new CommitContext();
+              baseRevisionsOfDvcsIntoContext(list, context);
+              return context;
+            });
+
+            runWithSpanThrows(myTracer, "saving patch file", (__) -> {
+              savePatchFile(myProject, patchFile, patches, null, commitContext);
+            });
+          }
+          finally {
+            ProjectLevelVcsManager.getInstance(myProject).getContentRevisionCache().clearConstantCache();
+          }
+        });
       }
-      finally {
-        ProjectLevelVcsManager.getInstance(myProject).getContentRevisionCache().clearConstantCache();
-        totalSw.report(LOG);
+      catch (IOException | VcsException | RuntimeException e) {
+        throw e;
+      }
+      catch (Exception e) {
+        throw new RuntimeException(e);
       }
     }
     return patches;
@@ -527,10 +566,10 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   private void rollbackChangesAfterShelve(@NotNull Collection<? extends Change> changes, boolean honorExcludedFromCommit) {
     final String operationName = UIUtil.removeMnemonic(RollbackChangesDialog.operationNameByChanges(myProject, changes));
     boolean modalContext = ApplicationManager.getApplication().isDispatchThread() && LaterInvocator.isInModalContext();
-    StopWatch sw = StopWatch.start("Rollback after shelve");
-    new RollbackWorker(myProject, operationName, modalContext)
-      .doRollback(changes, true, null, VcsBundle.message("shelve.changes.action"), honorExcludedFromCommit);
-    sw.report(LOG);
+    runWithSpan(myTracer, "rollback after shelve", (__) -> {
+      new RollbackWorker(myProject, operationName, modalContext)
+        .doRollback(changes, true, null, VcsBundle.message("shelve.changes.action"), honorExcludedFromCommit);
+    });
   }
 
   private static @NotNull Path getPatchFileInConfigDir(@NotNull Path schemePatchDir) {
@@ -550,7 +589,6 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
           toKeep.put(filePath, change.getBeforeRevision());
         }
       }
-      commitContext.putUserData(BaseRevisionTextPatchEP.ourPutBaseRevisionTextKey, true);
       commitContext.putUserData(BaseRevisionTextPatchEP.ourBaseRevisions, toKeep);
     }
   }
@@ -581,8 +619,8 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   }
 
   private boolean dvcsUsedInProject() {
-    return Arrays.stream(ProjectLevelVcsManager.getInstance(myProject).getAllActiveVcss()).
-      anyMatch(vcs -> VcsType.distributed.equals(vcs.getType()));
+    return ContainerUtil.exists(ProjectLevelVcsManager.getInstance(myProject).getAllActiveVcss(),
+                                vcs -> VcsType.distributed.equals(vcs.getType()));
   }
 
   public @NotNull ShelvedChangeList importFilePatches(String fileName,
@@ -729,30 +767,32 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   }
 
   @CalledInAny
-  private void unshelveChangeList(final ShelvedChangeList changeList,
-                                  @Nullable final List<ShelvedChange> changes,
-                                  @Nullable final List<? extends ShelvedBinaryFile> binaryFiles,
-                                  @Nullable final LocalChangeList targetChangeList,
-                                  boolean showSuccessNotification,
-                                  boolean removeFilesFromShelf) {
-    unshelveChangeList(changeList, changes, binaryFiles, targetChangeList, showSuccessNotification, false, false, null, null,
-                       removeFilesFromShelf);
+  private ApplyPatchStatus unshelveChangeList(final ShelvedChangeList changeList,
+                                              @Nullable final List<ShelvedChange> changes,
+                                              @Nullable final List<? extends ShelvedBinaryFile> binaryFiles,
+                                              @Nullable final LocalChangeList targetChangeList,
+                                              boolean showSuccessNotification,
+                                              boolean removeFilesFromShelf) {
+    return unshelveChangeList(changeList, changes, binaryFiles, targetChangeList, showSuccessNotification, false, false, null, null,
+                              removeFilesFromShelf);
   }
 
   @CalledInAny
-  public void unshelveChangeList(final ShelvedChangeList changeList,
-                                 @Nullable final List<ShelvedChange> changes,
-                                 @Nullable final List<? extends ShelvedBinaryFile> binaryFiles,
-                                 @Nullable final LocalChangeList targetChangeList,
-                                 final boolean showSuccessNotification,
-                                 final boolean systemOperation,
-                                 final boolean reverse,
-                                 @NlsContexts.Label String leftConflictTitle,
-                                 @NlsContexts.Label String rightConflictTitle,
-                                 boolean removeFilesFromShelf) {
+  public ApplyPatchStatus unshelveChangeList(final ShelvedChangeList changeList,
+                                             @Nullable final List<ShelvedChange> changes,
+                                             @Nullable final List<? extends ShelvedBinaryFile> binaryFiles,
+                                             @Nullable final LocalChangeList targetChangeList,
+                                             final boolean showSuccessNotification,
+                                             final boolean systemOperation,
+                                             final boolean reverse,
+                                             @NlsContexts.Label String leftConflictTitle,
+                                             @NlsContexts.Label String rightConflictTitle,
+                                             boolean removeFilesFromShelf) {
     List<FilePatch> remainingPatches = new ArrayList<>();
 
     CommitContext commitContext = new CommitContext();
+    commitContext.putUserData(BaseRevisionTextPatchEP.ourProvideStoredBaseRevisionTextKey, true);
+
     List<TextFilePatch> textFilePatches;
     try {
       textFilePatches = loadTextPatches(myProject, changeList, changes, remainingPatches, commitContext);
@@ -760,7 +800,7 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
     catch (IOException | PatchSyntaxException e) {
       LOG.info(e);
       PatchApplier.showError(myProject, VcsBundle.message("unshelve.loading.patch.error", e.getMessage()));
-      return;
+      return ApplyPatchStatus.FAILURE;
     }
 
     List<FilePatch> patches = new ArrayList<>(textFilePatches);
@@ -776,7 +816,7 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
     PatchApplier patchApplier = new PatchApplier(myProject, baseDir,
                                                  patches, targetChangeList, commitContext, reverse, leftConflictTitle,
                                                  rightConflictTitle);
-    patchApplier.execute(showSuccessNotification, systemOperation);
+    ApplyPatchStatus status = patchApplier.execute(showSuccessNotification, systemOperation);
     if (removeFilesFromShelf) {
       remainingPatches.addAll(patchApplier.getRemainingPatches());
       remainingPatches.addAll(patchApplier.getFailedPatches());
@@ -784,6 +824,7 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
         updateListAfterUnshelve(changeList, remainingPatches, remainingBinaries, commitContext);
       });
     }
+    return status;
   }
 
   @NotNull
@@ -840,6 +881,8 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
     remainingBinaries.removeAll(binaryFiles);
 
     final CommitContext commitContext = new CommitContext();
+    commitContext.putUserData(BaseRevisionTextPatchEP.ourProvideStoredBaseRevisionTextKey, true);
+
     final List<FilePatch> remainingPatches = new ArrayList<>();
     try {
       loadTextPatches(myProject, list, changes, remainingPatches, commitContext);
@@ -1043,11 +1086,18 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
           List<ShelvedBinaryFile> binariesForChangelist =
             new ArrayList<>(ContainerUtil.intersection(changeList.getBinaryFiles(), selectedBinaryChanges));
           boolean shouldUnshelveAllList = changesForChangelist.isEmpty() && binariesForChangelist.isEmpty();
-          unshelveChangeList(changeList, shouldUnshelveAllList ? null : changesForChangelist,
-                             shouldUnshelveAllList ? null : binariesForChangelist,
-                             forcePredefinedOneChangelist != null ? forcePredefinedOneChangelist : getChangeListUnshelveTo(changeList),
-                             true, removeFilesFromShelf);
+          ApplyPatchStatus status = unshelveChangeList(
+            changeList,
+            shouldUnshelveAllList ? null : changesForChangelist,
+            shouldUnshelveAllList ? null : binariesForChangelist,
+            forcePredefinedOneChangelist != null ? forcePredefinedOneChangelist : getChangeListUnshelveTo(changeList),
+            true,
+            removeFilesFromShelf);
           ChangeListManagerEx.getInstanceEx(myProject).waitForUpdate();
+
+          if (status == ApplyPatchStatus.ABORT) {
+            break;
+          }
         }
       }
     });
@@ -1169,7 +1219,7 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
       //changes should be loaded
       saveRemainingChangesInList(changeList, remainingPatches, remainingBinaries, commitContext);
 
-      removeFromListWithChanges(listCopy, Objects.requireNonNull(changeList.getChanges()), changeList.getBinaryFiles());
+      removeFromListWithChanges(listCopy, Objects.requireNonNull(changeList.getChanges()), changeList.getBinaryFiles(), commitContext);
       if (delete) {
         markChangeListAsDeleted(listCopy);
       }
@@ -1208,8 +1258,9 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
     Files.copy(changeList.path, newPath);
     changeList.loadChangesIfNeeded(myProject);
 
-    ShelvedChangeList listCopy = new ShelvedChangeList(newPath, changeList.DESCRIPTION, copyBinaryFiles(changeList, targetDir),
-                                                       new ArrayList<>(Objects.requireNonNull(changeList.getChanges())),
+    ShelvedChangeList listCopy = new ShelvedChangeList(newPath, changeList.DESCRIPTION,
+                                                       copyBinaryFiles(changeList, targetDir),
+                                                       copyTextFiles(myProject, changeList, newPath),
                                                        changeList.DATE.getTime());
     listCopy.markToDelete(changeList.isMarkedToDelete());
     listCopy.setRecycled(changeList.isRecycled());
@@ -1259,14 +1310,14 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
 
   private void removeFromListWithChanges(@NotNull final ShelvedChangeList listCopy,
                                          @NotNull List<ShelvedChange> shelvedChanges,
-                                         @NotNull List<? extends ShelvedBinaryFile> shelvedBinaryChanges) {
+                                         @NotNull List<? extends ShelvedBinaryFile> shelvedBinaryChanges,
+                                         @NotNull CommitContext commitContext) {
     //listCopy should contain loaded changes
     removeBinaries(listCopy, shelvedBinaryChanges);
     removeChanges(listCopy, shelvedChanges);
 
     // create patch file based on filtered changes
     try {
-      final CommitContext commitContext = new CommitContext();
       final List<FilePatch> patches = new ArrayList<>();
       List<TextFilePatch> filePatches = loadPatches(myProject, listCopy.path, commitContext);
       for (ShelvedChange change : Objects.requireNonNull(listCopy.getChanges())) {
@@ -1283,11 +1334,13 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
   private static void removeChanges(@NotNull ShelvedChangeList list, @NotNull List<ShelvedChange> shelvedChanges) {
     for (Iterator<ShelvedChange> iterator = Objects.requireNonNull(list.getChanges()).iterator(); iterator.hasNext(); ) {
       final ShelvedChange change = iterator.next();
-      for (ShelvedChange newChange : shelvedChanges) {
-        if (Objects.equals(change.getBeforePath(), newChange.getBeforePath()) &&
-            Objects.equals(change.getAfterPath(), newChange.getAfterPath())) {
-          iterator.remove();
-        }
+
+      boolean toRemove = ContainerUtil.exists(shelvedChanges, newChange ->
+        Objects.equals(change.getBeforePath(), newChange.getBeforePath()) &&
+        Objects.equals(change.getAfterPath(), newChange.getAfterPath())
+      );
+      if (toRemove) {
+        iterator.remove();
       }
     }
   }
@@ -1409,6 +1462,6 @@ public final class ShelveChangesManager implements PersistentStateComponent<Elem
                                     @NotNull CommitContext context) throws IOException {
     try (Writer writer = Files.newBufferedWriter(patchFile)) {
       UnifiedDiffWriter.write(project, ProjectKt.getStateStore(project).getProjectBasePath(), patches, writer, "\n", context, extensions);
-      }
     }
+  }
 }

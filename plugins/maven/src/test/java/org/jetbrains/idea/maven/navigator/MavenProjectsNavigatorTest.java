@@ -17,7 +17,11 @@ package org.jetbrains.idea.maven.navigator;
 
 import com.intellij.maven.testFramework.MavenMultiVersionImportingTestCase;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.testFramework.PlatformTestUtil;
+import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.testFramework.ServiceContainerUtil;
+import com.intellij.toolWindow.ToolWindowHeadlessManagerImpl;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.idea.maven.project.MavenProjectsManager;
 import org.jetbrains.idea.maven.project.importing.FilesList;
 import org.jetbrains.idea.maven.project.importing.MavenImportFlow;
 import org.jetbrains.idea.maven.project.importing.MavenInitialImportContext;
@@ -37,6 +41,12 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   @Override
   protected void setUp() throws Exception {
     super.setUp();
+    ServiceContainerUtil.replaceService(myProject, ToolWindowManager.class, new ToolWindowHeadlessManagerImpl(myProject) {
+      @Override
+      public void invokeLater(@NotNull Runnable runnable) {
+        runnable.run();
+      }
+    }, getTestRootDisposable());
     initProjectsManager(false);
 
     myNavigator = MavenProjectsNavigator.getInstance(myProject);
@@ -54,7 +64,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testActivation() {
+  public void testActivation() throws Exception {
     createProjectPom("<groupId>test</groupId>" +
                      "<artifactId>project</artifactId>" +
                      "<version>1</version>" +
@@ -77,7 +87,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testReconnectingModulesWhenModuleRead() {
+  public void testReconnectingModulesWhenModuleRead() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -105,7 +115,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testReconnectingModulesWhenParentRead() {
+  public void testReconnectingModulesWhenParentRead() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     VirtualFile m = createModulePom("m", "<groupId>test</groupId>" +
@@ -132,7 +142,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testReconnectingModulesWhenProjectBecomesParent() {
+  public void testReconnectingModulesWhenProjectBecomesParent() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -162,7 +172,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testUpdatingWhenManagedFilesChange() {
+  public void testUpdatingWhenManagedFilesChange() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -171,15 +181,18 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
     readFiles(myProjectPom);
     resolveDependenciesAndImport();
     assertEquals(1, getRootNodes().size());
-
     MavenUtil.cleanAllRunnables();
+
+    configConfirmationForYesAnswer();
     myProjectsManager.removeManagedFiles(Collections.singletonList(myProjectPom));
-    readFiles();
+    waitForImportCompletion();
+    waitForMavenUtilRunnablesComplete();
+    assertEmpty(myProjectsManager.getRootProjects());
     assertEquals(0, getRootNodes().size());
   }
 
   @Test
-  public void testGroupModulesAndGroupNot() {
+  public void testGroupModulesAndGroupNot() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     myNavigator.setGroupModules(true);
@@ -220,7 +233,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testIgnoringProjects() {
+  public void testIgnoringProjects() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -236,7 +249,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
                                          "<version>1</version>");
     readFiles(myProjectPom, m);
 
-    myProjectsTree.setIgnoredFilesPaths(Arrays.asList(m.getPath()));
+    myProjectsManager.getProjectsTree().setIgnoredFilesPaths(Arrays.asList(m.getPath()));
 
     myNavigator.setShowIgnored(true);
     waitForMavenUtilRunnablesComplete();
@@ -250,7 +263,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testIgnoringParentProjectWhenNeedNoReconnectModule() {
+  public void testIgnoringParentProjectWhenNeedNoReconnectModule() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -266,7 +279,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
                                          "<version>1</version>");
     readFiles(myProjectPom, m);
 
-    myProjectsTree.setIgnoredFilesPaths(Arrays.asList(myProjectPom.getPath()));
+    getProjectsTree().setIgnoredFilesPaths(Arrays.asList(myProjectPom.getPath()));
 
     myNavigator.setShowIgnored(true);
     assertEquals(1, getRootNodes().size());
@@ -285,7 +298,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testReorderingProjectsWhenNameChanges() {
+  public void testReorderingProjectsWhenNameChanges() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     VirtualFile m1 = createModulePom("m1", "<groupId>test</groupId>" +
@@ -312,7 +325,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testReloadingState() {
+  public void testReloadingState() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -340,7 +353,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   @Test
-  public void testNavigatableForProjectNode() {
+  public void testNavigatableForProjectNode() throws Exception {
     myProjectsManager.fireActivatedInTests();
 
     createProjectPom("<groupId>test</groupId>" +
@@ -351,18 +364,62 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
     assertTrue(getRootNodes().get(0).getNavigatable().canNavigateToSource());
   }
 
-  private void readFiles(VirtualFile... files) {
+  @Test
+  public void testCanIterateOverRootNodeChildren() throws Exception {
+    myProjectsManager.fireActivatedInTests();
+
+    createProjectPom("<groupId>test</groupId>" +
+                     "<artifactId>project</artifactId>" +
+                     "<version>1</version>");
+
+    readFiles(myProjectPom);
+
+    var rootNode = myStructure.getRootElement();
+    var projectsManager = MavenProjectsManager.getInstance(myProject);
+    var project = projectsManager.getProjects().get(0);
+    var node = myStructure.new ProjectNode(project);
+    rootNode.add(node);
+    var children = rootNode.doGetChildren();
+    rootNode.remove(node);
+    for (var child : children) {
+      assertNotNull(child);
+    }
+  }
+
+  @Test
+  public void testCanIterateOverProjectNodeChildren() throws Exception {
+    myProjectsManager.fireActivatedInTests();
+
+    createProjectPom("<groupId>test</groupId>" +
+                     "<artifactId>project</artifactId>" +
+                     "<version>1</version>");
+
+    readFiles(myProjectPom);
+
+    var projectsManager = MavenProjectsManager.getInstance(myProject);
+    var project = projectsManager.getProjects().get(0);
+    var node = myStructure.new ProjectNode(project);
+    var projectNode = getRootNodes().get(0);
+    projectNode.add(node);
+    var children = projectNode.doGetChildren();
+    projectNode.remove(node);
+    for (var child : children) {
+      assertNotNull(child);
+    }
+  }
+
+  private void readFiles(VirtualFile... files) throws Exception {
     if (isNewImportingProcess) {
       MavenImportFlow flow = new MavenImportFlow();
       List<VirtualFile> allFiles = new ArrayList<>(myProjectsManager.getProjectsFiles());
       allFiles.addAll(Arrays.asList(files));
       MavenInitialImportContext initialImportContext =
-        flow.prepareNewImport(myProject, getMavenProgressIndicator(),
+        flow.prepareNewImport(myProject,
                               new FilesList(allFiles),
                               getMavenGeneralSettings(),
                               getMavenImporterSettings(),
                               Collections.emptyList(), Collections.emptyList());
-      MavenReadContext readContext = flow.readMavenFiles(initialImportContext, Collections.emptyList(), Collections.emptyList());
+      MavenReadContext readContext = flow.readMavenFiles(initialImportContext, getMavenProgressIndicator());
       flow.updateProjectManager(readContext);
       myNavigator.scheduleStructureUpdate();
 
@@ -375,6 +432,7 @@ public class MavenProjectsNavigatorTest extends MavenMultiVersionImportingTestCa
   }
 
   private List<MavenProjectsStructure.ProjectNode> getRootNodes() {
+
     return myStructure.getRootElement().getProjectNodesInTests();
   }
 }

@@ -94,7 +94,7 @@ public class NegatedConditionalInspection extends BaseInspection {
     }
 
     @Override
-    public void doFix(Project project, ProblemDescriptor descriptor) {
+    public void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiConditionalExpression conditionalExpression = (PsiConditionalExpression)element.getParent();
       assert conditionalExpression != null;
@@ -113,7 +113,7 @@ public class NegatedConditionalInspection extends BaseInspection {
   private class NegatedConditionalVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitConditionalExpression(PsiConditionalExpression expression) {
+    public void visitConditionalExpression(@NotNull PsiConditionalExpression expression) {
       super.visitConditionalExpression(expression);
       final PsiExpression thenBranch = expression.getThenExpression();
       if (thenBranch == null) {

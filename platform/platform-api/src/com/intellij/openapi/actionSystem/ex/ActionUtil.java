@@ -1,6 +1,7 @@
 // Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 package com.intellij.openapi.actionSystem.ex;
 
+import com.intellij.diagnostic.PluginException;
 import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.actions.ActionsCollector;
@@ -17,11 +18,14 @@ import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.ui.popup.JBPopup;
+import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiDocumentManager;
-import com.intellij.ui.ComponentUtil;
+import com.intellij.ui.ClientProperty;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.SlowOperations;
 import com.intellij.util.containers.ContainerUtil;
@@ -37,12 +41,16 @@ import java.awt.event.ActionListener;
 import java.awt.event.InputEvent;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 public final class ActionUtil {
   private static final Logger LOG = Logger.getInstance(ActionUtil.class);
 
   public static final Key<Boolean> ALLOW_PlAIN_LETTER_SHORTCUTS = Key.create("ALLOW_PlAIN_LETTER_SHORTCUTS");
+  @ApiStatus.Internal
+  public static final Key<Boolean> ALLOW_ACTION_PERFORM_WHEN_HIDDEN = Key.create("ALLOW_ACTION_PERFORM_WHEN_HIDDEN");
 
   private static final Key<Boolean> WAS_ENABLED_BEFORE_DUMB = Key.create("WAS_ENABLED_BEFORE_DUMB");
   @ApiStatus.Internal
@@ -77,21 +85,28 @@ public final class ActionUtil {
     }
     else {
       message = getUnavailableMessage("None of the following actions", true) +
-                                       ": " + StringUtil.join(actionNames, ", ");
+                ": " + StringUtil.join(actionNames, ", ");
     }
     return message;
   }
 
   public static @NotNull @NlsContexts.PopupContent String getUnavailableMessage(@NotNull String action, boolean plural) {
     if (plural) {
-      return IdeBundle.message("popup.content.actions.not.available.while.updating.indices", action, ApplicationNamesInfo.getInstance().getProductName());
+      return IdeBundle.message("popup.content.actions.not.available.while.updating.indices", action,
+                               ApplicationNamesInfo.getInstance().getProductName());
     }
-    return IdeBundle.message("popup.content.action.not.available.while.updating.indices", action, ApplicationNamesInfo.getInstance().getProductName());
+    return IdeBundle.message("popup.content.action.not.available.while.updating.indices", action,
+                             ApplicationNamesInfo.getInstance().getProductName());
   }
 
-  /** @deprecated Use {@link #performDumbAwareUpdate(AnAction, AnActionEvent, boolean)} instead */
+  /**
+   * @deprecated Use {@link #performDumbAwareUpdate(AnAction, AnActionEvent, boolean)} instead
+   */
   @Deprecated(forRemoval = true)
-  public static boolean performDumbAwareUpdate(boolean isInModalContext, @NotNull AnAction action, @NotNull AnActionEvent e, boolean beforeActionPerformed) {
+  public static boolean performDumbAwareUpdate(boolean isInModalContext,
+                                               @NotNull AnAction action,
+                                               @NotNull AnActionEvent e,
+                                               boolean beforeActionPerformed) {
     return performDumbAwareUpdate(action, e, beforeActionPerformed);
   }
 
@@ -123,6 +138,13 @@ public final class ActionUtil {
     action.applyTextOverride(e);
     try {
       Runnable runnable = () -> {
+        // init group flags from deprecated methods
+        boolean isGroup = action instanceof ActionGroup;
+        boolean wasPopup = isGroup && ((ActionGroup)action).isPopup(e.getPlace());
+        boolean wasHideIfEmpty = isGroup && ((ActionGroup)action).hideIfNoVisibleChildren();
+        boolean wasDisableIfEmpty = isGroup && ((ActionGroup)action).disableIfNoVisibleChildren();
+        presentation.setPopupGroup(isGroup && (presentation.isPopupGroup() || wasPopup));
+
         e.setInjectedContext(action.isInInjectedContext());
         if (beforeActionPerformed) {
           action.beforeActionPerformedUpdate(e);
@@ -139,10 +161,21 @@ public final class ActionUtil {
             action.update(e);
           }
         }
+        //to be removed when ActionGroup#canBePerformed is dropped
+        e.getPresentation().setPerformGroup(
+          isGroup && e.getPresentation().isPopupGroup() &&
+          (e.getPresentation().isPerformGroup() || ((ActionGroup)action).canBePerformed(e.getDataContext())));
+        if (isGroup) {
+          assertDeprecatedActionGroupFlagsNotChanged((ActionGroup)action, e, wasPopup, wasHideIfEmpty, wasDisableIfEmpty);
+        }
       };
       boolean isLikeUpdate = !beforeActionPerformed && Registry.is("actionSystem.update.actions.async");
-      try (AccessToken ignore = SlowOperations.allowSlowOperations(isLikeUpdate ? SlowOperations.ACTION_UPDATE : SlowOperations.ACTION_PERFORM)) {
+      try (AccessToken ignore = SlowOperations.allowSlowOperations(isLikeUpdate ? SlowOperations.ACTION_UPDATE
+                                                                                : SlowOperations.ACTION_PERFORM)) {
+        long startTime = System.nanoTime();
         runnable.run();
+        long duration = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);
+        ActionsCollector.getInstance().recordUpdate(action, e, duration);
       }
       presentation.putClientProperty(WOULD_BE_ENABLED_IF_NOT_DUMB_MODE, !allowed && presentation.isEnabled());
       presentation.putClientProperty(WOULD_BE_VISIBLE_IF_NOT_DUMB_MODE, !allowed && presentation.isVisible());
@@ -165,11 +198,40 @@ public final class ActionUtil {
     return false;
   }
 
+  private static void assertDeprecatedActionGroupFlagsNotChanged(@NotNull ActionGroup group, @NotNull AnActionEvent event,
+                                                                 boolean wasPopup, boolean wasHideIfEmpty, boolean wasDisableIfEmpty) {
+    boolean warnPopup = wasPopup != group.isPopup(event.getPlace());
+    boolean warnHide = wasHideIfEmpty != group.hideIfNoVisibleChildren();
+    boolean warnDisable = wasDisableIfEmpty != group.disableIfNoVisibleChildren();
+    if (!(warnPopup || warnHide || warnDisable)) return;
+    String operationName = group.getClass().getSimpleName() + "#update (" + group.getClass().getName() + ")";
+    if (warnPopup) {
+      event.getPresentation().setPopupGroup(!wasPopup); // keep the old logic for a while
+      String message = "Calling `setPopup()` in " + operationName + ". " +
+                       "Please use `event.getPresentation().setPopupGroup()` instead.";
+      LOG.error(PluginException.createByClass(message, null, group.getClass()));
+    }
+    if (warnHide) {
+      event.getPresentation().setHideGroupIfEmpty(!wasHideIfEmpty); // keep the old logic for a while
+      String message = "Changing `hideIfNoVisibleChildren()` result in " + operationName + ". " +
+                       "Please use `event.getPresentation().setHideGroupIfEmpty()` instead.";
+      LOG.error(PluginException.createByClass(message, null, group.getClass()));
+    }
+    if (warnHide) {
+      event.getPresentation().setDisableGroupIfEmpty(!wasDisableIfEmpty); // keep the old logic for a while
+      String message = "Changing `disableIfNoVisibleChildren()` result in " + operationName + ". " +
+                       "Please use `event.getPresentation().setHideGroupIfEmpty()` instead.";
+      LOG.error(PluginException.createByClass(message, null, group.getClass()));
+    }
+  }
+
+
   /**
    * Show a cancellable modal progress running the given computation under read action with the same {@link DumbService#isAlternativeResolveEnabled()}
    * as the caller. To be used in actions which need to perform potentially long-running computations synchronously without freezing UI.
+   *
    * @throws ProcessCanceledException if the user has canceled the progress. If the action can be safely stopped at this point
-   *   without leaving inconsistent data behind, this exception doesn't need to be caught and processed.
+   *                                  without leaving inconsistent data behind, this exception doesn't need to be caught and processed.
    */
   public static <T> T underModalProgress(@NotNull Project project,
                                          @NotNull @NlsContexts.ProgressTitle String progressTitle,
@@ -178,7 +240,9 @@ public final class ActionUtil {
     boolean useAlternativeResolve = dumbService.isAlternativeResolveEnabled();
     ThrowableComputable<T, RuntimeException> inReadAction = () -> ApplicationManager.getApplication().runReadAction(computable);
     ThrowableComputable<T, RuntimeException> prioritizedRunnable = () -> ProgressManager.getInstance().computePrioritized(inReadAction);
-    ThrowableComputable<T, RuntimeException> process = useAlternativeResolve ? () -> dumbService.computeWithAlternativeResolveEnabled(prioritizedRunnable) : prioritizedRunnable;
+    ThrowableComputable<T, RuntimeException> process = useAlternativeResolve
+                                                       ? () -> dumbService.computeWithAlternativeResolveEnabled(prioritizedRunnable)
+                                                       : prioritizedRunnable;
     return ProgressManager.getInstance().runProcessWithProgressSynchronously(process, progressTitle, true, project);
   }
 
@@ -196,13 +260,14 @@ public final class ActionUtil {
       }
     }
     return false;
-
   }
 
   public static boolean lastUpdateAndCheckDumb(@NotNull AnAction action, @NotNull AnActionEvent e, boolean visibilityMatters) {
     Project project = e.getProject();
     if (project != null && PerformWithDocumentsCommitted.isPerformWithDocumentsCommitted(action)) {
-      PsiDocumentManager.getInstance(project).commitAllDocuments();
+      try (AccessToken ignore = SlowOperations.allowSlowOperations(SlowOperations.ACTION_PERFORM)) {
+        PsiDocumentManager.getInstance(project).commitAllDocuments();
+      }
     }
     performDumbAwareUpdate(action, e, true);
 
@@ -224,15 +289,39 @@ public final class ActionUtil {
     return !visibilityMatters || e.getPresentation().isVisible();
   }
 
-  /** @deprecated use {@link #performActionDumbAwareWithCallbacks(AnAction, AnActionEvent)} */
-  @Deprecated
+  /**
+   * @deprecated use {@link #performActionDumbAwareWithCallbacks(AnAction, AnActionEvent)}
+   */
+  @Deprecated(forRemoval = true)
   public static void performActionDumbAwareWithCallbacks(@NotNull AnAction action, @NotNull AnActionEvent e, @NotNull DataContext context) {
     LOG.assertTrue(e.getDataContext() == context, "event context does not match the argument");
     performActionDumbAwareWithCallbacks(action, e);
   }
 
   public static void performActionDumbAwareWithCallbacks(@NotNull AnAction action, @NotNull AnActionEvent e) {
-    performDumbAwareWithCallbacks(action, e, () -> action.actionPerformed(e));
+    performDumbAwareWithCallbacks(action, e, () -> doPerformActionOrShowPopup(action, e, null));
+  }
+
+  @ApiStatus.Internal
+  public static void doPerformActionOrShowPopup(@NotNull AnAction action, @NotNull AnActionEvent e, @Nullable Consumer<? super JBPopup> popupShow) {
+    if (action instanceof ActionGroup && !e.getPresentation().isPerformGroup()) {
+      DataContext dataContext = e.getDataContext();
+      ActionGroup group = (ActionGroup)action;
+      String place = ActionPlaces.getActionGroupPopupPlace(e.getPlace());
+      ListPopup popup = JBPopupFactory.getInstance().createActionGroupPopup(
+        e.getPresentation().getText(), group, dataContext,
+        JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
+        false, null, -1, null, place);
+      if (popupShow != null) {
+        popupShow.accept(popup);
+      }
+      else {
+        popup.showInBestPositionFor(dataContext);
+      }
+    }
+    else {
+      action.actionPerformed(e);
+    }
   }
 
   public static void performDumbAwareWithCallbacks(@NotNull AnAction action,
@@ -244,7 +333,8 @@ public final class ActionUtil {
     manager.fireBeforeActionPerformed(action, event);
     Component component = event.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT);
     if (component != null && !UIUtil.isShowing(component) &&
-        !ActionPlaces.TOUCHBAR_GENERAL.equals(event.getPlace())) {
+        !ActionPlaces.TOUCHBAR_GENERAL.equals(event.getPlace()) &&
+        !Boolean.TRUE.equals(ClientProperty.get(component, ALLOW_ACTION_PERFORM_WHEN_HIDDEN))) {
       String id = StringUtil.notNullize(event.getActionManager().getId(action), action.getClass().getName());
       LOG.warn("Action is not performed because target component is not showing: " +
                "action=" + id + ", component=" + component.getClass().getName());
@@ -276,13 +366,13 @@ public final class ActionUtil {
 
   /**
    * @deprecated use {@link #performActionDumbAwareWithCallbacks(AnAction, AnActionEvent)} or
-   *                 {@link AnAction#actionPerformed(AnActionEvent)} instead
+   * {@link AnAction#actionPerformed(AnActionEvent)} instead
    */
-  @Deprecated
+  @Deprecated(forRemoval = true)
   public static void performActionDumbAware(@NotNull AnAction action, @NotNull AnActionEvent event) {
     Project project = event.getProject();
     try {
-      action.actionPerformed(event);
+      doPerformActionOrShowPopup(action, event, null);
     }
     catch (IndexNotReadyException ex) {
       LOG.info(ex);
@@ -325,11 +415,11 @@ public final class ActionUtil {
   }
 
   public static @NotNull List<AnAction> getActions(@NotNull JComponent component) {
-    return ContainerUtil.notNullize(ComponentUtil.getClientProperty(component, AnAction.ACTIONS_KEY));
+    return ContainerUtil.notNullize(ClientProperty.get(component, AnAction.ACTIONS_KEY));
   }
 
   public static void clearActions(@NotNull JComponent component) {
-    ComponentUtil.putClientProperty(component, AnAction.ACTIONS_KEY, null);
+    ClientProperty.put(component, AnAction.ACTIONS_KEY, null);
   }
 
   public static void copyRegisteredShortcuts(@NotNull JComponent to, @NotNull JComponent from) {
@@ -388,7 +478,7 @@ public final class ActionUtil {
   /**
    * Convenience method for merging non-null properties from a registered action
    *
-   * @param action action to merge to
+   * @param action   action to merge to
    * @param actionId action id to merge from
    */
   public static AnAction mergeFrom(@NotNull AnAction action, @NotNull String actionId) {
@@ -427,9 +517,9 @@ public final class ActionUtil {
                                   @Nullable InputEvent inputEvent,
                                   @Nullable Runnable onDone) {
     Presentation presentation = action.getTemplatePresentation().clone();
-    AnActionEvent event = new AnActionEvent(
-      inputEvent, dataContext, place, presentation, ActionManager.getInstance(), 0);
-    if (lastUpdateAndCheckDumb(action, event, true)) {
+    AnActionEvent event = AnActionEvent.createFromInputEvent(inputEvent, place, presentation, dataContext);
+    event.setInjectedContext(action.isInInjectedContext());
+    if (lastUpdateAndCheckDumb(action, event, false)) {
       try {
         performActionDumbAwareWithCallbacks(action, event);
       }
@@ -441,7 +531,9 @@ public final class ActionUtil {
     }
   }
 
-  public static @NotNull ActionListener createActionListener(@NotNull String actionId, @NotNull Component component, @NotNull String place) {
+  public static @NotNull ActionListener createActionListener(@NotNull String actionId,
+                                                             @NotNull Component component,
+                                                             @NotNull String place) {
     return e -> {
       AnAction action = getAction(actionId);
       if (action == null) {

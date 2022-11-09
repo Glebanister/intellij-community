@@ -7,6 +7,7 @@ import com.intellij.openapi.util.ThrowableComputable;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ThrowableRunnable;
+import com.intellij.util.io.StorageLockContext;
 import junit.framework.AssertionFailedError;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
@@ -25,6 +26,7 @@ public class PerformanceTestInfo {
   private boolean adjustForIO;// true if test uses IO, timings need to be re-calibrated according to this agent disk performance
   private boolean adjustForCPU = true;  // true if test uses CPU, timings need to be re-calibrated according to this agent CPU speed
   private boolean useLegacyScaling;
+  private int warmupIterations = Integer.MIN_VALUE;
 
   static {
     // to use JobSchedulerImpl.getJobPoolParallelism() in tests which don't init application
@@ -81,6 +83,18 @@ public class PerformanceTestInfo {
   }
 
   /**
+   * Runs the payload {@code iterations} times before starting measuring the time.
+   * By default, iterations == 0 (in which case we don't run warmup passes at all)
+   */
+  @Contract(pure = true) // to warn about not calling .assertTiming() in the end
+  public PerformanceTestInfo warmupIterations(int iterations) {
+    assert warmupIterations == Integer.MIN_VALUE : "Already called warmupIterations()";
+    assert iterations >= 1 : "invalid argument: " + iterations+"; must be >= 1";
+    warmupIterations = iterations;
+    return this;
+  }
+
+  /**
    * @deprecated Enables procedure for nonlinear scaling of results between different machines. This was historically enabled, but doesn't
    * seem to be meaningful, and is known to make results worse in some cases. Consider migration off this setting, recalibrating
    * expected execution time accordingly.
@@ -92,7 +106,6 @@ public class PerformanceTestInfo {
     return this;
   }
 
-  @SuppressWarnings("UseOfSystemOutOrSystemErr")
   public void assertTiming() {
     if (PlatformTestUtil.COVERAGE_ENABLED_BUILD) return;
     Timings.getStatistics(); // warm-up, measure
@@ -111,20 +124,26 @@ public class PerformanceTestInfo {
         if (setup != null) setup.run();
         PlatformTestUtil.waitForAllBackgroundActivityToCalmDown();
         actualInputSize = new AtomicInteger(expectedInputSize);
-        data = CpuUsageData.measureCpuUsage(() -> {
-          actualInputSize.set(test.compute());
-        });
+        if (warmupIterations != Integer.MIN_VALUE) {
+          for (int i = 0; i < warmupIterations; i++) {
+            test.compute();
+          }
+        }
+        data = CpuUsageData.measureCpuUsage(() -> actualInputSize.set(test.compute()));
       }
       catch (Throwable throwable) {
         ExceptionUtil.rethrowUnchecked(throwable);
         throw new RuntimeException(throwable);
       }
 
-      int expectedOnMyMachine = getExpectedTimeOnThisMachine(actualInputSize.get());
+      int actualUsedCpuCores = usedReferenceCpuCores < 8
+                  ? Math.min(JobSchedulerImpl.getJobPoolParallelism(), usedReferenceCpuCores)
+                  : JobSchedulerImpl.getJobPoolParallelism();
+      int expectedOnMyMachine = getExpectedTimeOnThisMachine(actualInputSize.get(), actualUsedCpuCores);
       IterationResult iterationResult = data.getIterationResult(expectedOnMyMachine);
 
       boolean testPassed = iterationResult == IterationResult.ACCEPTABLE || iterationResult == IterationResult.BORDERLINE;
-      String logMessage = formatMessage(data, expectedOnMyMachine, actualInputSize.get(), iterationResult, initialMaxRetries);
+      String logMessage = formatMessage(data, expectedOnMyMachine, actualInputSize.get(), actualUsedCpuCores, iterationResult, initialMaxRetries);
 
       if (testPassed) {
         TeamCityLogger.info(logMessage);
@@ -152,12 +171,14 @@ public class PerformanceTestInfo {
       }
       //noinspection CallToSystemGC
       System.gc();
+      StorageLockContext.forceDirectMemoryCache();
     }
   }
 
   private @NotNull String formatMessage(@NotNull CpuUsageData data,
                                         int expectedOnMyMachine,
                                         int actualInputSize,
+                                        int actualUsedCpuCores, 
                                         @NotNull IterationResult iterationResult,
                                         int initialMaxRetries) {
     long duration = data.durationMs;
@@ -168,9 +189,10 @@ public class PerformanceTestInfo {
     return
       what+" took \u001B[" + colorCode + Math.abs(percentage) + "% " + (percentage > 0 ? "more" : "less") + " time\u001B[0m than expected" +
       (iterationResult == IterationResult.DISTRACTED && initialMaxRetries != 1 ? " (but JIT compilation took too long, will retry anyway)" : "") +
-      "\n  Expected: " + expectedOnMyMachine + "ms (" + StringUtil.formatDuration(expectedOnMyMachine) + ")" +
-      "\n  Actual:   " + duration + "ms (" + StringUtil.formatDuration(duration) + ")" +
+      "\n  Expected: " + expectedOnMyMachine + "ms" + (expectedOnMyMachine < 1000 ? "" : " (" + StringUtil.formatDuration(expectedOnMyMachine) + ")") +
+      "\n  Actual:   " + duration + "ms" + (duration < 1000 ? "" : " (" + StringUtil.formatDuration(duration) + ")") +
       (expectedInputSize != actualInputSize ? "\n  (Expected time was adjusted accordingly to input size: expected " + expectedInputSize + ", actual " + actualInputSize + ".)": "") +
+      (usedReferenceCpuCores != actualUsedCpuCores ? "\n  (Expected time was adjusted accordingly to number of available CPU cores: reference CPU has " + usedReferenceCpuCores + ", actual value is " + actualUsedCpuCores + ".)": "") +
       "\n  Timings:  " + Timings.getStatistics() +
       "\n  Threads:  " + data.getThreadStats() +
       "\n  GC stats: " + data.getGcStats() +
@@ -213,15 +235,12 @@ public class PerformanceTestInfo {
     DISTRACTED  // CPU was occupied by irrelevant computations for too long (e.g., JIT or GC)
   }
 
-  private int getExpectedTimeOnThisMachine(int actualInputSize) {
+  private int getExpectedTimeOnThisMachine(int actualInputSize, int actualUsedCpuCores) {
     int expectedOnMyMachine = (int) (((long)expectedMs) * actualInputSize / expectedInputSize);
     if (adjustForCPU) {
-      int coreCountUsedHere = usedReferenceCpuCores < 8
-                              ? Math.min(JobSchedulerImpl.getJobPoolParallelism(), usedReferenceCpuCores)
-                              : JobSchedulerImpl.getJobPoolParallelism();
       expectedOnMyMachine *= usedReferenceCpuCores;
       expectedOnMyMachine = adjust(expectedOnMyMachine, Timings.CPU_TIMING, Timings.REFERENCE_CPU_TIMING, useLegacyScaling);
-      expectedOnMyMachine /= coreCountUsedHere;
+      expectedOnMyMachine /= actualUsedCpuCores;
     }
     if (adjustForIO) {
       expectedOnMyMachine = adjust(expectedOnMyMachine, Timings.IO_TIMING, Timings.REFERENCE_IO_TIMING, useLegacyScaling);

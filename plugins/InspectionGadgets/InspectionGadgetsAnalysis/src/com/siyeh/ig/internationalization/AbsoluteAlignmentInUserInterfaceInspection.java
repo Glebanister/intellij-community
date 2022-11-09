@@ -105,7 +105,7 @@ public class AbsoluteAlignmentInUserInterfaceInspection extends BaseInspection {
     }
 
     @Override
-    protected void doFix(Project project, ProblemDescriptor descriptor) {
+    protected void doFix(@NotNull Project project, @NotNull ProblemDescriptor descriptor) {
       final PsiElement element = descriptor.getPsiElement();
       final PsiElement parent = element.getParent();
       if (!(parent instanceof PsiReferenceExpression)) {
@@ -124,7 +124,7 @@ public class AbsoluteAlignmentInUserInterfaceInspection extends BaseInspection {
   private static class AbsoluteAlignmentInUserInterfaceVisitor extends BaseInspectionVisitor {
 
     @Override
-    public void visitReferenceExpression(PsiReferenceExpression expression) {
+    public void visitReferenceExpression(@NotNull PsiReferenceExpression expression) {
       super.visitReferenceExpression(expression);
       final PsiElement referenceNameElement = expression.getReferenceNameElement();
       if (referenceNameElement ==  null) {

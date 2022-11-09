@@ -62,6 +62,11 @@ public final class NotificationsUtil {
     return buildHtml(title, subtitle, content, style, isContent ? null : colorText, isContent ? colorText : null, contentStyle);
   }
 
+  public static @NotNull @Nls String buildFullContent(@NotNull Notification notification) {
+    String content = StringUtil.replace(notification.getContent(), P_TAG, BR_TAG);
+    return buildHtml(null, null, content, null, null, null, null);
+  }
+
   public static @NotNull @Nls String buildHtml(@Nullable @Nls String title,
                                                @Nullable @Nls String subtitle,
                                                @Nullable @Nls String content,
@@ -185,26 +190,18 @@ public final class NotificationsUtil {
       return icon;
     }
 
-    switch (notification.getType()) {
-      case WARNING:
-        return AllIcons.General.BalloonWarning;
-      case ERROR:
-        return AllIcons.General.BalloonError;
-      case INFORMATION:
-      default:
-        return AllIcons.General.BalloonInformation;
-    }
+    return switch (notification.getType()) {
+      case WARNING -> AllIcons.General.BalloonWarning;
+      case ERROR -> AllIcons.General.BalloonError;
+      case INFORMATION, IDE_UPDATE -> AllIcons.General.BalloonInformation;
+    };
   }
 
   public static @NotNull MessageType getMessageType(@NotNull Notification notification) {
-    switch (notification.getType()) {
-      case WARNING:
-        return MessageType.WARNING;
-      case ERROR:
-        return MessageType.ERROR;
-      case INFORMATION:
-      default:
-        return MessageType.INFO;
-    }
+    return switch (notification.getType()) {
+      case WARNING -> MessageType.WARNING;
+      case ERROR -> MessageType.ERROR;
+      case INFORMATION, IDE_UPDATE -> MessageType.INFO;
+    };
   }
 }

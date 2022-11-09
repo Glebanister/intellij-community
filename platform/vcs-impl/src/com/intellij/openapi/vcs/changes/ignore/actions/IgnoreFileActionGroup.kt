@@ -2,6 +2,7 @@
 package com.intellij.openapi.vcs.changes.ignore.actions
 
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
@@ -18,16 +19,17 @@ import com.intellij.psi.search.ProjectScope
 import com.intellij.vcsUtil.VcsImplUtil
 import com.intellij.vcsUtil.VcsUtil
 import org.jetbrains.annotations.Nls
-import kotlin.streams.toList
 
 open class IgnoreFileActionGroup(private val ignoreFileType: IgnoreFileType) :
   ActionGroup(
     message("vcs.add.to.ignore.file.action.group.text", ignoreFileType.ignoreLanguage.filename),
     message("vcs.add.to.ignore.file.action.group.description", ignoreFileType.ignoreLanguage.filename),
     ignoreFileType.icon
-  ), DumbAware, UpdateInBackground {
+  ), DumbAware {
 
   private var actions: Collection<AnAction> = emptyList()
+
+  override fun getActionUpdateThread() = ActionUpdateThread.BGT
 
   override fun update(e: AnActionEvent) {
     val selectedFiles = getSelectedFiles(e)
@@ -67,6 +69,7 @@ open class IgnoreFileActionGroup(private val ignoreFileType: IgnoreFileType) :
 
     presentation.isPopupGroup = actions.size > 1
     presentation.isPerformGroup = actions.size == 1
+    e.presentation.putClientProperty(ActionButton.HIDE_DROPDOWN_ICON, e.presentation.isPerformGroup);
     presentation.isVisible = actions.isNotEmpty()
   }
 
@@ -80,10 +83,11 @@ open class IgnoreFileActionGroup(private val ignoreFileType: IgnoreFileType) :
 
   override fun getChildren(e: AnActionEvent?) = actions.toTypedArray()
 
-  private fun filterSelectedFiles(project: Project, files: List<VirtualFile>) =
-    files.filter { file ->
-      VcsUtil.isFileUnderVcs(project, VcsUtil.getFilePath(file)) && !ChangeListManager.getInstance(project).isIgnoredFile(file)
-    }
+  private fun filterSelectedFiles(project: Project, files: List<VirtualFile>): List<VirtualFile> {
+    val vcsManager = ProjectLevelVcsManager.getInstance(project)
+    val changeListManager = ChangeListManager.getInstance(project)
+    return files.filter { file -> vcsManager.getVcsFor(file) != null && !changeListManager.isIgnoredFile(file) }
+  }
 
   private fun findSuitableIgnoreFiles(project: Project, file: VirtualFile): Collection<VirtualFile> {
     val fileParent = file.parent

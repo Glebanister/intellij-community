@@ -1,26 +1,30 @@
-// Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2022 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license.
 
 package org.jetbrains.kotlin.idea.test
 
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.util.io.createDirectories
 import org.jetbrains.kotlin.cli.common.CLICompiler
 import org.jetbrains.kotlin.cli.common.ExitCode
 import org.jetbrains.kotlin.cli.js.K2JSCompiler
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.jetbrains.kotlin.config.JvmTarget
-import org.jetbrains.kotlin.idea.artifacts.KotlinArtifacts
+import org.jetbrains.kotlin.idea.base.plugin.artifacts.TestKotlinArtifacts
+import org.jetbrains.kotlin.idea.test.KotlinCompilerStandalone.Platform.JavaScript
+import org.jetbrains.kotlin.idea.test.KotlinCompilerStandalone.Platform.Jvm
 import org.junit.Assert.assertEquals
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
 import java.lang.ref.SoftReference
 import java.net.URLClassLoader
+import java.nio.charset.StandardCharsets
+import java.util.*
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.div
 import kotlin.reflect.KClass
-import org.jetbrains.kotlin.idea.test.KotlinCompilerStandalone.Platform.Jvm
-import org.jetbrains.kotlin.idea.test.KotlinCompilerStandalone.Platform.JavaScript
-import java.nio.charset.StandardCharsets
 
 class KotlinCompilerStandalone @JvmOverloads constructor(
     private val sources: List<File>,
@@ -95,10 +99,10 @@ class KotlinCompilerStandalone @JvmOverloads constructor(
             when (platform) {
                 is Jvm -> {
                     targetForJava = KotlinTestUtils.tmpDirForReusableFolder("java-lib")
-                    completeClasspath += listOf(KotlinArtifacts.instance.kotlinStdlib, KotlinArtifacts.instance.jetbrainsAnnotations, targetForJava)
+                    completeClasspath += listOf(TestKotlinArtifacts.kotlinStdlib, TestKotlinArtifacts.jetbrainsAnnotations, targetForJava)
                 }
                 is JavaScript -> {
-                    completeClasspath += KotlinArtifacts.instance.kotlinStdlibJs
+                    completeClasspath += TestKotlinArtifacts.kotlinStdlibJs
                 }
             }
         }
@@ -165,7 +169,7 @@ class KotlinCompilerStandalone @JvmOverloads constructor(
             compileKotlin()
         }
 
-        val copyFun = if (target.extension.toLowerCase() == "jar") ::copyToJar else ::copyToDirectory
+        val copyFun = if (target.extension.lowercase(Locale.getDefault()) == "jar") ::copyToJar else ::copyToDirectory
         copyFun(compilerTargets, target)
 
         compilerTargets.forEach { it.deleteRecursively() }
@@ -188,7 +192,7 @@ class KotlinCompilerStandalone @JvmOverloads constructor(
 
         args += "-no-stdlib"
 
-        if (files.none { it.extension.toLowerCase() == "kts" }) {
+        if (files.none { it.extension.lowercase(Locale.getDefault()) == "kts" }) {
             args += "-Xdisable-default-scripting-plugin"
         }
 
@@ -262,21 +266,27 @@ object KotlinCliCompilerFacade {
 
     @Synchronized
     private fun createCompilerClassLoader(): ClassLoader {
-        val artifacts = with (KotlinArtifacts.instance) {
-            listOf(
-                kotlinStdlib,
-                kotlinStdlibJdk7,
-                kotlinStdlibJdk8,
-                kotlinReflect,
-                kotlinCompiler,
-                kotlinScriptRuntime,
-                trove4j,
-                kotlinDaemon,
-                jetbrainsAnnotations
-            )
-        }
+        val artifacts = listOf(
+            TestKotlinArtifacts.kotlinStdlib,
+            TestKotlinArtifacts.kotlinStdlibJdk7,
+            TestKotlinArtifacts.kotlinStdlibJdk8,
+            TestKotlinArtifacts.kotlinReflect,
+            TestKotlinArtifacts.kotlinCompiler,
+            TestKotlinArtifacts.kotlinScriptRuntime,
+            TestKotlinArtifacts.kotlinScriptingCommon,
+            TestKotlinArtifacts.kotlinScriptingCompiler,
+            TestKotlinArtifacts.kotlinScriptingCompilerImpl,
+            TestKotlinArtifacts.kotlinScriptingJvm,
+            TestKotlinArtifacts.trove4j,
+            TestKotlinArtifacts.kotlinDaemon,
+            TestKotlinArtifacts.jetbrainsAnnotations,
+        )
 
-        val urls = artifacts.map { it.toURI().toURL() }.toTypedArray()
+        // enable old backend support in compiler
+        val tempDirWithOldBackedMarker = createTempDirectory()
+        (tempDirWithOldBackedMarker / "META-INF" / "unsafe-allow-use-old-backend").createDirectories()
+
+        val urls = (artifacts + tempDirWithOldBackedMarker.toFile()).map { it.toURI().toURL() }.toTypedArray()
         return URLClassLoader(urls, ClassLoader.getPlatformClassLoader())
     }
 }

@@ -1,19 +1,20 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.lookup.impl;
 
+import com.intellij.application.options.CodeCompletionConfigurable;
 import com.intellij.codeInsight.CodeInsightBundle;
 import com.intellij.codeInsight.CodeInsightSettings;
-import com.intellij.codeInsight.completion.CodeCompletionFeatures;
 import com.intellij.codeInsight.completion.ShowHideIntentionIconLookupAction;
 import com.intellij.codeInsight.hint.HintManagerImpl;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementAction;
-import com.intellij.featureStatistics.FeatureUsageTracker;
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.DataManager;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.ide.ui.UISettings;
 import com.intellij.idea.ActionsBundle;
 import com.intellij.injected.editor.EditorWindow;
+import com.intellij.lang.LangBundle;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.actionSystem.impl.ActionButton;
 import com.intellij.openapi.application.ApplicationManager;
@@ -21,6 +22,8 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.LogicalPosition;
+import com.intellij.openapi.options.ShowSettingsUtil;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.registry.Registry;
@@ -48,9 +51,6 @@ import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.util.Collection;
 
-/**
- * @author peter
- */
 class LookupUi {
   private static final Logger LOG = Logger.getInstance(LookupUi.class);
 
@@ -84,17 +84,33 @@ class LookupUi {
       public void update(@NotNull AnActionEvent e) {
         e.getPresentation().setVisible(!CodeInsightSettings.getInstance().AUTO_POPUP_JAVADOC_INFO);
       }
+
+      @Override
+      public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+      }
     });
     menuAction.add(new DelegatedAction(ActionManager.getInstance().getAction(IdeActions.ACTION_QUICK_IMPLEMENTATIONS)));
+    menuAction.addSeparator();
+    menuAction.add(new ShowCompletionSettingsAction());
 
     Presentation presentation = new Presentation();
     presentation.setIcon(AllIcons.Actions.More);
     presentation.putClientProperty(ActionButton.HIDE_DROPDOWN_ICON, Boolean.TRUE);
 
     myMenuButton = new ActionButton(menuAction, presentation, ActionPlaces.EDITOR_POPUP, ActionToolbar.NAVBAR_MINIMUM_BUTTON_SIZE);
+    DataManager.registerDataProvider(myMenuButton, dataId -> {
+      if (CommonDataKeys.PROJECT.is(dataId)) {
+        return myLookup.getProject();
+      }
+      if (CommonDataKeys.EDITOR.is(dataId)) {
+        return myLookup.getEditor();
+      }
+      return null;
+    });
 
     AnAction hintAction = new HintAction();
-    myHintButton = new ActionButton(hintAction, hintAction.getTemplatePresentation(),
+    myHintButton = new ActionButton(hintAction, hintAction.getTemplatePresentation().clone(),
                                     ActionPlaces.EDITOR_POPUP, ActionToolbar.NAVBAR_MINIMUM_BUTTON_SIZE);
     myHintButton.setVisible(false);
 
@@ -284,6 +300,17 @@ class LookupUi {
     return new Rectangle(location.x, location.y, dim.width, candidate.height);
   }
 
+  private static class ShowCompletionSettingsAction extends AnAction implements DumbAware {
+    ShowCompletionSettingsAction() {
+      super(LangBundle.message("action.code.completion.settings.text"), null, AllIcons.General.Settings);
+    }
+
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+      ShowSettingsUtil.getInstance().showSettingsDialog(getEventProject(e), CodeCompletionConfigurable.class);
+    }
+  }
+
   private final class LookupLayeredPane extends JBLayeredPane {
     final JPanel mainPanel = new JPanel(new BorderLayout());
 
@@ -362,7 +389,6 @@ class LookupUi {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
-      FeatureUsageTracker.getInstance().triggerFeatureUsed(CodeCompletionFeatures.EDITING_COMPLETION_CHANGE_SORTING);
       UISettings settings = UISettings.getInstance();
       settings.setSortLookupElementsLexicographically(!settings.getSortLookupElementsLexicographically());
       myLookup.resort(false);
@@ -371,6 +397,11 @@ class LookupUi {
     @Override
     public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setIcon(UISettings.getInstance().getSortLookupElementsLexicographically() ? PlatformIcons.CHECK_ICON : null);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+      return ActionUpdateThread.EDT;
     }
   }
 

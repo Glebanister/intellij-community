@@ -1,8 +1,10 @@
 // Copyright 2000-2021 JetBrains s.r.o. and contributors. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package org.intellij.plugins.markdown.editor.tables
 
+import com.intellij.application.options.CodeStyle
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.util.PsiUtilCore
@@ -12,11 +14,12 @@ import com.intellij.psi.util.siblings
 import com.intellij.refactoring.suggested.startOffset
 import org.intellij.plugins.markdown.lang.MarkdownElementTypes
 import org.intellij.plugins.markdown.lang.MarkdownTokenTypes
-import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableCell
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTable
+import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableCell
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableRow
 import org.intellij.plugins.markdown.lang.psi.impl.MarkdownTableSeparatorRow
-import org.intellij.plugins.markdown.util.hasType
+import org.intellij.plugins.markdown.lang.psi.util.hasType
+import org.intellij.plugins.markdown.settings.MarkdownSettings
 import org.jetbrains.annotations.ApiStatus
 
 @ApiStatus.Experimental
@@ -165,5 +168,11 @@ object TableUtils {
       }
     }
     return false
+  }
+
+  internal fun isFormattingEnabledForTables(file: PsiFile): Boolean {
+    return Registry.`is`("markdown.tables.editing.support.enable") &&
+           MarkdownSettings.getInstance(file.project).isEnhancedEditingEnabled &&
+           file !in CodeStyle.getSettings(file).excludedFiles
   }
 }

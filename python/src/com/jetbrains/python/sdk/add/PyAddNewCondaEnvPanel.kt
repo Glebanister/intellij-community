@@ -2,6 +2,7 @@
 package com.jetbrains.python.sdk.add
 
 import com.intellij.execution.ExecutionException
+import com.intellij.execution.target.readableFs.PathInfo
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.progress.ProgressIndicator
@@ -22,12 +23,10 @@ import com.jetbrains.python.PyBundle
 import com.jetbrains.python.packaging.PyCondaPackageManagerImpl
 import com.jetbrains.python.packaging.PyCondaPackageService
 import com.jetbrains.python.psi.LanguageLevel
-import com.jetbrains.python.sdk.associateWithModule
-import com.jetbrains.python.sdk.basePath
+import com.jetbrains.python.sdk.*
 import com.jetbrains.python.sdk.conda.PyCondaSdkCustomizer
-import com.jetbrains.python.sdk.createSdkByGenerateTask
-import com.jetbrains.python.sdk.excludeInnerVirtualEnv
-import com.jetbrains.python.sdk.flavors.CondaEnvSdkFlavor
+import com.jetbrains.python.sdk.fixPythonCondaSdk
+import com.jetbrains.python.sdk.flavors.conda.CondaEnvSdkFlavor
 import icons.PythonIcons
 import org.jetbrains.annotations.SystemIndependent
 import java.awt.BorderLayout
@@ -110,7 +109,7 @@ open class PyAddNewCondaEnvPanel(
   }
 
   override fun validateAll(): List<ValidationInfo> =
-    listOfNotNull(CondaEnvSdkFlavor.validateCondaPath(condaPathField.text), validateEnvironmentDirectoryLocation(pathField))
+    listOfNotNull(CondaEnvSdkFlavor.validateCondaPath(condaPathField.text), validateEnvironmentDirectoryLocation(pathField, PathInfo.localPathInfoProvider))
 
   override fun getOrCreateSdk(): Sdk? {
     val condaPath = condaPathField.text
@@ -128,6 +127,8 @@ open class PyAddNewCondaEnvPanel(
     }
     PyCondaPackageService.onCondaEnvCreated(condaPath)
     project.excludeInnerVirtualEnv(sdk)
+    // Old conda created, convert to new
+    fixPythonCondaSdk(sdk, sdk.getOrCreateAdditionalData(), condaPath)
     return sdk
   }
 
