@@ -35,7 +35,8 @@ class CommonLocationFeatures : ContextFeatureProvider {
       "line_num" to MLFeatureValue.float(logicalPosition.line),
       "col_num" to MLFeatureValue.float(logicalPosition.column),
       "indent_level" to MLFeatureValue.float(LocationFeaturesUtil.indentLevel(linePrefix, EditorUtil.getTabSize(editor))),
-      "is_in_line_beginning" to MLFeatureValue.binary(StringUtil.isEmptyOrSpaces(linePrefix))
+      "is_in_line_beginning" to MLFeatureValue.binary(StringUtil.isEmptyOrSpaces(linePrefix)),
+      "lines_in_document" to MLFeatureValue.float(editor.document.lineCount)
     )
 
     if (DumbService.isDumb(lookup.project)) {

@@ -1,12 +1,27 @@
 package com.intellij.cce.core
 
+data class CorrectElementInfo(
+  val addTime: Long?,
+  val addedToResultBeforeLookupShown: Boolean?,
+  val addedToLookupBeforeLookupShown: Boolean?,
+  val firstAppearanceTime: Long?,
+  val kindStartTime: Long?,
+  val hasKind: Boolean,
+)
+
 data class Lookup(
   val prefix: String,
   val suggestions: List<Suggestion>,
   val latency: Long,
+  val shownLatency: Long?,
+  val restartLatency: Long?,
   var features: Features? = null,
   val selectedPosition: Int,
-  val isNew: Boolean
+  val isNew: Boolean,
+  val kindsExecutionInfo: List<CompletionKindExecutionInfo>,
+  val correctElementInfo: CorrectElementInfo?,
+  val firstElementAddTime: Long?,
+  val lookupIsShown: Boolean
 ) {
   fun clearFeatures() {
     features = null
@@ -18,13 +33,25 @@ data class Lookup(
       text: String,
       suggestions: List<Suggestion>,
       latency: Long,
-      features: Features? = null,
-      isNew: Boolean = false
+      shownLatency: Long?,
+      restartLatency: Long?,
+      features: Features?,
+      isNew: Boolean,
+      kindsExecutionInfo: List<CompletionKindExecutionInfo>,
+      correctElementInfo: CorrectElementInfo?,
+      firstElementAddTime: Long?,
+      lookupIsShown: Boolean
     ): Lookup {
       val selectedPosition = suggestions.indexOfFirst { it.text == expectedText }
         .let { if (it < 0) -1 else it }
 
-      return Lookup(text, suggestions, latency, features, selectedPosition, isNew)
+      return Lookup(
+        text, suggestions, latency, shownLatency, restartLatency, features, selectedPosition, isNew,
+        kindsExecutionInfo,
+        correctElementInfo,
+        firstElementAddTime,
+        lookupIsShown
+      )
     }
   }
 }

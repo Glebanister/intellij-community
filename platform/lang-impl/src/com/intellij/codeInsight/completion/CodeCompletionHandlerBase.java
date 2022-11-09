@@ -61,11 +61,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.Future;
+import java.util.*;
 
 import static com.intellij.diagnostic.telemetry.TraceKt.runWithSpan;
 
@@ -133,6 +129,11 @@ public class CodeCompletionHandlerBase {
     }
   }
 
+  public final void invokeCompletionIndicatingFinish(final Project project, final Editor editor, Runnable indicateFinish) {
+    clearCaretMarkers(editor);
+    invokeCompletion(project, editor, 1, false, editor.getCaretModel().getPrimaryCaret(), indicateFinish);
+  }
+
   public final void invokeCompletion(final Project project, final Editor editor) {
     invokeCompletion(project, editor, 1);
   }
@@ -143,10 +144,11 @@ public class CodeCompletionHandlerBase {
 
   public final void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers) {
     clearCaretMarkers(editor);
-    invokeCompletionWithTracing(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret());
+    // TODO: Questionable
+    invokeCompletionWithTracing(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret(), () -> {});
   }
 
-  private void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret) {
+  private void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret, Runnable indicateFinish) {
       markCaretAsProcessed(caret);
 
       if (invokedExplicitly) {
@@ -184,6 +186,8 @@ public class CodeCompletionHandlerBase {
         FeatureUsageTracker.getInstance().triggerFeatureUsed(CodeCompletionFeatures.SECOND_BASIC_COMPLETION);
       }
 
+      // TODO: Questionable
+
       long startingTime = System.currentTimeMillis();
       Runnable initCmd = () -> {
         WriteAction.run(() -> EditorUtil.fillVirtualSpaceUntilCaret(editor));
@@ -196,7 +200,7 @@ public class CodeCompletionHandlerBase {
           context = new CompletionInitializationContextImpl(editor, caret, psiFile, completionType, invocationCount);
         }
 
-        doComplete(context, hasModifiers, hasValidContext, startingTime);
+        doComplete(context, hasModifiers, hasValidContext, startingTime, indicateFinish);
       };
     try {
       if (autopopup) {
@@ -218,12 +222,15 @@ public class CodeCompletionHandlerBase {
                                            @NotNull Editor editor,
                                            int time,
                                            boolean hasModifiers,
-                                           @NotNull Caret caret) {
+                                           @NotNull Caret caret,
+                                           Runnable indicateFinish) {
+    // TODO: Questionable
+
     runWithSpan(completionTracer, "invokeCompletion", (span) -> {
       span.setAttribute("project", project.getName());
       span.setAttribute("caretOffset", caret.hasSelection() ? caret.getSelectionStart() : caret.getOffset());
 
-      invokeCompletion(project, editor, time, hasModifiers, caret);
+      invokeCompletion(project, editor, time, hasModifiers, caret, indicateFinish);
     });
   }
 
@@ -257,7 +264,7 @@ public class CodeCompletionHandlerBase {
     return lookup;
   }
 
-  private void doComplete(CompletionInitializationContextImpl initContext, boolean hasModifiers, boolean isValidContext, long startingTime) {
+  private void doComplete(CompletionInitializationContextImpl initContext, boolean hasModifiers, boolean isValidContext, long startingTime, Runnable indicateFinish) {
     final Editor editor = initContext.getEditor();
     CompletionAssertions.checkEditorValid(editor);
 
@@ -277,8 +284,9 @@ public class CodeCompletionHandlerBase {
                                                                             initContext.getInvocationCount(), this,
                                                                             initContext.getOffsetMap(),
                                                                             initContext.getHostOffsets(),
-                                                                            hasModifiers, lookup);
+                                                                            hasModifiers, lookup, indicateFinish);
 
+    // TODO: Questionable
 
     if (synchronous && isValidContext) {
       OffsetsInFile hostCopyOffsets = withTimeout(calcSyncTimeOut(startingTime), () -> {
@@ -305,6 +313,8 @@ public class CodeCompletionHandlerBase {
     }
     CompletionServiceImpl.setCompletionPhase(phase);
 
+    // TODO: Questionable
+
     ReadAction
       .nonBlocking(() -> CompletionInitializationUtil.insertDummyIdentifier(initContext, indicator))
       .expireWith(phase)
@@ -326,6 +336,8 @@ public class CodeCompletionHandlerBase {
                                         long startingTime,
                                         CompletionProgressIndicator indicator, OffsetsInFile hostCopyOffsets) {
     CompletionServiceImpl.setCompletionPhase(new CompletionPhase.Synchronous(indicator));
+
+    // TODO: Questionable
 
     Future<?> future = startContributorThread(initContext, indicator, hostCopyOffsets, hasModifiers);
     if (future == null) {
@@ -361,6 +373,8 @@ public class CodeCompletionHandlerBase {
       return null;
     }
 
+    // TODO: Questionable
+
     return indicator.getCompletionThreading()
       .startThread(indicator, Context.current().wrap(() -> AsyncCompletion.tryReadOrCancel(indicator, Context.current().wrap(() -> {
         OffsetsInFile finalOffsets = CompletionInitializationUtil.toInjectedIfAny(initContext.getFile(), hostCopyOffsets);
@@ -370,9 +384,9 @@ public class CodeCompletionHandlerBase {
           CompletionInitializationUtil.createCompletionParameters(initContext, indicator, finalOffsets);
         parameters.setIsTestingMode(isTestingMode());
         indicator.setParameters(parameters);
-
         indicator.runContributors(initContext);
-      }))));
+        indicator.invokeIndicateFinish();
+    }))));
   }
 
   private static void checkForExceptions(Future<?> future) {
@@ -451,7 +465,8 @@ public class CodeCompletionHandlerBase {
 
       Caret nextCaret = getNextCaretToProcess(indicator.getEditor());
       if (nextCaret != null) {
-        invokeCompletionWithTracing(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret);
+        // TODO: Questionable
+        invokeCompletionWithTracing(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret, () -> {});
       }
       else {
         indicator.handleEmptyLookup(true);
@@ -823,8 +838,12 @@ public class CodeCompletionHandlerBase {
     return ProgressIndicatorUtils.withTimeout(maxDurationMillis, task);
   }
 
-  private static int calcSyncTimeOut(long startTime) {
+  public static int calcSyncTimeOut(long startTime) {
     return (int)Math.max(300, ourAutoInsertItemTimeout - (System.currentTimeMillis() - startTime));
+  }
+
+  private static int calcLookupShowTimeOut(long startTime) {
+    return (int)Math.max(60, 80 - (System.currentTimeMillis() - startTime));
   }
 
   @SuppressWarnings("unused") // for Rider

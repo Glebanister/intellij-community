@@ -2,6 +2,8 @@
 package com.intellij.codeInsight.completion;
 
 import com.intellij.codeInsight.completion.impl.*;
+import com.intellij.codeInsight.completion.kind.CompletionKind;
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.lookup.Classifier;
 import com.intellij.codeInsight.lookup.ClassifierFactory;
 import com.intellij.codeInsight.lookup.LookupElement;
@@ -16,25 +18,38 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.Weigher;
 import com.intellij.psi.WeighingService;
 import com.intellij.psi.impl.DebugUtil;
+import com.intellij.ui.JBColor;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+
+import static com.intellij.codeInsight.completion.kind.CompletionKind.LOOKUP_ELEMENT_COMPLETION_KIND;
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT;
 
 public class BaseCompletionService extends CompletionService {
   private static final Logger LOG = Logger.getInstance(BaseCompletionService.class);
 
   @Nullable protected CompletionProcess myApiCompletionProcess;
 
+  private CompletionKindsExecutor myCompletionKindsExecutor;
+
   @ApiStatus.Internal
   public static final Key<CompletionContributor> LOOKUP_ELEMENT_CONTRIBUTOR = Key.create("lookup element contributor");
+  public static final Key<Instant> LOOKUP_ELEMENT_RESULT_ADD_TIME = Key.create("lookup element add time");
+  public static final Key<Integer> LOOKUP_ELEMENT_RESULT_SET_ORDER = Key.create("lookup element result set order");
 
   public static final Key<Boolean> FORBID_WORD_COMPLETION = new Key<>("ForbidWordCompletion");
 
   @Override
-  public void performCompletion(CompletionParameters parameters, Consumer<? super CompletionResult> consumer) {
+  public void performCompletion(CompletionParameters parameters,
+                                Consumer<? super CompletionResult> consumer) {
     myApiCompletionProcess = parameters.getProcess();
     try {
       super.performCompletion(parameters, consumer);
@@ -42,6 +57,16 @@ public class BaseCompletionService extends CompletionService {
     finally {
       myApiCompletionProcess = null;
     }
+  }
+
+  @Override
+  public @NotNull CompletionKindsExecutor getCompletionKindsExecutor() {
+    return Objects.requireNonNull(myCompletionKindsExecutor);
+  }
+
+  @Override
+  public void setCompletionKindsExecutor(@NotNull CompletionKindsExecutor ckExecutor) {
+    myCompletionKindsExecutor = ckExecutor;
   }
 
   @Override
@@ -77,7 +102,7 @@ public class BaseCompletionService extends CompletionService {
   @Override
   protected CompletionResultSet createResultSet(CompletionParameters parameters, Consumer<? super CompletionResult> consumer,
                                                 @NotNull CompletionContributor contributor, PrefixMatcher matcher) {
-    return new BaseCompletionResultSet(consumer, matcher, contributor, parameters, null, null);
+    return new BaseCompletionResultSet(consumer, matcher, contributor, parameters, null, null, null);
   }
 
   @Override
@@ -91,14 +116,22 @@ public class BaseCompletionService extends CompletionService {
     protected CompletionSorter mySorter;
     @Nullable
     protected final BaseCompletionService.BaseCompletionResultSet myOriginal;
+    @Nullable
+    protected CompletionKind myCurrentCompletionKind;
+    private final AtomicInteger myItemCounter = new AtomicInteger(0);
+    private @Nullable JBColor myHighlight = null;
 
     protected BaseCompletionResultSet(Consumer<? super CompletionResult> consumer, PrefixMatcher prefixMatcher,
-                                      CompletionContributor contributor, CompletionParameters parameters,
-                                      @Nullable CompletionSorter sorter, @Nullable BaseCompletionService.BaseCompletionResultSet original) {
+                                      CompletionContributor contributor,
+                                      CompletionParameters parameters,
+                                      @Nullable CompletionSorter sorter,
+                                      @Nullable BaseCompletionService.BaseCompletionResultSet original,
+                                      @Nullable CompletionKind initialCompletionKind) {
       super(prefixMatcher, consumer, contributor);
       myParameters = parameters;
       mySorter = sorter;
       myOriginal = original;
+      myCurrentCompletionKind = initialCompletionKind;
     }
 
     @Override
@@ -114,8 +147,50 @@ public class BaseCompletionService extends CompletionService {
 
       CompletionResult matched = CompletionResult.wrap(element, getPrefixMatcher(), mySorter);
       if (matched != null) {
+        Integer elementOrder = myItemCounter.getAndIncrement();
+        CompletionKind currentCompletionKind = getCurrentCompletionKind();
+        if (currentCompletionKind != null) {
+          currentCompletionKind.putKindInfoRequireEmpty(element);
+        }
         element.putUserData(LOOKUP_ELEMENT_CONTRIBUTOR, myContributor);
+        element.putUserData(LOOKUP_ELEMENT_RESULT_ADD_TIME, Instant.now());
+        element.putUserData(LOOKUP_ELEMENT_RESULT_SET_ORDER, elementOrder);
         passResult(matched);
+      }
+    }
+
+    @Override
+    public void setHighlightingResults(@Nullable JBColor color) {
+      myHighlight = color;
+    }
+
+    @Override
+    public JBColor isResultHighlighted() {
+      return myHighlight;
+    }
+
+    @Override
+    protected void setNullableCurrentCompletionKind(@Nullable CompletionKind completionKind) {
+      String kindName = null;
+      if (completionKind != null) {
+        kindName = completionKind.getName();
+      }
+      //System.out.printf("Set current completion kind: '%s'\n", kindName);
+      if (myOriginal != null) {
+        myOriginal.setNullableCurrentCompletionKind(completionKind);
+      }
+      else {
+        myCurrentCompletionKind = completionKind;
+      }
+    }
+
+    @Override
+    protected @Nullable CompletionKind getCurrentCompletionKind() {
+      if (myOriginal != null) {
+        return myOriginal.getCurrentCompletionKind();
+      }
+      else {
+        return myCurrentCompletionKind;
       }
     }
 
@@ -124,7 +199,7 @@ public class BaseCompletionService extends CompletionService {
       if (matcher.equals(getPrefixMatcher())) {
         return this;
       }
-      return new BaseCompletionResultSet(getConsumer(), matcher, myContributor, myParameters, mySorter, this);
+      return new BaseCompletionResultSet(getConsumer(), matcher, myContributor, myParameters, mySorter, this, myCurrentCompletionKind);
     }
 
     @Override
@@ -145,7 +220,8 @@ public class BaseCompletionService extends CompletionService {
 
     @Override
     public @NotNull CompletionResultSet withRelevanceSorter(@NotNull CompletionSorter sorter) {
-      return new BaseCompletionResultSet(getConsumer(), getPrefixMatcher(), myContributor, myParameters, sorter, this);
+      return new BaseCompletionResultSet(getConsumer(), getPrefixMatcher(), myContributor, myParameters, sorter, this,
+                                         myCurrentCompletionKind);
     }
 
     @Override

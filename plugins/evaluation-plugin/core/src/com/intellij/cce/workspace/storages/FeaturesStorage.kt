@@ -7,6 +7,7 @@ interface FeaturesStorage {
     val EMPTY: FeaturesStorage = object : FeaturesStorage {
       override fun saveSession(session: Session, filePath: String) = session.clearFeatures()
       override fun saveFeaturesInfo() = Unit
+
       override fun getSessions(filePath: String) = emptyList<String>()
       override fun getFeatures(session: String, filePath: String) = ""
     }

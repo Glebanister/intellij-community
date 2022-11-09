@@ -45,6 +45,25 @@ public final class CompletionInitializationUtil {
                                                                                           @NotNull Editor editor,
                                                                                           @NotNull Caret caret,
                                                                                           int invocationCount,
+                                                                                          CompletionType completionType,
+                                                                                          Runnable indicateFinish) {
+    return WriteAction.compute(() -> {
+      PsiDocumentManager.getInstance(project).commitAllDocuments();
+      CompletionAssertions.checkEditorValid(editor);
+
+      final PsiFile psiFile = PsiUtilBase.getPsiFileInEditor(editor, project);
+      assert psiFile != null : "no PSI file: " + FileDocumentManager.getInstance().getFile(editor.getDocument());
+      psiFile.putUserData(PsiFileEx.BATCH_REFERENCE_PROCESSING, Boolean.TRUE);
+      CompletionAssertions.assertCommitSuccessful(editor, psiFile);
+
+      return runContributorsBeforeCompletion(editor, psiFile, invocationCount, caret, completionType);
+    });
+  }
+
+  public static CompletionInitializationContextImpl createCompletionInitializationContext(@NotNull Project project,
+                                                                                          @NotNull Editor editor,
+                                                                                          @NotNull Caret caret,
+                                                                                          int invocationCount,
                                                                                           CompletionType completionType) {
     return WriteAction.compute(() -> {
       PsiDocumentManager.getInstance(project).commitAllDocuments();

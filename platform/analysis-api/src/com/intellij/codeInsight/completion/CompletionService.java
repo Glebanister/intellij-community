@@ -1,6 +1,8 @@
 // Copyright 2000-2020 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
+import com.intellij.codeInsight.completion.kind.CompletionKind;
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
 import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.WeighingContext;
@@ -15,12 +17,18 @@ import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.annotation.processing.Completion;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * For completion FAQ, see {@link CompletionContributor}.
+ *
+ * @author peter
  */
 public abstract class CompletionService {
   public static final Key<CompletionStatistician> STATISTICS_KEY = Key.create("completion");
@@ -35,10 +43,15 @@ public abstract class CompletionService {
 
   /**
    * Set lookup advertisement text (at the bottom) at any time. Will do nothing if no completion process is in progress.
+   * @param text
    * @deprecated use {@link CompletionResultSet#addLookupAdvertisement(String)}
    */
   @Deprecated(forRemoval = true)
   public abstract void setAdvertisementText(@Nullable @NlsContexts.PopupAdvertisement String text);
+
+  public abstract @NotNull CompletionKindsExecutor getCompletionKindsExecutor();
+
+  public abstract void setCompletionKindsExecutor(@NotNull CompletionKindsExecutor ckExecutor);
 
   /**
    * Run all contributors until any of them returns false or the list is exhausted. If {@code from} parameter is not null, contributors
@@ -46,7 +59,8 @@ public abstract class CompletionService {
    */
   public void getVariantsFromContributors(final CompletionParameters parameters,
                                           @Nullable final CompletionContributor from,
-                                          final Consumer<? super CompletionResult> consumer) {
+                                          final Consumer<? super CompletionResult> consumer,
+                                          @Nullable Supplier<? extends CompletionKindsExecutor> kindsExecutorSupplier) {
     getVariantsFromContributors(parameters, from, createMatcher(suggestPrefix(parameters), false), consumer);
   }
 
@@ -60,11 +74,40 @@ public abstract class CompletionService {
                                              @Nullable CompletionContributor from,
                                              PrefixMatcher matcher, Consumer<? super CompletionResult> consumer,
                                              CompletionSorter customSorter) {
-    final List<CompletionContributor> contributors = CompletionContributor.forParameters(parameters);
+    CompletionKindsExecutor ckExecutor = getCompletionKindsExecutor();
+    List<CompletionContributor> contributors = ckExecutor.reorderContirbutors(CompletionContributor.forParameters(parameters));
 
     for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
       ProgressManager.checkCanceled();
       CompletionContributor contributor = contributors.get(i);
+
+      if (!(contributor instanceof CompletionContributorWithKinds)) {
+        continue;
+      }
+
+      CompletionResultSet result = createResultSet(parameters, consumer, contributor, matcher);
+      if (customSorter != null) {
+        result = result.withRelevanceSorter(customSorter);
+      }
+
+      ((CompletionContributorWithKinds)contributor).fillCompletionKinds(
+        parameters, result, ckExecutor
+      );
+    }
+
+    ckExecutor.executeAll(parameters);
+
+    //if (ckExecutor.sureFoundCorrect()) {
+    //  return;
+    //}
+
+    for (int i = contributors.indexOf(from) + 1; i < contributors.size(); i++) {
+      ProgressManager.checkCanceled();
+      CompletionContributor contributor = contributors.get(i);
+
+      if (contributor instanceof CompletionContributorWithKinds) {
+        continue;
+      }
 
       CompletionResultSet result = createResultSet(parameters, consumer, contributor, matcher);
       if (customSorter != null) {

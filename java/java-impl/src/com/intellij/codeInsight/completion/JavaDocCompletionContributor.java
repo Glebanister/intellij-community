@@ -3,6 +3,7 @@ package com.intellij.codeInsight.completion;
 
 import com.intellij.application.options.CodeStyle;
 import com.intellij.codeInsight.TailType;
+import com.intellij.codeInsight.completion.kind.CompletionKindsImmediateExecutor;
 import com.intellij.codeInsight.completion.scope.JavaCompletionProcessor;
 import com.intellij.codeInsight.editorActions.wordSelection.DocTagSelectioner;
 import com.intellij.codeInsight.javadoc.JavaDocUtil;
@@ -121,7 +122,9 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
             result.addElement(item);
           }
 
-          JavaCompletionContributor.addAllClasses(parameters, result, new JavaCompletionSession(result));
+          JavaCompletionContributor.addAllClasses(parameters, result, new JavaCompletionSession(result),
+                                                  "javadoc_fill",
+                                                  new CompletionKindsImmediateExecutor());
         }
 
         if (tag != null && "author".equals(tag.getName())) {
@@ -152,7 +155,8 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
 
   @NotNull
   private List<LookupElement> completeJavadocReference(PsiElement position, PsiJavaReference ref) {
-    JavaCompletionProcessor processor = new JavaCompletionProcessor(position, TrueFilter.INSTANCE, JavaCompletionProcessor.Options.CHECK_NOTHING, Conditions.alwaysTrue());
+    JavaCompletionProcessor processor =
+      new JavaCompletionProcessor(position, TrueFilter.INSTANCE, JavaCompletionProcessor.Options.CHECK_NOTHING, Conditions.alwaysTrue());
     ref.processVariants(processor);
     return ContainerUtil.map(processor.getResults(), (completionResult) -> {
       LookupElement item = createReferenceLookupItem(completionResult.getElement());
@@ -285,7 +289,8 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
       PsiJavaReference ref = (PsiJavaReference)mockComment.findReferenceAt(mockCommentPrefix.length() + prefixStart - classNameStart);
       assert ref != null : mockText;
       for (LookupElement element : completeJavadocReference(ref.getElement(), ref)) {
-        result.addElement(LookupElementDecorator.withInsertHandler(element, wrapIntoLinkTag((context, item) -> element.handleInsert(context))));
+        result.addElement(
+          LookupElementDecorator.withInsertHandler(element, wrapIntoLinkTag((context, item) -> element.handleInsert(context))));
       }
     }
     else if (matcher.getPrefix().length() > 0) {
@@ -315,8 +320,8 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
       String link = "{@link ";
       int startOffset = context.getStartOffset();
       int qualifierStart = document.getCharsSequence().charAt(startOffset - 1) == '#'
-                            ? findClassNameStart(document.getCharsSequence(), startOffset - 1)
-                            : startOffset;
+                           ? findClassNameStart(document.getCharsSequence(), startOffset - 1)
+                           : startOffset;
 
       document.insertString(qualifierStart, link);
       document.insertString(context.getTailOffset(), "}");
@@ -363,7 +368,9 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
   private static class TagChooser extends CompletionProvider<CompletionParameters> {
 
     @Override
-    protected void addCompletions(@NotNull final CompletionParameters parameters, @NotNull final ProcessingContext context, @NotNull final CompletionResultSet result) {
+    protected void addCompletions(@NotNull final CompletionParameters parameters,
+                                  @NotNull final ProcessingContext context,
+                                  @NotNull final CompletionResultSet result) {
       final PsiElement position = parameters.getPosition();
 
       final boolean isInline = position.getContext() instanceof PsiInlineDocTag;
@@ -469,8 +476,8 @@ public class JavaDocCompletionContributor extends CompletionContributor implemen
     public void handleInsert(@NotNull InsertionContext context, @NotNull LookupElement item) {
       String lookupString = item.getLookupString();
       String tagName = lookupString.startsWith("@") ? lookupString.substring(1) :
-                   lookupString.startsWith("{@") ? lookupString.substring(2, lookupString.length() - 1) :
-                   lookupString;
+                       lookupString.startsWith("{@") ? lookupString.substring(2, lookupString.length() - 1) :
+                       lookupString;
       boolean hasParameter = INLINE_TAGS_WITH_PARAMETER.contains(tagName);
       if (hasParameter) {
         final Editor editor = context.getEditor();

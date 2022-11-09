@@ -43,7 +43,7 @@ class Interpreter(private val invoker: CompletionInvoker,
         is CallCompletion -> {
           isFinished = false
           if (shouldCompleteToken) {
-            val lookup = invoker.callCompletion(action.expectedText, action.prefix)
+            val lookup = invoker.callCompletion(action.expectedText, action.prefix)()
             if (session == null) {
               val sessionUuid = lookup.features?.common?.context?.get(CCE_SESSION_UID_FEATURE_NAME)
                                 ?: UUID.randomUUID().toString()

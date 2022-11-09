@@ -1,16 +1,24 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
+import com.intellij.codeInsight.completion.kind.CompletionKind;
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
+import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.Pair;
 import com.intellij.patterns.ElementPattern;
 import com.intellij.patterns.StandardPatterns;
+import com.intellij.ui.JBColor;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.function.Supplier;
 
 /**
  * {@link CompletionResultSet}s feed on {@link LookupElement}s,
@@ -19,7 +27,7 @@ import java.util.LinkedHashSet;
  * for further processing, which usually means
  * they will sooner or later appear in completion list. If they don't, there must be some {@link CompletionContributor}
  * up the invocation stack that filters them out.
- *
+ * <p>
  * If you want to change the matching prefix, use {@link #withPrefixMatcher(PrefixMatcher)} or {@link #withPrefixMatcher(String)}
  * to obtain another {@link CompletionResultSet} and give your lookup elements to that one.
  */
@@ -30,14 +38,20 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
   protected final CompletionContributor myContributor;
   private boolean myStopped;
 
-  protected CompletionResultSet(final PrefixMatcher prefixMatcher, Consumer<? super CompletionResult> consumer, CompletionContributor contributor) {
+  protected CompletionResultSet(final PrefixMatcher prefixMatcher,
+                                Consumer<? super CompletionResult> consumer,
+                                CompletionContributor contributor) {
     myPrefixMatcher = prefixMatcher;
     myConsumer = consumer;
     myContributor = contributor;
   }
 
-  protected Consumer<? super CompletionResult> getConsumer() {
+  public Consumer<? super CompletionResult> getConsumer() {
     return myConsumer;
+  }
+
+  public CompletionContributor getContributor() {
+    return myContributor;
   }
 
   @Override
@@ -47,9 +61,26 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
 
   /**
    * If a given element matches the prefix, give it for further processing (which may eventually result in its appearing in the completion list).
-   * @see #addAllElements(Iterable) 
+   *
+   * @see #addAllElements(Iterable)
    */
   public abstract void addElement(@NotNull final LookupElement element);
+
+  protected abstract void setNullableCurrentCompletionKind(@Nullable CompletionKind completionKind);
+
+  public void resetCurrentCompletionKind() {
+    setNullableCurrentCompletionKind(null);
+  }
+
+  public void setCurrentCompletionKind(@NotNull CompletionKind completionKind) {
+    setNullableCurrentCompletionKind(completionKind);
+  }
+
+  public abstract void setHighlightingResults(@Nullable JBColor color);
+
+  public abstract @Nullable JBColor isResultHighlighted();
+
+  protected abstract @Nullable CompletionKind getCurrentCompletionKind();
 
   public void passResult(@NotNull CompletionResult result) {
     myConsumer.consume(result);
@@ -71,10 +102,10 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
    * Adds all elements from the given collection that match the prefix for further processing. The elements are processed in batch,
    * so that they'll appear in lookup all together.<p/>
    * This can be useful to ensure a predictable order of top suggested elements.
-   * Otherwise, when the lookup is shown, most relevant elements processed to that moment are put to the top 
-   * and remain there even if more relevant elements appear later. 
+   * Otherwise, when the lookup is shown, most relevant elements processed to that moment are put to the top
+   * and remain there even if more relevant elements appear later.
    * These "first" elements may differ from completion invocation to completion invocation due to performance fluctuations,
-   * resulting in varying preselected item in completion and worse user experience. Using {@code addAllElements} 
+   * resulting in varying preselected item in completion and worse user experience. Using {@code addAllElements}
    * instead of {@link #addElement(LookupElement)} helps to avoid that.
    */
   public void addAllElements(@NotNull final Iterable<? extends LookupElement> elements) {
@@ -90,17 +121,50 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     endBatch();
   }
 
-  @Contract(pure=true)
-  @NotNull public abstract CompletionResultSet withPrefixMatcher(@NotNull PrefixMatcher matcher);
+  public void addAllElementsWithKinds(
+    @NotNull final Iterable<Pair<? extends Collection<? extends LookupElement>, @NotNull CompletionKind>> elementsWithKinds,
+    @NotNull final Iterable<? extends LookupElement> elementsWithoutKind
+  ) {
+    startBatch();
+    int seldomCounter = 0;
+    for (LookupElement element : elementsWithoutKind) {
+      addElement(element);
+      seldomCounter++;
+      if (seldomCounter % 1000 == 0) {
+        ProgressManager.checkCanceled();
+      }
+    }
+    for (Pair<? extends Iterable<? extends LookupElement>, ? extends CompletionKind> elementWithKind : elementsWithKinds) {
+      setCurrentCompletionKind(elementWithKind.second);
+      try {
+        for (LookupElement element : elementWithKind.first) {
+          seldomCounter++;
+          addElement(element);
+          if (seldomCounter % 1000 == 0) {
+            ProgressManager.checkCanceled();
+          }
+        }
+      }
+      finally {
+        resetCurrentCompletionKind();
+      }
+    }
+    endBatch();
+  }
+
+  @Contract(pure = true)
+  @NotNull
+  public abstract CompletionResultSet withPrefixMatcher(@NotNull PrefixMatcher matcher);
 
   /**
    * Creates a default camel-hump prefix matcher based on given prefix
    */
-  @Contract(pure=true)
-  @NotNull public abstract CompletionResultSet withPrefixMatcher(@NotNull String prefix);
+  @Contract(pure = true)
+  @NotNull
+  public abstract CompletionResultSet withPrefixMatcher(@NotNull String prefix);
 
   @NotNull
-  @Contract(pure=true)
+  @Contract(pure = true)
   public abstract CompletionResultSet withRelevanceSorter(@NotNull CompletionSorter sorter);
 
   public abstract void addLookupAdvertisement(@NotNull @NlsContexts.PopupAdvertisement String text);
@@ -109,8 +173,9 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
    * @return A result set with the same prefix, but the lookup strings will be matched case-insensitively. Their lookup strings will
    * remain as they are though, so upon insertion the prefix case will be changed.
    */
-  @Contract(pure=true)
-  @NotNull public abstract CompletionResultSet caseInsensitive();
+  @Contract(pure = true)
+  @NotNull
+  public abstract CompletionResultSet caseInsensitive();
 
   @NotNull
   public PrefixMatcher getPrefixMatcher() {
@@ -125,7 +190,8 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     myStopped = true;
   }
 
-  public LinkedHashSet<CompletionResult> runRemainingContributors(CompletionParameters parameters, final boolean passResult) {
+  public LinkedHashSet<CompletionResult> runRemainingContributors(CompletionParameters parameters,
+                                                                  final boolean passResult) {
     final LinkedHashSet<CompletionResult> elements = new LinkedHashSet<>();
     runRemainingContributors(parameters, result -> {
       if (passResult) {
@@ -136,11 +202,14 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     return elements;
   }
 
-  public void runRemainingContributors(CompletionParameters parameters, Consumer<? super CompletionResult> consumer) {
+  public void runRemainingContributors(CompletionParameters parameters,
+                                       Consumer<? super CompletionResult> consumer) {
     runRemainingContributors(parameters, consumer, true);
   }
 
-  public void runRemainingContributors(CompletionParameters parameters, Consumer<? super CompletionResult> consumer, final boolean stop) {
+  public void runRemainingContributors(CompletionParameters parameters,
+                                       Consumer<? super CompletionResult> consumer,
+                                       final boolean stop) {
     runRemainingContributors(parameters, consumer, stop, null);
   }
 

@@ -7,13 +7,17 @@ import com.intellij.openapi.util.registry.Registry;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.meta.PsiMetaData;
 import com.intellij.psi.util.PsiUtilCore;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.IconManager;
 import com.intellij.ui.SizedIcon;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.awt.*;
 
-public class DefaultLookupItemRenderer extends LookupElementRenderer<LookupItem<?>>{
+import static com.intellij.codeInsight.lookup.LookupElement.LOOKUP_ELEMENT_HIGHLIGHT;
+
+public class DefaultLookupItemRenderer extends LookupElementRenderer<LookupItem<?>> {
   public static final DefaultLookupItemRenderer INSTANCE = new DefaultLookupItemRenderer();
 
   @Override
@@ -24,6 +28,11 @@ public class DefaultLookupItemRenderer extends LookupElementRenderer<LookupItem<
     presentation.setItemTextBold(item.getAttribute(LookupItem.HIGHLIGHTED_ATTR) != null);
     presentation.setTailText(getText2(item), item.getAttribute(LookupItem.TAIL_TEXT_SMALL_ATTR) != null);
     presentation.setTypeText(getText3(item), null);
+
+    JBColor highlight = item.getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlight != null) {
+      presentation.setHighlightColor(highlight);
+    }
   }
 
   @Nullable

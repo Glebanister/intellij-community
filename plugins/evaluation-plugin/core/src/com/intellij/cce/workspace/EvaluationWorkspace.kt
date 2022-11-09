@@ -32,6 +32,7 @@ class EvaluationWorkspace private constructor(private val basePath: Path) {
   private val actionsDir = subdir("actions")
   private val errorsDir = subdir("errors")
   private val reportsDir = subdir("reports")
+  val completionMlPerformanceFeaturesDir = subdir("completion-ml-performance")
   private val pathToConfig = path().resolve(ConfigFactory.DEFAULT_CONFIG_NAME)
   private val _reports: MutableMap<String, MutableMap<String, Path>> = mutableMapOf()
 

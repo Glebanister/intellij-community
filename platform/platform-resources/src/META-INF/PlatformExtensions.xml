@@ -864,6 +864,8 @@
     <search.topHitProvider implementation="com.intellij.ide.ui.OptionsTopHitProvider$ProjectLevelProvidersAdapter"/>
     <applicationService serviceImplementation="com.intellij.ide.ui.TopHitCache"/>
 
+    <!--<startupActivity implementation="com.intellij.codeInsight.completion.kind.LoadIdealSuggestions"/>-->
+
     <applicationService serviceInterface="com.intellij.ide.util.TipAndTrickManager"
                         serviceImplementation="com.intellij.ide.util.TipAndTrickManagerImpl"/>
     <postStartupActivity implementation="com.intellij.ide.actions.PowerSaveModeNotifier"/>

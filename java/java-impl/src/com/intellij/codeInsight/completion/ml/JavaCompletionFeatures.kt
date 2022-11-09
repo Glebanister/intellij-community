@@ -133,7 +133,9 @@ object JavaCompletionFeatures {
       val names2types = variables.mapNotNull { variable -> variable.name?.let { Pair(it, variable.type) } }.toSet()
       environment.putUserData(VARIABLES_KEY, VariablesInfo(names, types, names2types))
     }
-  } catch (ignored: PsiInvalidElementAccessException) {}
+  }
+  catch (ignored: PsiInvalidElementAccessException) {
+  }
 
   fun getArgumentsVariablesMatchingFeatures(contextFeatures: ContextFeatures, method: PsiMethod): Map<String, MLFeatureValue> {
     val result = mutableMapOf<String, MLFeatureValue>()
@@ -146,6 +148,18 @@ object JavaCompletionFeatures {
       result["args_vars_names_types_matches"] = MLFeatureValue.numerical(names2types.count { it in variables.names2types })
     }
     return result
+  }
+
+  fun positionIsIdentifier(environment: CompletionEnvironment): Boolean {
+    return environment.parameters.position is PsiIdentifier
+  }
+
+  fun parentIsCodeReference(environment: CompletionEnvironment): Boolean {
+    return environment.parameters.position.parent is PsiJavaCodeReferenceElement
+  }
+
+    fun parentIsModuleReference(environment: CompletionEnvironment): Boolean {
+    return environment.parameters.position.parent is PsiJavaModuleReferenceElement
   }
 
   fun isInQualifierExpression(environment: CompletionEnvironment): Boolean {
@@ -226,6 +240,7 @@ object JavaCompletionFeatures {
 
       fun withFqn(name: String): FqnTrie = create().also { it.addFqn(name) }
     }
+
     private val children = mutableMapOf<String, FqnTrie>()
 
     fun addFqn(name: String) {

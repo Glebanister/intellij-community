@@ -16,7 +16,7 @@ import java.nio.file.Paths
 
 object FilesHelper {
   fun getFilesOfLanguage(project: Project, evaluationRoots: List<String>, language: String): List<VirtualFile> {
-    return getFiles(project, evaluationRoots.map { getFile(project, it) })[language]?.toList()
+    return getFiles(project, evaluationRoots.map { println(it); getFile(project, it) })[language]?.toList()
            ?: throw IllegalArgumentException("No files for $language found")
   }
 

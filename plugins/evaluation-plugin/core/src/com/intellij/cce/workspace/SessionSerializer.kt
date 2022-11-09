@@ -1,9 +1,7 @@
 package com.intellij.cce.workspace
 
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonObject
-import com.google.gson.JsonSerializationContext
-import com.google.gson.JsonSerializer
+import com.google.gson.*
+import com.intellij.cce.core.Lookup
 import com.intellij.cce.core.Session
 import com.intellij.cce.core.Suggestion
 import com.intellij.cce.core.TokenProperties
@@ -17,6 +15,7 @@ class SessionSerializer {
       .serializeNulls()
       .registerTypeAdapter(TokenProperties::class.java, TokenProperties.JsonAdapter)
       .create()
+    // CHANGE IT
     private val gsonForJs = GsonBuilder()
       .serializeNulls()
       .registerTypeAdapter(TokenProperties::class.java, TokenProperties.JsonAdapter)
@@ -25,6 +24,25 @@ class SessionSerializer {
           val jsonObject = JsonObject()
           jsonObject.addProperty("text", escapeHtml(src.text))
           jsonObject.addProperty("presentationText", escapeHtml(src.presentationText))
+          return jsonObject
+        }
+      })
+      .registerTypeAdapter(Lookup::class.java, object : JsonSerializer<Lookup> {
+        override fun serialize(src: Lookup, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
+          val jsonObject = JsonObject()
+          jsonObject.addProperty("prefix", src.prefix)
+          jsonObject.addProperty("latency", src.latency)
+          jsonObject.addProperty("shownLatency", src.shownLatency)
+          jsonObject.addProperty("restartLatency", src.restartLatency)
+          jsonObject.add("features", context.serialize(src.features))
+          jsonObject.addProperty("selectedPosition", src.selectedPosition)
+          jsonObject.addProperty("isNew", src.isNew)
+          jsonObject.add("correctElementInfo", context.serialize(src.correctElementInfo))
+          jsonObject.addProperty("firstElementAddTime", src.firstElementAddTime)
+          jsonObject.add("kindsExecutionInfo", context.serialize(src.kindsExecutionInfo))
+          jsonObject.add("suggestions", context.serialize(src.suggestions.filter {
+            it.isHighlighted
+          }))
           return jsonObject
         }
       })

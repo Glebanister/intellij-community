@@ -8,6 +8,8 @@ import com.intellij.internal.ml.catboost.NaiveCatBoostModel
 import com.intellij.internal.ml.completion.CompletionRankingModelBase
 import com.intellij.openapi.diagnostic.logger
 import java.util.zip.ZipFile
+import kotlin.io.path.Path
+import kotlin.io.path.inputStream
 
 class LocalCatBoostModelProvider : LocalZipModelProvider {
   companion object {

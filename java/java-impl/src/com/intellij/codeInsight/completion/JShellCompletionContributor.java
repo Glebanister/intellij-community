@@ -31,5 +31,4 @@ public class JShellCompletionContributor extends CompletionContributor implement
       }
     });
   }
-
 }
