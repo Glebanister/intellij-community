@@ -1,0 +1,560 @@
+{
+    "AnnotationPositionMatcher": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ExceptionPositionMatcher": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ExtendsDeclarationPositionMatcher": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ImplementsDeclarationPositionMatcher": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "TryWithResourcesPositionMatcher": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "TypeParameterPositionMatcher": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "case_sensitivity_ALL": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "case_sensitivity_FIRST_LETTER": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "case_sensitivity_NONE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "indent_level": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_ABSTRACT": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_ANOTHER": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_BOOLEAN": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_BREAK": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_CASE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_CATCH": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_CHAR": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_CLASS": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_CONST": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_CONTINUE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_DOUBLE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_ELSE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_EXTENDS": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_FALSE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_FINAL": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_FINALLY": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_FLOAT": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_FOR": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_IF": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_IMPLEMENTS": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_IMPORT": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_INSTANCEOF": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_INT": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_INTERFACE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_LONG": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_NEW": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_NULL": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_PRIVATE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_PROTECTED": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_PUBLIC": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_RETURN": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_STATIC": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_SUPER": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_SWITCH": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_THIS": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_THROW": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_THROWS": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_TRUE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_TRY": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_VOID": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_keyword_WHILE": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_common_is_after_dot": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_common_is_in_line_beginning": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_common_line_num": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_common_lines_in_document": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_java_is_after_method_call": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_java_is_identifier": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_java_is_in_qualifier_expression": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_java_parent_is_code_ref": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_ctx_java_parent_is_module_ref": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "ml_java_is_in_qualifier_expression": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiAnnotationImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiBinaryExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiExpressionListImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiExpressionStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiLocalVariableImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiReferenceExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_0_is_PsiTypeElementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiClassImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiCodeBlockImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiDeclarationStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiLocalVariableImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiMethodCallExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiMethodImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiModifierListImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiParameterImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_1_is_PsiReferenceExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiBlockStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiClassImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiCodeBlockImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiExpressionListImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiExpressionStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiJavaFileImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiLocalVariableImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiMethodCallExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiMethodImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiParameterImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiParameterListImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_2_is_PsiReferenceExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiAnonymousClassImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiClassImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiCodeBlockImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiDeclarationStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiExpressionListImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiIfStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiJavaFileImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiMethodCallExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiMethodImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_3_is_PsiParameterListImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiBlockStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiClassImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiCodeBlockImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiExpressionStatementImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiJavaFileImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiLocalVariableImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiMethodCallExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiMethodImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "psi_parent_4_is_PsiNewExpressionImpl": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "relative_line_n": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_identifier_fast": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_reference_non_method_call": {
+        "default": 0.0,
+        "use_undefined": false
+    },
+
+    "is_reference_method_call": {
+        "default": 0.0,
+        "use_undefined": false
+    }}
