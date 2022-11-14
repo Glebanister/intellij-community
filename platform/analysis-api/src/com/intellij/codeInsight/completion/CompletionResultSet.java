@@ -1,16 +1,24 @@
 // Copyright 2000-2019 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
+import com.intellij.codeInsight.completion.kind.CompletionKind;
+import com.intellij.codeInsight.completion.kind.CompletionKindsExecutor;
+import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.NlsContexts;
+import com.intellij.openapi.util.Pair;
 import com.intellij.patterns.ElementPattern;
 import com.intellij.patterns.StandardPatterns;
+import com.intellij.ui.JBColor;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.function.Supplier;
 
 /**
  * {@link CompletionResultSet}s feed on {@link LookupElement}s,
@@ -36,8 +44,12 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
     myContributor = contributor;
   }
 
-  protected Consumer<? super CompletionResult> getConsumer() {
+  public Consumer<? super CompletionResult> getConsumer() {
     return myConsumer;
+  }
+
+  public CompletionContributor getContributor() {
+    return myContributor;
   }
 
   @Override
@@ -50,6 +62,22 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
    * @see #addAllElements(Iterable) 
    */
   public abstract void addElement(@NotNull final LookupElement element);
+
+  protected abstract void setNullableCurrentCompletionKind(@Nullable CompletionKind completionKind);
+
+  public void resetCurrentCompletionKind() {
+    setNullableCurrentCompletionKind(null);
+  }
+
+  public void setCurrentCompletionKind(@NotNull CompletionKind completionKind) {
+    setNullableCurrentCompletionKind(completionKind);
+  }
+
+  public abstract void setHighlightingResults(@Nullable JBColor color);
+
+  public abstract @Nullable JBColor isResultHighlighted();
+
+  protected abstract @Nullable CompletionKind getCurrentCompletionKind();
 
   public void passResult(@NotNull CompletionResult result) {
     myConsumer.consume(result);
@@ -85,6 +113,37 @@ public abstract class CompletionResultSet implements Consumer<LookupElement> {
       addElement(element);
       if (seldomCounter % 1000 == 0) {
         ProgressManager.checkCanceled();
+      }
+    }
+    endBatch();
+  }
+
+  public void addAllElementsWithKinds(
+    @NotNull final Iterable<Pair<? extends Collection<? extends LookupElement>, @NotNull CompletionKind>> elementsWithKinds,
+    @NotNull final Iterable<? extends LookupElement> elementsWithoutKind
+  ) {
+    startBatch();
+    int seldomCounter = 0;
+    for (LookupElement element : elementsWithoutKind) {
+      addElement(element);
+      seldomCounter++;
+      if (seldomCounter % 1000 == 0) {
+        ProgressManager.checkCanceled();
+      }
+    }
+    for (Pair<? extends Iterable<? extends LookupElement>, ? extends CompletionKind> elementWithKind : elementsWithKinds) {
+      setCurrentCompletionKind(elementWithKind.second);
+      try {
+        for (LookupElement element : elementWithKind.first) {
+          seldomCounter++;
+          addElement(element);
+          if (seldomCounter % 1000 == 0) {
+            ProgressManager.checkCanceled();
+          }
+        }
+      }
+      finally {
+        resetCurrentCompletionKind();
       }
     }
     endBatch();

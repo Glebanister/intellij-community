@@ -16,6 +16,7 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.completion.ml.storage.MutableLookupStorage
 import com.intellij.openapi.extensions.impl.ExtensionProcessingHelper
+import com.intellij.lang.Language
 import java.util.concurrent.TimeUnit
 
 class ContextFeaturesContributor : CompletionContributor(), DumbAware {
@@ -36,8 +37,7 @@ class ContextFeaturesContributor : CompletionContributor(), DumbAware {
     super.fillCompletionVariants(parameters, result)
   }
 
-
-  private fun calculateContextFactors(lookup: LookupImpl, parameters: CompletionParameters, storage: MutableLookupStorage) {
+  fun calculateContextFactors(lookup: LookupImpl, parameters: CompletionParameters, storage: MutableLookupStorage) {
     val environment = MyEnvironment(lookup, parameters)
     val contextFeatures = mutableMapOf<String, MLFeatureValue>()
     ExtensionProcessingHelper.forEachExtensionSafe(ContextFeatureProvider.forLanguage(storage.language)) { provider ->

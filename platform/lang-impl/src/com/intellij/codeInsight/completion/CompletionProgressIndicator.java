@@ -7,6 +7,7 @@ import com.intellij.codeInsight.CodeInsightSettings;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.codeInsight.completion.impl.CompletionServiceImpl;
 import com.intellij.codeInsight.completion.impl.CompletionSorterImpl;
+import com.intellij.codeInsight.completion.kind.*;
 import com.intellij.codeInsight.editorActions.CompletionAutoPopupHandler;
 import com.intellij.codeInsight.hint.EditorHintListener;
 import com.intellij.codeInsight.hint.HintManager;
@@ -21,6 +22,7 @@ import com.intellij.ide.lightEdit.LightEditUtil;
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.injected.editor.EditorWindow;
 import com.intellij.lang.LangBundle;
+import com.intellij.lang.pratt.PathPattern;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.application.ApplicationManager;
@@ -46,10 +48,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.patterns.ElementPattern;
-import com.intellij.psi.PsiDocumentManager;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiReference;
-import com.intellij.psi.ReferenceRange;
+import com.intellij.psi.*;
 import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.testFramework.TestModeFlags;
 import com.intellij.ui.LightweightHint;
@@ -62,16 +61,21 @@ import com.intellij.util.indexing.DumbModeAccessType;
 import com.intellij.util.messages.SimpleMessageBusConnection;
 import com.intellij.util.ui.update.MergingUpdateQueue;
 import com.intellij.util.ui.update.Update;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function2;
 import org.jetbrains.annotations.*;
 
 import javax.swing.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.beans.PropertyChangeListener;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Please don't use this class directly from plugins.
@@ -126,10 +130,11 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
   private final Object myLock = ObjectUtils.sentinel("CompletionProgressIndicator");
 
   private final EmptyCompletionNotifier myEmptyCompletionNotifier;
+  private final Runnable myIndicateFinish;
 
   CompletionProgressIndicator(Editor editor, @NotNull Caret caret, int invocationCount,
                               CodeCompletionHandlerBase handler, @NotNull OffsetMap offsetMap, @NotNull OffsetsInFile hostOffsets,
-                              boolean hasModifiers, @NotNull LookupImpl lookup) {
+                              boolean hasModifiers, @NotNull LookupImpl lookup, Runnable indicateFinish) {
     myEditor = editor;
     myCaret = caret;
     myHandler = handler;
@@ -167,6 +172,12 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
     if (hasModifiers && !ApplicationManager.getApplication().isUnitTestMode()) {
       trackModifiers();
     }
+
+    myIndicateFinish = indicateFinish;
+  }
+
+  public void invokeIndicateFinish() {
+    myIndicateFinish.run();
   }
 
   @Override
@@ -391,7 +402,7 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
         return;
       }
 
-      if (!myLookup.showLookup()) {
+      if (!myLookup.showLookup(myIndicateFinish)) {
         return;
       }
       justShown = true;
@@ -867,7 +878,45 @@ public class CompletionProgressIndicator extends ProgressIndicatorBase implement
       duringCompletion(initContext, parameters);
       ProgressManager.checkCanceled();
 
-      CompletionService.getCompletionService().performCompletion(parameters, weigher);
+      CompletionService completionService = CompletionService.getCompletionService();
+
+      Runnable doShowLookupAction = () -> {
+        ApplicationManager.getApplication().invokeLater(() -> {
+          showLookup();
+        });
+      };
+
+      // TODO: @Gleb.Marin Move it somewhere (useful for Ideal)
+      //Path currentFileSystemPath = Path.of(initContext.getFile().getName());
+      //PsiFileSystemItem fileParent = initContext.getFile().getParent();
+      //while (fileParent != null) {
+      //  currentFileSystemPath = Path.of(fileParent.getName()).resolve(currentFileSystemPath);
+      //  fileParent = fileParent.getParent();
+      //}
+      //
+      //var currentFilePath = Path.of(Objects.requireNonNull(initContext.getProject().getBasePath()))
+      //  .relativize(currentFileSystemPath);
+      //var completionPosition = myParameters.getPosition().getTextOffset();
+      //
+      //var idealKindsExecutor = new IdealKindsExecutor(
+      //  currentFilePath,
+      //  new IdealJavaFileCompletionSuggestions.FilePosition(completionPosition),
+      //  doShowLookupAction
+      //);
+      //
+      //System.out.printf("pos: %s, has: %b\n", completionPosition, idealKindsExecutor.hasIdealSuggestion());
+      //
+      //completionService.setCompletionKindsExecutor(
+      //  //idealKindsExecutor.hasIdealSuggestion()
+      //  //? idealKindsExecutor
+      //  new CompletionKindsImmediateExecutor()
+      //);
+
+      // CHANGE IT
+      CompletionKindsExecutor executor = CompletionKindsExecutor.createInstance();
+      executor.whenLookupReady(doShowLookupAction);
+      completionService.setCompletionKindsExecutor(executor);
+      completionService.performCompletion(parameters, weigher);
     });
     ProgressManager.checkCanceled();
 

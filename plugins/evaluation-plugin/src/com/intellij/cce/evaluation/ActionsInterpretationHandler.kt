@@ -5,6 +5,7 @@ import com.intellij.cce.interpreter.CompletionInvoker
 import com.intellij.cce.interpreter.InterpretFilter
 import com.intellij.cce.interpreter.InterpretationHandlerImpl
 import com.intellij.cce.interpreter.Interpreter
+import com.intellij.cce.report.CompletionMlPerformanceDataset
 import com.intellij.cce.util.ExceptionsUtil
 import com.intellij.cce.util.FilesHelper
 import com.intellij.cce.util.Progress
@@ -46,10 +47,15 @@ class ActionsInterpretationHandler(
       println("During actions interpretation will be skipped about $skippedSessions sessions")
     }
     val files = workspace1.actionsStorage.getActionFiles()
+    // TODO: @Gleb.Marin Change log collection
+    val completionMlPerformanceDataset = CompletionMlPerformanceDataset()
     for (file in files) {
       val fileActions = workspace1.actionsStorage.getActions(file)
       try {
-        val sessions = interpreter.interpret(fileActions) { session -> featuresStorage.saveSession(session, fileActions.path) }
+        val sessions = interpreter.interpret(fileActions) { session ->
+          completionMlPerformanceDataset.addFeaturesFromSession(session)
+          featuresStorage.saveSession(session, fileActions.path)
+        }
         val fileText = FilesHelper.getFile(project, fileActions.path).text()
         workspace2.sessionsStorage.saveSessions(FileSessionsInfo(fileActions.path, fileText, sessions))
       }
@@ -66,6 +72,8 @@ class ActionsInterpretationHandler(
       }
       if (handler.isCancelled() || handler.isLimitExceeded()) break
     }
+    // TODO: @Gleb.Marin Change log collection
+    completionMlPerformanceDataset.writeToCsv(workspace1)
     if (config.saveLogs) workspace2.logsStorage.save(SetupStatsCollectorStep.statsCollectorLogsDirectory(), language, config.trainTestSplit)
     SetupStatsCollectorStep.deleteLogs()
     workspace2.sessionsStorage.saveEvaluationInfo()

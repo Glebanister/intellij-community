@@ -4,6 +4,9 @@
     <extensionPoint name="completion.contributor" beanClass="com.intellij.codeInsight.completion.CompletionContributorEP" dynamic="true">
       <with attribute="implementationClass" implements="com.intellij.codeInsight.completion.CompletionContributor"/>
     </extensionPoint>
+    <extensionPoint name="completion.kind.executor" beanClass="com.intellij.codeInsight.completion.kind.CompletionKindsExecutorEP" dynamic="true">
+      <with attribute="implementationClass" implements="com.intellij.codeInsight.completion.kind.CompletionKindsExecutor"/>
+    </extensionPoint>
 
     <extensionPoint name="gotoDeclarationHandler" interface="com.intellij.codeInsight.navigation.actions.GotoDeclarationHandler"
                     dynamic="true"/>

@@ -5,13 +5,17 @@ import com.intellij.codeInsight.completion.InsertHandler;
 import com.intellij.codeInsight.completion.InsertionContext;
 import com.intellij.navigation.PsiElementNavigationItem;
 import com.intellij.openapi.util.ClassConditionKey;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.UserDataHolderBase;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveResult;
 import com.intellij.psi.SmartPsiElementPointer;
+import com.intellij.ui.JBColor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.awt.*;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.Set;
 
@@ -25,6 +29,8 @@ import java.util.Set;
  */
 public abstract class LookupElement extends UserDataHolderBase {
   public static final LookupElement[] EMPTY_ARRAY = new LookupElement[0];
+  public static final Key<JBColor> LOOKUP_ELEMENT_HIGHLIGHT = Key.create("lookup element highlight");
+  public static final Key<Instant> LOOKUP_ELEMENT_SHOW_TIME = Key.create("lookup element lookup add time");
 
   /**
    * @return the string which will be inserted into the editor when this lookup element is chosen
@@ -131,6 +137,10 @@ public abstract class LookupElement extends UserDataHolderBase {
    */
   public void renderElement(@NotNull LookupElementPresentation presentation) {
     presentation.setItemText(getLookupString());
+    JBColor highlighted = getUserData(LOOKUP_ELEMENT_HIGHLIGHT);
+    if (highlighted != null) {
+      presentation.setHighlightColor(highlighted);
+    }
   }
 
   /**

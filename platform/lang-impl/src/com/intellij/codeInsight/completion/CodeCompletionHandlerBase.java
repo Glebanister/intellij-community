@@ -60,10 +60,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.Future;
 
 import static com.intellij.diagnostic.telemetry.TraceKt.runWithSpan;
@@ -132,6 +129,11 @@ public class CodeCompletionHandlerBase {
     }
   }
 
+  public final void invokeCompletionIndicatingFinish(final Project project, final Editor editor, Runnable indicateFinish) {
+    clearCaretMarkers(editor);
+    invokeCompletion(project, editor, 1, false, editor.getCaretModel().getPrimaryCaret(), indicateFinish);
+  }
+
   public final void invokeCompletion(final Project project, final Editor editor) {
     invokeCompletion(project, editor, 1);
   }
@@ -142,10 +144,15 @@ public class CodeCompletionHandlerBase {
 
   public final void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers) {
     clearCaretMarkers(editor);
-    invokeCompletionWithTracing(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret());
+    invokeCompletionWithTracing(project, editor, time, hasModifiers, editor.getCaretModel().getPrimaryCaret(), () -> {});
   }
 
-  private void invokeCompletion(@NotNull Project project, @NotNull Editor editor, int time, boolean hasModifiers, @NotNull Caret caret) {
+  private void invokeCompletion(@NotNull Project project,
+                                @NotNull Editor editor,
+                                int time,
+                                boolean hasModifiers,
+                                @NotNull Caret caret,
+                                Runnable indicateFinish) {
       markCaretAsProcessed(caret);
 
       if (invokedExplicitly) {
@@ -195,7 +202,7 @@ public class CodeCompletionHandlerBase {
           context = new CompletionInitializationContextImpl(editor, caret, psiFile, completionType, invocationCount);
         }
 
-        doComplete(context, hasModifiers, hasValidContext, startingTime);
+        doComplete(context, hasModifiers, hasValidContext, startingTime, indicateFinish);
       };
     try {
       if (autopopup) {
@@ -217,12 +224,13 @@ public class CodeCompletionHandlerBase {
                                            @NotNull Editor editor,
                                            int time,
                                            boolean hasModifiers,
-                                           @NotNull Caret caret) {
+                                           @NotNull Caret caret,
+                                           Runnable indicateFinish) {
     runWithSpan(completionTracer, "invokeCompletion", (span) -> {
       span.setAttribute("project", project.getName());
       span.setAttribute("caretOffset", caret.hasSelection() ? caret.getSelectionStart() : caret.getOffset());
 
-      invokeCompletion(project, editor, time, hasModifiers, caret);
+      invokeCompletion(project, editor, time, hasModifiers, caret, indicateFinish);
     });
   }
 
@@ -256,7 +264,11 @@ public class CodeCompletionHandlerBase {
     return lookup;
   }
 
-  private void doComplete(CompletionInitializationContextImpl initContext, boolean hasModifiers, boolean isValidContext, long startingTime) {
+  private void doComplete(CompletionInitializationContextImpl initContext,
+                          boolean hasModifiers,
+                          boolean isValidContext,
+                          long startingTime,
+                          Runnable indicateFinish) {
     final Editor editor = initContext.getEditor();
     CompletionAssertions.checkEditorValid(editor);
 
@@ -276,8 +288,7 @@ public class CodeCompletionHandlerBase {
                                                                             initContext.getInvocationCount(), this,
                                                                             initContext.getOffsetMap(),
                                                                             initContext.getHostOffsets(),
-                                                                            hasModifiers, lookup);
-
+                                                                            hasModifiers, lookup, indicateFinish);
 
     if (synchronous && isValidContext) {
       OffsetsInFile hostCopyOffsets = withTimeout(calcSyncTimeOut(startingTime), () -> {
@@ -369,6 +380,7 @@ public class CodeCompletionHandlerBase {
       indicator.setParameters(parameters);
 
       indicator.runContributors(initContext);
+      indicator.invokeIndicateFinish();
     }));
   }
 
@@ -448,7 +460,7 @@ public class CodeCompletionHandlerBase {
 
       Caret nextCaret = getNextCaretToProcess(indicator.getEditor());
       if (nextCaret != null) {
-        invokeCompletionWithTracing(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret);
+        invokeCompletionWithTracing(indicator.getProject(), indicator.getEditor(), indicator.getInvocationCount(), hasModifiers, nextCaret, () -> {});
       }
       else {
         indicator.handleEmptyLookup(true);
@@ -820,7 +832,7 @@ public class CodeCompletionHandlerBase {
     return ProgressIndicatorUtils.withTimeout(maxDurationMillis, task);
   }
 
-  private static int calcSyncTimeOut(long startTime) {
+  public static int calcSyncTimeOut(long startTime) {
     return (int)Math.max(300, ourAutoInsertItemTimeout - (System.currentTimeMillis() - startTime));
   }
 

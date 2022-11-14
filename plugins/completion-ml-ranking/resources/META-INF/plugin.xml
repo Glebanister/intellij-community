@@ -114,6 +114,10 @@
     <statistics.counterUsagesCollector implementationClass="com.intellij.completion.ml.settings.MLCompletionSettingsCollector"/>
     <completion.ml.localModelProvider implementation="com.intellij.completion.ml.ranker.local.randomforest.LocalRandomForestProvider" />
     <completion.ml.localModelProvider implementation="com.intellij.completion.ml.ranker.local.catboost.LocalCatBoostModelProvider" />
+
+    <completion.kind.executor language="ALL"
+                              id="MLCompletionKindsExecutor"
+                              implementationClass="com.intellij.completion.ml.features.MLCompletionKindsExecutor"/>
   </extensions>
 
   <projectListeners>

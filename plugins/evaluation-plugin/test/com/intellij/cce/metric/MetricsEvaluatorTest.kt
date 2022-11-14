@@ -3,13 +3,11 @@ package com.intellij.cce.metric
 import com.intellij.cce.actions.CompletionContext
 import com.intellij.cce.actions.CompletionPrefix
 import com.intellij.cce.actions.CompletionStrategy
-import com.intellij.cce.core.Lookup
-import com.intellij.cce.core.Session
-import com.intellij.cce.core.Suggestion
-import com.intellij.cce.core.SuggestionSource
+import com.intellij.cce.core.*
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
+import java.time.Instant
 
 class MetricsEvaluatorTest {
   companion object {
@@ -90,13 +88,20 @@ class MetricsEvaluatorTest {
   }
 
   private fun createLookup(expected: Int?, total: Int): Lookup =
-    Lookup.fromExpectedText(EXPECTED, "", createSuggestions(total, expected), 0)
+    Lookup.fromExpectedText(EXPECTED, "", createSuggestions(total, expected), 0, false, null, null, null, emptyList(), null, null, true)
 
   private fun createSuggestions(total: Int, expected: Int?): List<Suggestion> =
     (0 until total).map {
       Suggestion(
         if (it == expected) EXPECTED else UNEXPECTED,
         presentationText = "",
-        SuggestionSource.STANDARD)
+        SuggestionSource.STANDARD,
+        SuggestionKind.ANY,
+        null,
+        null,
+        Instant.now(),
+        0,
+        false,
+      )
     }
 }

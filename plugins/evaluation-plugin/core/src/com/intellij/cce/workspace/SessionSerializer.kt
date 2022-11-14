@@ -1,9 +1,7 @@
 package com.intellij.cce.workspace
 
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonObject
-import com.google.gson.JsonSerializationContext
-import com.google.gson.JsonSerializer
+import com.google.gson.*
+import com.intellij.cce.core.Lookup
 import com.intellij.cce.core.Session
 import com.intellij.cce.core.Suggestion
 import com.intellij.cce.core.TokenProperties

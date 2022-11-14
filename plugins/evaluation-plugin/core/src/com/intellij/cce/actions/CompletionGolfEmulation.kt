@@ -24,7 +24,15 @@ class CompletionGolfEmulation(private val settings: Settings = Settings(), priva
       }
       else -> Pair(expectedLine[currentLine.length].toString(), -1)
     }
-    return Lookup(lookup.prefix, suggestions, lookup.latency, selectedPosition = new.second, isNew = lookup.isNew)
+    return Lookup(
+      lookup.prefix, suggestions, lookup.latency, selectedPosition = new.second, isNew = lookup.isNew,
+      shownLatency = lookup.shownLatency,
+      restartLatency = lookup.restartLatency,
+      kindsExecutionInfo = lookup.kindsExecutionInfo,
+      correctElementInfo = lookup.correctElementInfo,
+      firstElementAddTime = lookup.firstElementAddTime,
+      lookupIsShown = lookup.lookupIsShown,
+    )
   }
 
   private fun checkForPerfectLine(expectedLine: String, suggestions: List<Suggestion>, prefix: String): Pair<String, Int>? {

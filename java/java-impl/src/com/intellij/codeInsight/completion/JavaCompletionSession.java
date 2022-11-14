@@ -25,23 +25,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
-public class JavaCompletionSession {
+public class JavaCompletionSession extends CompletionSession {
   private final Set<String> myAddedClasses = new HashSet<>();
   private final Set<String> myKeywords = new HashSet<>();
-  private final List<LookupElement> myBatchItems = new ArrayList<>();
-  private final CompletionResultSet myResult;
 
   public JavaCompletionSession(CompletionResultSet result) {
-    myResult = result;
-  }
-
-  void registerBatchItems(Collection<? extends LookupElement> elements) {
-    myBatchItems.addAll(elements);
-  }
-
-  void flushBatchItems() {
-    myResult.addAllElements(myBatchItems);
-    myBatchItems.clear();
+    super(result);
   }
 
   public void addClassItem(LookupElement lookupElement) {
@@ -58,11 +47,8 @@ public class JavaCompletionSession {
     }
   }
 
-  @NotNull PrefixMatcher getMatcher() {
-    return myResult.getPrefixMatcher();
-  }
-
-  @Nullable private static PsiClass extractClass(LookupElement lookupElement) {
+  @Nullable
+  private static PsiClass extractClass(LookupElement lookupElement) {
     final Object object = lookupElement.getObject();
     if (object instanceof PsiClass) {
       return (PsiClass)object;

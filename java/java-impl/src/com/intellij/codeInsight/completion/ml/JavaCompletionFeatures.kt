@@ -148,6 +148,18 @@ object JavaCompletionFeatures {
     return result
   }
 
+  fun positionIsIdentifier(environment: CompletionEnvironment): Boolean {
+    return environment.parameters.position is PsiIdentifier
+  }
+
+  fun parentIsCodeReference(environment: CompletionEnvironment): Boolean {
+    return environment.parameters.position.parent is PsiJavaCodeReferenceElement
+  }
+
+    fun parentIsModuleReference(environment: CompletionEnvironment): Boolean {
+    return environment.parameters.position.parent is PsiJavaModuleReferenceElement
+  }
+
   fun isInQualifierExpression(environment: CompletionEnvironment): Boolean {
     val parentExpressions = mutableSetOf<PsiExpression>()
     var curParent = environment.parameters.position.context
